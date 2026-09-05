@@ -145,6 +145,18 @@ Demo audio: `fixtures/demo_audio/` (synthetic short WAVs + JSON metadata)
 - Scheduler is deterministic given library + rules + clock — not live AI selection.
 - Inspired by Zetta/NETIA *workflows*; not a clone of proprietary UI/IP.
 
+## On-Air UI direction
+
+The web On-Air surface (`mq_radio/web/static/`) targets a **mid-1990s broadcast playout desk** feel — dense RCS Maestro / early Zetta *workflow* aesthetics only:
+
+- Cart/player decks A·B·C (ON AIR / NEXT / READY)
+- Scrolling Living Log with monospace air times + type tags (MUSIC / ID / SWEEPER / PROMO / VT)
+- Hotkey grid, chunky AUTO / ASSIST / LIVE mode bank
+- Studio clock + TO TIME / ETM readout
+- Win95/CRT control-room palette (gray/beige panels, hard borders, high contrast)
+
+No proprietary logos, trademarks, or pixel-perfect clones. Avoid modern SaaS / Spotify chrome (no glassmorphism, no huge whitespace).
+
 ## Mac install (DMG)
 
 ### One-time: enable the DMG builder (needs workflow file on GitHub)

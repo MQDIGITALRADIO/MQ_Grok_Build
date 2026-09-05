@@ -3,56 +3,161 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MQ DIGITAL — Master Control (M1)</title>
+  <title>MQ DIGITAL — On-Air Desk</title>
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
-  <header>
-    <div class="brand">
-      <span class="callsign">MQ</span>
-      <div>
-        <h1>Master Control</h1>
-        <p class="sub">HOME · Living Log · On-Air prototype (M1)</p>
+  <!-- Classic broadcast desk chrome (workflow aesthetics only — not a proprietary clone) -->
+  <div class="desk">
+    <header class="titlebar">
+      <div class="titlebar-left">
+        <span class="sys-icon">▣</span>
+        <span class="sys-title">MQ Radio Automation — On-Air</span>
+        <span class="sys-build">HOME · Living Log</span>
+      </div>
+      <div class="titlebar-right">
+        <label class="date-label">LOG DATE
+          <input type="date" id="log-date" />
+        </label>
+        <button type="button" id="btn-refresh" class="btn-chrome" title="Refresh log">↻</button>
+      </div>
+    </header>
+
+    <div class="top-strip">
+      <div class="mode-bank" role="group" aria-label="Playout mode">
+        <button type="button" id="mode-auto" class="mode-btn active" data-mode="AUTO">AUTO</button>
+        <button type="button" id="mode-assist" class="mode-btn" data-mode="ASSIST">ASSIST</button>
+        <button type="button" id="mode-live" class="mode-btn" data-mode="LIVE">LIVE</button>
+      </div>
+
+      <div class="studio-clock-panel">
+        <div class="clock-label">STUDIO CLOCK</div>
+        <div class="studio-clock" id="wallclock">00:00:00</div>
+        <div class="clock-sub">
+          <span>TO TIME <strong id="to-time">--:--</strong></span>
+          <span class="sep">|</span>
+          <span>ETM <strong id="etm-readout">—</strong></span>
+        </div>
+      </div>
+
+      <div class="transport-bank">
+        <button type="button" id="btn-play" class="btn-transport go">▶ PLAY</button>
+        <button type="button" id="btn-stop" class="btn-transport stop">■ STOP</button>
+        <button type="button" id="btn-skip" class="btn-transport">⏭ SKIP</button>
+        <button type="button" id="btn-step" class="btn-transport">⚙ STEP</button>
+      </div>
+
+      <div class="status-lamp-panel">
+        <div class="lamp-row"><span class="lamp" id="lamp-onair"></span> ON AIR</div>
+        <div class="lamp-row"><span class="lamp dim" id="lamp-ready"></span> READY</div>
+        <div class="engine-msg" id="engine-msg">Engine idle</div>
       </div>
     </div>
-    <div class="clock" id="wallclock">--:--:--</div>
-  </header>
 
-  <section class="now-playing">
-    <div class="label">NOW PLAYING</div>
-    <div class="np-title" id="np-title">—</div>
-    <div class="np-artist" id="np-artist">—</div>
-    <div class="np-meta" id="np-meta"></div>
-  </section>
+    <div class="decks-row">
+      <article class="deck deck-a" id="deck-a" data-deck="A">
+        <header class="deck-head">
+          <span class="deck-id">DECK A</span>
+          <span class="deck-state onair" id="deck-a-state">ON AIR</span>
+        </header>
+        <div class="deck-body">
+          <div class="deck-type" id="deck-a-type">—</div>
+          <div class="deck-title" id="deck-a-title">—</div>
+          <div class="deck-artist" id="deck-a-artist">—</div>
+          <div class="deck-meta">
+            <span id="deck-a-chain">—</span>
+            <span id="deck-a-dur">0:00</span>
+          </div>
+          <div class="deck-meter" aria-hidden="true">
+            <div class="meter-bar" id="deck-a-meter"></div>
+          </div>
+        </div>
+      </article>
 
-  <section class="controls">
-    <button id="btn-play" class="go">PLAY</button>
-    <button id="btn-stop">STOP</button>
-    <button id="btn-skip">SKIP</button>
-    <button id="btn-step">ENGINE STEP</button>
-    <span id="engine-msg" class="msg"></span>
-  </section>
+      <article class="deck deck-b" id="deck-b" data-deck="B">
+        <header class="deck-head">
+          <span class="deck-id">DECK B</span>
+          <span class="deck-state next" id="deck-b-state">NEXT</span>
+        </header>
+        <div class="deck-body">
+          <div class="deck-type" id="deck-b-type">—</div>
+          <div class="deck-title" id="deck-b-title">—</div>
+          <div class="deck-artist" id="deck-b-artist">—</div>
+          <div class="deck-meta">
+            <span id="deck-b-chain">—</span>
+            <span id="deck-b-dur">0:00</span>
+          </div>
+          <div class="deck-meter" aria-hidden="true">
+            <div class="meter-bar idle" id="deck-b-meter"></div>
+          </div>
+        </div>
+      </article>
 
-  <section class="log-panel">
-    <div class="panel-head">
-      <h2>Living Log</h2>
-      <label>Date <input type="date" id="log-date" /></label>
-      <button id="btn-refresh">Refresh</button>
+      <article class="deck deck-c" id="deck-c" data-deck="C">
+        <header class="deck-head">
+          <span class="deck-id">DECK C</span>
+          <span class="deck-state ready" id="deck-c-state">READY</span>
+        </header>
+        <div class="deck-body">
+          <div class="deck-type" id="deck-c-type">—</div>
+          <div class="deck-title" id="deck-c-title">—</div>
+          <div class="deck-artist" id="deck-c-artist">—</div>
+          <div class="deck-meta">
+            <span id="deck-c-chain">—</span>
+            <span id="deck-c-dur">0:00</span>
+          </div>
+          <div class="deck-meter" aria-hidden="true">
+            <div class="meter-bar idle" id="deck-c-meter"></div>
+          </div>
+        </div>
+      </article>
     </div>
-    <table>
-      <thead>
-        <tr>
-          <th>#</th><th>Airtime</th><th>Type</th><th>Chain</th><th>Timing</th>
-          <th>Artist</th><th>Title</th><th>Dur</th><th>Status</th>
-        </tr>
-      </thead>
-      <tbody id="log-body"></tbody>
-    </table>
-  </section>
 
-  <footer>
-    MQ Engine is independent of this control surface — UI crash ≠ dead air.
-  </footer>
+    <div class="main-grid">
+      <section class="log-panel">
+        <div class="panel-chrome">
+          <span class="panel-title">LIVING LOG</span>
+          <span class="panel-hint" id="log-count">0 events</span>
+        </div>
+        <div class="log-scroll">
+          <table class="log-table">
+            <thead>
+              <tr>
+                <th class="col-pos">#</th>
+                <th class="col-time">AIRTIME</th>
+                <th class="col-type">TYPE</th>
+                <th class="col-chain">CHAIN</th>
+                <th class="col-timing">TIMING</th>
+                <th class="col-artist">ARTIST</th>
+                <th class="col-title">TITLE</th>
+                <th class="col-dur">DUR</th>
+                <th class="col-status">STATUS</th>
+              </tr>
+            </thead>
+            <tbody id="log-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <aside class="hotkey-panel">
+        <div class="panel-chrome">
+          <span class="panel-title">HOTKEYS</span>
+        </div>
+        <div class="hotkey-grid" id="hotkey-grid">
+          <!-- filled by app.js -->
+        </div>
+        <div class="hotkey-footer">
+          F1–F8 fire cart · Space = PLAY · Esc = STOP
+        </div>
+      </aside>
+    </div>
+
+    <footer class="statusbar">
+      <span>MQ Engine independent of control surface — UI crash ≠ dead air</span>
+      <span id="mode-status">MODE: AUTO</span>
+      <span id="footer-clock">—</span>
+    </footer>
+  </div>
   <script src="/static/app.js"></script>
 </body>
 </html>
