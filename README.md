@@ -154,8 +154,27 @@ The web On-Air surface (`mq_radio/web/static/`) targets a **mid-1990s broadcast 
 - Hotkey grid, chunky AUTO / ASSIST / LIVE mode bank
 - Studio clock + TO TIME / ETM readout
 - Win95/CRT control-room palette (gray/beige panels, hard borders, high contrast)
+- Air-studio ELAPSED / REMAINING timers + ending type (COLD / SOFT / FADE)
+- End-of-cart colour ramp on the last 5 seconds
+- Settings ⚙ multi-bus audio output routing (mock devices in web demo)
 
 No proprietary logos, trademarks, or pixel-perfect clones. Avoid modern SaaS / Spotify chrome (no glassmorphism, no huge whitespace).
+
+
+## On-Air timers, endings & audio routing
+
+**Deck timers (air-studio style):** Deck A shows monospace **ELAPSED** / **REMAINING** (tenths) driven by `/api/status` → `timing`, with local 250ms extrapolation so the desk stays smooth between polls. PLAY holds the cart until the timer expires (`finish_if_due`).
+
+**End-of-cart warning:** Over the last **5 seconds**, Deck A (panel + progress meter) runs a green→amber→red **colour ramp** that intensifies toward 0.
+
+**Ending / last-word style:** Now-playing (and log events) expose `intro_ms`, `outro_ms`, `ending_type`, and `ending_label` from the tracks table:
+- **COLD** — `outro_ms` < 2500
+- **SOFT** — between 2500 and 5000
+- **FADE** — `outro_ms` ≥ 5000
+- Imaging without track metadata uses short-duration → COLD / longer → FADE heuristics
+- UI readout examples: `FADE · 8.0s`, `INTRO 5.2s · FADE · 8.0s`
+
+**Audio outputs (Settings ⚙):** Multi-bus routing — Program/On-Air, Monitor/Cue, Headphones/Talent, Stream Encode (or Same as Program), Record Bus. Choices persist to `localStorage` and `data/audio_outputs.json` via `/api/settings/audio`. The web prototype lists **mock devices** (Built-in Output, USB Interface, Aggregate Device, BlackHole 2ch, None) for UX; **real CoreAudio device enumeration comes with the Mac engine**.
 
 ## Mac install (DMG)
 

@@ -16,3 +16,4 @@ desktop/dist/
 desktop/resources/MQRadioEngine/
 build/
 dist/
+data/audio_outputs.json

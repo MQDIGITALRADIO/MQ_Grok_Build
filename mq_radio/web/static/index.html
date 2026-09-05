@@ -19,6 +19,7 @@
         <label class="date-label">LOG DATE
           <input type="date" id="log-date" />
         </label>
+        <button type="button" id="btn-settings" class="btn-chrome" title="Settings">⚙</button>
         <button type="button" id="btn-refresh" class="btn-chrome" title="Refresh log">↻</button>
       </div>
     </header>
@@ -68,6 +69,20 @@
             <span id="deck-a-chain">—</span>
             <span id="deck-a-dur">0:00</span>
           </div>
+          <div class="deck-timers" id="deck-a-timers">
+            <div class="timer-block">
+              <span class="timer-label">ELAPSED</span>
+              <span class="timer-digits" id="deck-a-elapsed">0:00.0</span>
+            </div>
+            <div class="timer-block remaining">
+              <span class="timer-label">REMAINING</span>
+              <span class="timer-digits" id="deck-a-remaining">0:00.0</span>
+            </div>
+            <div class="timer-block ending">
+              <span class="timer-label">ENDING</span>
+              <span class="timer-ending" id="deck-a-ending">—</span>
+            </div>
+          </div>
           <div class="deck-meter" aria-hidden="true">
             <div class="meter-bar" id="deck-a-meter"></div>
           </div>
@@ -86,6 +101,12 @@
           <div class="deck-meta">
             <span id="deck-b-chain">—</span>
             <span id="deck-b-dur">0:00</span>
+          </div>
+          <div class="deck-timers deck-timers-next" id="deck-b-timers">
+            <div class="timer-block ending">
+              <span class="timer-label">ENDING</span>
+              <span class="timer-ending" id="deck-b-ending">—</span>
+            </div>
           </div>
           <div class="deck-meter" aria-hidden="true">
             <div class="meter-bar idle" id="deck-b-meter"></div>
@@ -157,6 +178,47 @@
       <span id="mode-status">MODE: AUTO</span>
       <span id="footer-clock">—</span>
     </footer>
+  </div>
+
+  <!-- Settings: multi-bus audio output routing -->
+  <div class="settings-backdrop" id="settings-backdrop" aria-hidden="true">
+    <div class="settings-dialog" role="dialog" aria-labelledby="settings-title">
+      <div class="settings-titlebar">
+        <span id="settings-title">MQ Radio — Settings</span>
+        <button type="button" class="settings-close" id="btn-settings-close" title="Close">×</button>
+      </div>
+      <div class="settings-body">
+        <p class="settings-intro">
+          Broadcast-style output routing. Web demo lists mock devices for UX;
+          Mac engine will enumerate real CoreAudio devices.
+        </p>
+        <div class="settings-section-title">AUDIO OUTPUTS</div>
+        <div class="audio-route-row">
+          <label for="out-program">Program / On-Air</label>
+          <select id="out-program" data-role="program"></select>
+        </div>
+        <div class="audio-route-row">
+          <label for="out-monitor">Monitor / Cue</label>
+          <select id="out-monitor" data-role="monitor"></select>
+        </div>
+        <div class="audio-route-row">
+          <label for="out-headphones">Headphones / Talent</label>
+          <select id="out-headphones" data-role="headphones"></select>
+        </div>
+        <div class="audio-route-row">
+          <label for="out-stream">Stream Encode</label>
+          <select id="out-stream" data-role="stream"></select>
+        </div>
+        <div class="audio-route-row">
+          <label for="out-record">Record Bus</label>
+          <select id="out-record" data-role="record"></select>
+        </div>
+        <div class="settings-actions">
+          <button type="button" class="btn-dialog" id="btn-settings-cancel">Cancel</button>
+          <button type="button" class="btn-dialog primary" id="btn-settings-save">OK</button>
+        </div>
+      </div>
+    </div>
   </div>
   <script src="/static/app.js"></script>
 </body>

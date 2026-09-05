@@ -9,9 +9,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Optional
 
-from mq_radio.config import DB_PATH
+from mq_radio.config import DATA_DIR, DB_PATH
 from mq_radio.engine.mock_engine import MockEngine
 from mq_radio.living_log.service import list_events, now_and_upcoming
+from mq_radio.web.settings_store import load_audio_outputs, save_audio_outputs
 
 def _static_dir() -> Path:
     here = Path(__file__).resolve().parent / "static"
@@ -75,13 +76,21 @@ def make_handler(db_path: Path):
                 return
 
             if path == "/api/status":
+                engine = MockEngine(log_date, db_path=db_path)
+                engine.finish_if_due()
                 data = now_and_upcoming(log_date, db_path=db_path)
-                _json_response(self, {"date": log_date, **data})
+                from mq_radio.engine.session import SESSION
+                timing = SESSION.timing()
+                _json_response(self, {"date": log_date, **data, "timing": timing, "running": SESSION.running})
                 return
 
             if path == "/api/log":
                 events = list_events(log_date, db_path=db_path)
                 _json_response(self, {"date": log_date, "events": events})
+                return
+
+            if path == "/api/settings/audio":
+                _json_response(self, load_audio_outputs(DATA_DIR))
                 return
 
             self.send_error(404)
@@ -92,8 +101,20 @@ def make_handler(db_path: Path):
             qs = urllib.parse.parse_qs(parsed.query)
             log_date = (qs.get("date") or [date.today().isoformat()])[0]
             length = int(self.headers.get("Content-Length") or 0)
-            if length:
-                self.rfile.read(length)
+            body = self.rfile.read(length) if length else b""
+
+            if path == "/api/settings/audio":
+                try:
+                    payload = json.loads(body.decode("utf-8") or "{}")
+                except json.JSONDecodeError:
+                    _json_response(self, {"ok": False, "error": "invalid json"}, status=400)
+                    return
+                outputs = payload.get("outputs") if isinstance(payload.get("outputs"), dict) else payload
+                if not isinstance(outputs, dict):
+                    outputs = {}
+                result = save_audio_outputs(outputs, DATA_DIR)
+                _json_response(self, result)
+                return
 
             engine = MockEngine(log_date, db_path=db_path)
             if path == "/api/play":
