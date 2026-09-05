@@ -13,7 +13,20 @@ from mq_radio.config import DB_PATH
 from mq_radio.engine.mock_engine import MockEngine
 from mq_radio.living_log.service import list_events, now_and_upcoming
 
-STATIC_DIR = Path(__file__).parent / "static"
+def _static_dir() -> Path:
+    here = Path(__file__).resolve().parent / "static"
+    if here.is_dir():
+        return here
+    import sys
+    me = getattr(sys, "_MEI" + "PASS", None)
+    if getattr(sys, "frozen", False) and me:
+        bundled = Path(me) / "mq_radio" / "web" / "static"
+        if bundled.is_dir():
+            return bundled
+    return here
+
+
+STATIC_DIR = _static_dir()
 
 
 def _json_response(handler: BaseHTTPRequestHandler, data, status: int = 200) -> None:

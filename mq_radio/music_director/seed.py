@@ -9,7 +9,7 @@ import wave
 from pathlib import Path
 from typing import Optional
 
-from mq_radio.config import FIXTURES_DIR
+import mq_radio.config as _cfg
 from mq_radio.db.connection import get_connection
 from mq_radio.library.scanner import scan_directory
 
@@ -334,9 +334,9 @@ def _seed_general_clock(conn) -> int:
 
 
 def _seed_audio_fixtures() -> None:
-    FIXTURES_DIR.mkdir(parents=True, exist_ok=True)
+    _cfg.FIXTURES_DIR.mkdir(parents=True, exist_ok=True)
     for filename, meta, dur, freq in DEMO_TRACKS:
-        wav_path = FIXTURES_DIR / filename
+        wav_path = _cfg.FIXTURES_DIR / filename
         duration_ms = _write_tone_wav(wav_path, dur, freq)
         meta = dict(meta)
         meta["duration_ms"] = duration_ms
@@ -376,7 +376,7 @@ def seed_demo(db_path: Optional[Path] = None) -> dict:
     conn.close()
 
     _seed_audio_fixtures()
-    scanned = scan_directory(FIXTURES_DIR, db_path=db_path, category_code="A")
+    scanned = scan_directory(_cfg.FIXTURES_DIR, db_path=db_path, category_code="A")
 
     conn = get_connection(db_path)
     _assign_categories_by_rotation(conn)
@@ -389,5 +389,5 @@ def seed_demo(db_path: Optional[Path] = None) -> dict:
         "clock_id": clock_id,
         "scanned": scanned,
         "tracks": track_count,
-        "fixtures_dir": str(FIXTURES_DIR),
+        "fixtures_dir": str(_cfg.FIXTURES_DIR),
     }

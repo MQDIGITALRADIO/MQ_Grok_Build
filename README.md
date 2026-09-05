@@ -144,3 +144,26 @@ Demo audio: `fixtures/demo_audio/` (synthetic short WAVs + JSON metadata)
 - Playout is behind an adapter; the UI talks to Living Log / MockEngine only.
 - Scheduler is deterministic given library + rules + clock — not live AI selection.
 - Inspired by Zetta/NETIA *workflows*; not a clone of proprietary UI/IP.
+
+## Mac install (DMG)
+
+Beginner-friendly desktop app (no Terminal required).
+
+1. Open the GitHub Actions run for **macOS DMG** on the `main` branch:
+   https://github.com/MQDIGITALRADIO/MQ_Grok_Build/actions/workflows/macos-dmg.yml
+2. Download the artifact **MQ-Radio-macOS-DMG** (a `.dmg` file).
+3. Open the DMG and drag **MQ Radio** into **Applications**.
+4. First launch (unsigned build): Finder → Applications → **right-click MQ Radio → Open** → confirm Open.
+   Apple Gatekeeper blocks unsigned apps until you do this once. Apple Developer signing comes later.
+5. MQ Radio opens the On-Air UI. First run auto-creates a demo library and Living Log.
+
+Station data: `~/Library/Application Support/MQ Radio/` (Electron userData).
+
+### What the Mac app does
+
+- Double-click app window (no Terminal)
+- Bundled engine serves On-Air at `http://127.0.0.1:8080`
+- Quitting the app stops the engine
+
+Rebuilds run automatically on push to `main` via `.github/workflows/macos-dmg.yml`.
+

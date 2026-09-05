@@ -21,7 +21,7 @@ def get_connection(db_path: Optional[Path] = None) -> sqlite3.Connection:
 def init_db(db_path: Optional[Path] = None) -> Path:
     """Apply migrations and return DB path."""
     path = Path(db_path) if db_path else DB_PATH
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
     conn = get_connection(path)
     try:
         applied = {
@@ -36,7 +36,8 @@ def init_db(db_path: Optional[Path] = None) -> Path:
         else:
             pass
 
-        migrations = sorted(MIGRATIONS_DIR.glob("*.sql"))
+        import mq_radio.config as _cfg
+        migrations = sorted(_cfg.MIGRATIONS_DIR.glob("*.sql"))
         for mig in migrations:
             version = mig.stem
             # ensure migrations table exists first via running file

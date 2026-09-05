@@ -1,0 +1,66 @@
+name: macOS DMG
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-dmg:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python package and PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pyinstaller
+
+      - name: Build MQRadioEngine with PyInstaller
+        run: |
+          pyinstaller packaging/mq_radio_engine.spec --noconfirm --clean
+          test -x dist/MQRadioEngine/MQRadioEngine
+          ls -la dist/MQRadioEngine | head -20
+
+      - name: Stage engine into Electron resources
+        run: |
+          rm -rf desktop/resources/MQRadioEngine
+          mkdir -p desktop/resources
+          cp -R dist/MQRadioEngine desktop/resources/MQRadioEngine
+          chmod +x desktop/resources/MQRadioEngine/MQRadioEngine
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+
+      - name: Install desktop packages
+        working-directory: desktop
+        run: npm install
+
+      - name: Package macOS disk image
+        working-directory: desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: |
+          npx electron-builder --mac dmg --arm64 --publish never
+          ls -la dist
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MQ-Radio-macOS-DMG
+          path: desktop/dist/*.dmg
+          if-no-files-found: error
+          retention-days: 30

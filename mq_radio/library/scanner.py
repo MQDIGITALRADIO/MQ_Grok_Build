@@ -7,7 +7,7 @@ import wave
 from pathlib import Path
 from typing import Optional
 
-from mq_radio.config import FIXTURES_DIR
+import mq_radio.config as _cfg
 from mq_radio.db.connection import get_connection
 
 
@@ -41,7 +41,7 @@ def scan_directory(
     category_code: str = "A",
 ) -> int:
     """Scan audio files and upsert tracks. Returns count inserted/updated."""
-    root = Path(directory) if directory else FIXTURES_DIR
+    root = Path(directory) if directory else _cfg.FIXTURES_DIR
     if not root.exists():
         return 0
 

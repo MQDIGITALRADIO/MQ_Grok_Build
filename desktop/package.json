@@ -1,0 +1,59 @@
+{
+  "name": "mq-radio",
+  "productName": "MQ Radio",
+  "version": "0.1.0",
+  "description": "MQ Radio Automation On-Air Living Log desktop app",
+  "main": "main.js",
+  "author": "MQ DIGITAL RADIO",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --mac dmg"
+  },
+  "build": {
+    "appId": "space.mqdigital.radio",
+    "productName": "MQ Radio",
+    "copyright": "Copyright MQ DIGITAL RADIO",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/MQRadioEngine",
+        "to": "MQRadioEngine",
+        "filter": ["**/*"]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.music",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["arm64"]
+        }
+      ],
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
+    },
+    "dmg": {
+      "title": "MQ Radio",
+      "contents": [
+        { "x": 130, "y": 220 },
+        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+      ]
+    },
+    "artifactName": "MQ-Radio-${version}-${arch}.${ext}"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  }
+}

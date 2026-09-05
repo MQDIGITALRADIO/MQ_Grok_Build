@@ -9,3 +9,10 @@ data/*.db
 data/*.db-*
 *.zip
 .DS_Store
+
+# Desktop / Electron / packaging outputs
+desktop/node_modules/
+desktop/dist/
+desktop/resources/MQRadioEngine/
+build/
+dist/
