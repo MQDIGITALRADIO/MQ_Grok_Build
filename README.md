@@ -147,7 +147,34 @@ Demo audio: `fixtures/demo_audio/` (synthetic short WAVs + JSON metadata)
 
 ## Mac install (DMG)
 
-Beginner-friendly desktop app (no Terminal required).
+
+### One-time: enable the DMG builder (needs workflow file on GitHub)
+
+
+The GitHub OAuth token used to push code does **not** include the `workflow` scope, so the Actions file lives in-repo as a template:
+
+
+`packaging/ci/macos-dmg.yml`
+
+
+**Matt — do this once in the browser (signed in as MQDIGITALRADIO):**
+
+
+1. Open https://github.com/MQDIGITALRADIO/MQ_Grok_Build/new/main?filename=.github/workflows/macos-dmg.yml
+
+2. Copy the full contents of `packaging/ci/macos-dmg.yml` from the repo and paste into the editor.
+
+3. Commit directly to `main` (message: `Add macOS DMG workflow`).
+
+4. Open Actions → **macOS DMG** → the run starts automatically (or click **Run workflow**).
+
+5. When green, open the run → Artifacts → download **MQ-Radio-macOS-DMG**.
+
+
+Optional later: `gh auth refresh -s workflow` so future pushes can update workflows from git.
+
+
+### Install the DMG on your Mac
 
 1. Open the GitHub Actions run for **macOS DMG** on the `main` branch:
    https://github.com/MQDIGITALRADIO/MQ_Grok_Build/actions/workflows/macos-dmg.yml
