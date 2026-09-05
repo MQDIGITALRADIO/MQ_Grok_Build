@@ -262,11 +262,20 @@ Optional later: `gh auth refresh -s workflow` so future pushes can update workfl
 
 1. Open the GitHub Actions run for **macOS DMG** on the `main` branch:
    https://github.com/MQDIGITALRADIO/MQ_Grok_Build/actions/workflows/macos-dmg.yml
-2. Download the artifact **MQ-Radio-macOS-DMG** (a `.dmg` file).
-3. Open the DMG and drag **MQ Radio** into **Applications**.
-4. First launch (unsigned build): Finder → Applications → **right-click MQ Radio → Open** → confirm Open.
+2. Download the artifact **MQ-Radio-macOS-DMG** (contains `.dmg` and `.zip`).
+3. Open the DMG (or unzip) and drag **MQ Radio** into **Applications**.
+4. First launch (unsigned / ad-hoc signed build): Finder → Applications → **right-click MQ Radio → Open** → confirm Open.
    Apple Gatekeeper blocks unsigned apps until you do this once. Apple Developer signing comes later.
 5. MQ Radio opens the On-Air UI. First run auto-creates a demo library and Living Log.
+
+**If macOS says the app is “damaged” and can’t be opened** (Gatekeeper quarantine on CI builds without an Apple Developer cert):
+
+```bash
+xattr -cr "/Applications/MQ Radio.app"
+codesign --force --deep --sign - "/Applications/MQ Radio.app"
+```
+
+Then **right-click → Open**, or System Settings → Privacy & Security → **Open Anyway**.
 
 Station data: `~/Library/Application Support/MQ Radio/` (Electron userData).
 

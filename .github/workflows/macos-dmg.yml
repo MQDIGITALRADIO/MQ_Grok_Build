@@ -49,18 +49,46 @@ jobs:
         working-directory: desktop
         run: npm install
 
-      - name: Package macOS disk image
+      - name: Build, ad-hoc codesign, ZIP + DMG
         working-directory: desktop
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: |
-          npx electron-builder --mac dmg --arm64 --publish never
-          ls -la dist
+          npx electron-builder --mac dir --arm64 --publish never
 
-      - name: Upload DMG artifact
+          APP="dist/mac-arm64/MQ Radio.app"
+          if [ ! -d "$APP" ]; then
+            APP="dist/mac/MQ Radio.app"
+          fi
+          test -d "$APP"
+          echo "Signing: $APP"
+          codesign --force --deep --sign - "$APP"
+          codesign --verify --deep --verbose=2 "$APP" || true
+
+          VERSION=$(node -p "require('./package.json').version")
+          ZIP="dist/MQ-Radio-${VERSION}-arm64.zip"
+          DMG="dist/MQ-Radio-${VERSION}-arm64.dmg"
+
+          # ZIP preserves macOS resource forks / app bundle layout
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
+
+          # DMG from the same signed app
+          STAGE=$(mktemp -d)
+          ditto "$APP" "$STAGE/MQ Radio.app"
+          ln -s /Applications "$STAGE/Applications"
+          hdiutil create -volname "MQ Radio" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
+          rm -rf "$STAGE"
+
+          ls -la dist
+          ls -la "$APP"
+          file "$ZIP" "$DMG"
+
+      - name: Upload DMG + ZIP artifact
         uses: actions/upload-artifact@v4
         with:
           name: MQ-Radio-macOS-DMG
-          path: desktop/dist/*.dmg
+          path: |
+            desktop/dist/*.dmg
+            desktop/dist/*.zip
           if-no-files-found: error
           retention-days: 30
