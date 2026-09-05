@@ -42,6 +42,8 @@ let timingSnap = {
   elapsed_ms: 0,
   remaining_ms: 0,
   progress: 0,
+  intro_ms: 0,
+  event_type: "",
   syncedAt: 0,
 };
 
@@ -289,6 +291,8 @@ function syncTimingFromStatus(st) {
     elapsed_ms: Number(t.elapsed_ms || 0),
     remaining_ms: Number(t.remaining_ms || 0),
     progress: Number(t.progress || 0),
+    intro_ms: Number((onAir && nowEv.intro_ms) || 0),
+    event_type: (onAir && nowEv.event_type) || "",
     syncedAt: Date.now(),
   };
   // Prefer server remaining when present
@@ -318,6 +322,37 @@ function liveTiming() {
   const remaining = Math.max(0, dur - elapsed);
   const progress = dur > 0 ? Math.min(1, elapsed / dur) : 0;
   return { elapsed_ms: elapsed, remaining_ms: remaining, progress, playing: true };
+}
+
+
+function updateVocalsInPopup(live) {
+  const popup = document.getElementById("vocals-in-popup");
+  const countEl = document.getElementById("vocals-in-count");
+  if (!popup || !countEl) return;
+
+  // Talk-up counter is for Live Assist / LIVE — quiet in AUTO
+  const assistLike = playoutMode === "ASSIST" || playoutMode === "LIVE";
+  const introMs = Number(timingSnap.intro_ms || 0);
+  const isMusic = (timingSnap.event_type || "") === "MUSIC";
+  const show =
+    assistLike &&
+    timingSnap.playing &&
+    isMusic &&
+    introMs > 0 &&
+    live.elapsed_ms < introMs;
+
+  if (!show) {
+    popup.hidden = true;
+    popup.classList.remove("urgent", "critical");
+    return;
+  }
+
+  const leftMs = Math.max(0, introMs - live.elapsed_ms);
+  const secs = Math.ceil(leftMs / 1000);
+  countEl.textContent = String(secs);
+  popup.hidden = false;
+  popup.classList.toggle("urgent", secs <= 5 && secs > 2);
+  popup.classList.toggle("critical", secs <= 2);
 }
 
 function tickTimers() {
@@ -454,6 +489,7 @@ function setMode(mode) {
   });
   document.getElementById("mode-status").textContent = `MODE: ${mode}`;
   document.getElementById("engine-msg").textContent = `Mode → ${mode}`;
+  tickTimers();
 }
 
 /* —— Audio output settings —— */
