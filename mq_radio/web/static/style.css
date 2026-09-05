@@ -855,3 +855,110 @@ input { border-radius: 0; }
   50% { transform: scale(1.03); }
   100% { transform: scale(1); }
 }
+
+
+/* —— M2 AI / Voice Track —— */
+.log-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+.btn-ai {
+  font-size: 10px;
+  padding: 2px 8px;
+  letter-spacing: 0.02em;
+}
+.col-script {
+  max-width: 220px;
+  font-size: 10px;
+  color: #c8e0c8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.log-row.vt-row {
+  background: rgba(40, 90, 50, 0.18);
+  cursor: pointer;
+}
+.log-row.vt-row:hover,
+.log-row:hover {
+  outline: 1px solid #6a8a6a;
+  cursor: pointer;
+}
+
+.vt-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 1200;
+  align-items: center;
+  justify-content: center;
+}
+.vt-backdrop.open {
+  display: flex;
+}
+.vt-dialog {
+  width: min(560px, 94vw);
+  background: #c0c0c0;
+  border: 2px solid #fff;
+  border-right-color: #404040;
+  border-bottom-color: #404040;
+  box-shadow: 4px 4px 0 #000;
+  color: #000;
+  font-family: "MS Sans Serif", Tahoma, sans-serif;
+}
+.vt-titlebar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: linear-gradient(90deg, #000080, #1084d0);
+  color: #fff;
+  padding: 4px 6px;
+  font-weight: 700;
+  font-size: 12px;
+}
+.vt-body {
+  padding: 12px;
+}
+.vt-meta {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+.vt-label {
+  display: inline-block;
+  min-width: 88px;
+  color: #333;
+  font-weight: 700;
+  font-size: 10px;
+}
+.vt-script-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+.vt-script {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  background: #fff;
+  border: 2px inset #808080;
+  padding: 6px;
+  resize: vertical;
+  min-height: 110px;
+}
+.vt-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.vt-hint {
+  margin: 10px 0 0;
+  font-size: 10px;
+  color: #444;
+}

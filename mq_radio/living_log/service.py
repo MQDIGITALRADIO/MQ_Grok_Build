@@ -101,7 +101,13 @@ def list_events(
         sql += f" LIMIT {int(limit)}"
     rows = conn.execute(sql, (log_date,)).fetchall()
     conn.close()
-    return [_enrich_event(dict(r)) for r in rows]
+    events = [_enrich_event(dict(r)) for r in rows]
+    try:
+        from mq_radio.voice_tracker.service import attach_vt_to_events
+        events = attach_vt_to_events(events, db_path=db_path)
+    except Exception:
+        pass
+    return events
 
 
 def now_and_upcoming(

@@ -442,6 +442,10 @@ async function refresh() {
     }
 
     const tl = typeLabel(e.event_type);
+    const isVt = e.event_type === "VOICE_TRACK";
+    if (isVt) tr.classList.add("vt-row");
+    const scriptPreview = e.vt_preview || e.vt_script || "";
+    const vtStatus = e.vt_status ? ` [${e.vt_status}]` : "";
     tr.innerHTML = `
       <td class="col-pos">${e.position}</td>
       <td class="col-time">${fmtAirtime(e.scheduled_at)}</td>
@@ -450,8 +454,14 @@ async function refresh() {
       <td class="col-timing">${e.timing_mode || ""}</td>
       <td class="col-artist">${escapeHtml(e.artist || "")}</td>
       <td class="col-title">${escapeHtml(e.title || "")}</td>
+      <td class="col-script" title="${escapeHtml(e.vt_script || scriptPreview)}">${
+        isVt ? escapeHtml((scriptPreview || "—") + vtStatus) : ""
+      }</td>
       <td class="col-dur">${fmtDur(e.duration_ms)}</td>
       <td class="col-status">${e.status || ""}</td>`;
+    tr.dataset.eventId = e.id;
+    tr.dataset.position = e.position;
+    tr.addEventListener("click", () => openVtStudio(e, events));
     body.appendChild(tr);
   });
 
@@ -600,6 +610,11 @@ document.addEventListener("keydown", (ev) => {
     return;
   }
   if (ev.key === "Escape") {
+    const vtBd = document.getElementById("vt-backdrop");
+    if (vtBd && vtBd.classList.contains("open")) {
+      closeVtStudio();
+      return;
+    }
     const bd = document.getElementById("settings-backdrop");
     if (bd.classList.contains("open")) {
       closeSettings();
@@ -623,7 +638,164 @@ document.addEventListener("keydown", (ev) => {
 });
 
 initSettings();
+initVtStudio();
 setInterval(tickClock, 250);
 tickClock();
 refresh();
 setInterval(refresh, 5000);
+
+
+/* —— Voice Track studio stub + AI breaks —— */
+let vtContext = null;
+
+function findNeighborMusic(events, position, dir) {
+  if (!events) return null;
+  const sorted = [...events].sort((a, b) => a.position - b.position);
+  const idx = sorted.findIndex((e) => e.position === position);
+  if (idx < 0) return null;
+  if (dir < 0) {
+    for (let i = idx - 1; i >= 0; i--) {
+      if (sorted[i].event_type === "MUSIC") return sorted[i];
+    }
+  } else {
+    for (let i = idx + 1; i < sorted.length; i++) {
+      if (sorted[i].event_type === "MUSIC") return sorted[i];
+    }
+  }
+  return null;
+}
+
+function openVtStudio(event, events) {
+  // Click a VT row, or a transition after music (open studio on any row)
+  const prev = findNeighborMusic(events, event.position, -1);
+  const next =
+    event.event_type === "MUSIC"
+      ? event
+      : findNeighborMusic(events, event.position, 1);
+  const prevForScript =
+    event.event_type === "MUSIC"
+      ? findNeighborMusic(events, event.position, -1)
+      : prev;
+  const nextForScript =
+    event.event_type === "MUSIC"
+      ? findNeighborMusic(events, event.position, 1)
+      : next;
+
+  let hour = 12;
+  try {
+    hour = Number(String(event.scheduled_at).split("T")[1].split(":")[0]);
+  } catch (_) {}
+  const dayparts = [
+    [5, 10, "morning"],
+    [10, 15, "day"],
+    [15, 19, "afternoon"],
+    [19, 23, "evening"],
+  ];
+  let daypart = "overnight";
+  for (const [a, b, name] of dayparts) {
+    if (hour >= a && hour < b) daypart = name;
+  }
+
+  vtContext = {
+    event,
+    prev: prevForScript,
+    next: nextForScript,
+    daypart,
+  };
+
+  const fromLabel = prevForScript
+    ? `${prevForScript.artist || ""} — ${prevForScript.title || ""}`
+    : "(top)";
+  const toLabel = nextForScript
+    ? `${nextForScript.artist || ""} — ${nextForScript.title || ""}`
+    : "(end)";
+  document.getElementById("vt-transition").textContent = `${fromLabel}  →  ${toLabel}`;
+  document.getElementById("vt-daypart").textContent = daypart;
+  document.getElementById("vt-variation").textContent =
+    event.vt_variation || (event.event_type === "VOICE_TRACK" ? "—" : "new");
+  document.getElementById("vt-script").value =
+    event.vt_script || event.vt_preview || "";
+
+  const bd = document.getElementById("vt-backdrop");
+  bd.classList.add("open");
+  bd.setAttribute("aria-hidden", "false");
+}
+
+function closeVtStudio() {
+  const bd = document.getElementById("vt-backdrop");
+  bd.classList.remove("open");
+  bd.setAttribute("aria-hidden", "true");
+  vtContext = null;
+}
+
+async function vtGenerateScript() {
+  if (!vtContext) return;
+  const payload = {
+    prev_track: vtContext.prev
+      ? { title: vtContext.prev.title, artist: vtContext.prev.artist }
+      : null,
+    next_track: vtContext.next
+      ? { title: vtContext.next.title, artist: vtContext.next.artist }
+      : null,
+    daypart: vtContext.daypart,
+    station_name: "MQ Digital",
+    style: "warm",
+    scheduled_at: vtContext.event.scheduled_at,
+  };
+  const res = await fetch("/api/vt/generate-script", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }).then((r) => r.json());
+  document.getElementById("vt-script").value = res.script || "";
+  document.getElementById("vt-variation").textContent = res.variation || "—";
+  document.getElementById("engine-msg").textContent = res.skipped
+    ? "AI script: silence/skip"
+    : `AI script (${res.variation})`;
+}
+
+async function generateAiBreaksUi() {
+  const date = document.getElementById("log-date").value || todayISO();
+  document.getElementById("engine-msg").textContent = "Generating AI breaks…";
+  const res = await fetch(`/api/ai-breaks/generate?date=${date}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ station_name: "MQ Digital", style: "warm" }),
+  }).then((r) => r.json());
+  document.getElementById("engine-msg").textContent = res.ok
+    ? `AI breaks: filled ${res.filled}, inserted ${res.inserted}, drafts ${res.drafts}`
+    : res.error || "AI breaks failed";
+  await refresh();
+}
+
+async function approveAiBreaksUi() {
+  const date = document.getElementById("log-date").value || todayISO();
+  document.getElementById("engine-msg").textContent = "Approving drafts…";
+  const res = await fetch(`/api/ai-breaks/approve?date=${date}`, {
+    method: "POST",
+  }).then((r) => r.json());
+  document.getElementById("engine-msg").textContent = res.ok
+    ? `Approved ${res.approved} VT draft(s)`
+    : res.error || "Approve failed";
+  await refresh();
+}
+
+function initVtStudio() {
+  const gen = document.getElementById("btn-gen-ai");
+  const appr = document.getElementById("btn-approve-ai");
+  if (gen) gen.onclick = generateAiBreaksUi;
+  if (appr) appr.onclick = approveAiBreaksUi;
+  const close = document.getElementById("btn-vt-close");
+  const done = document.getElementById("btn-vt-done");
+  const ai = document.getElementById("btn-vt-ai");
+  if (close) close.onclick = closeVtStudio;
+  if (done) done.onclick = closeVtStudio;
+  if (ai) ai.onclick = vtGenerateScript;
+  const bd = document.getElementById("vt-backdrop");
+  if (bd) {
+    bd.addEventListener("click", (ev) => {
+      if (ev.target.id === "vt-backdrop") closeVtStudio();
+    });
+  }
+}
+

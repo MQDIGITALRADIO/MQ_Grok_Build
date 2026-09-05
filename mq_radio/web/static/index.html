@@ -139,6 +139,10 @@
         <div class="panel-chrome">
           <span class="panel-title">LIVING LOG</span>
           <span class="panel-hint" id="log-count">0 events</span>
+          <div class="log-actions">
+            <button type="button" id="btn-gen-ai" class="btn-chrome btn-ai" title="Generate AI breaks">Generate AI breaks</button>
+            <button type="button" id="btn-approve-ai" class="btn-chrome btn-ai" title="Approve draft VTs">Approve drafts</button>
+          </div>
         </div>
         <div class="log-scroll">
           <table class="log-table">
@@ -151,6 +155,7 @@
                 <th class="col-timing">TIMING</th>
                 <th class="col-artist">ARTIST</th>
                 <th class="col-title">TITLE</th>
+                <th class="col-script">VT SCRIPT</th>
                 <th class="col-dur">DUR</th>
                 <th class="col-status">STATUS</th>
               </tr>
@@ -187,6 +192,32 @@
       <div class="vocals-in-label">VOCALS IN</div>
       <div class="vocals-in-count" id="vocals-in-count">0</div>
       <div class="vocals-in-sub">TALK UP · INTRO</div>
+    </div>
+  </div>
+
+
+  <!-- Voice Track studio stub (M2 — script only, Record disabled) -->
+  <div class="vt-backdrop" id="vt-backdrop" aria-hidden="true">
+    <div class="vt-dialog" role="dialog" aria-labelledby="vt-title">
+      <div class="vt-titlebar">
+        <span id="vt-title">MQ Radio — Voice Track Studio</span>
+        <button type="button" class="settings-close" id="btn-vt-close" title="Close">×</button>
+      </div>
+      <div class="vt-body">
+        <div class="vt-meta">
+          <div><span class="vt-label">TRANSITION</span> <strong id="vt-transition">—</strong></div>
+          <div><span class="vt-label">DAYPART</span> <strong id="vt-daypart">—</strong></div>
+          <div><span class="vt-label">VARIATION</span> <strong id="vt-variation">—</strong></div>
+        </div>
+        <label class="vt-script-label" for="vt-script">SCRIPT</label>
+        <textarea id="vt-script" class="vt-script" rows="6" placeholder="AI or operator script…"></textarea>
+        <div class="vt-actions">
+          <button type="button" class="btn-dialog" id="btn-vt-ai">AI Generate Script</button>
+          <button type="button" class="btn-dialog" id="btn-vt-record" disabled title="M2 stub — recording comes later">● Record (disabled)</button>
+          <button type="button" class="btn-dialog primary" id="btn-vt-done">Done</button>
+        </div>
+        <p class="vt-hint">Stub studio: scripts only for M2. Real VT audio / talk-up later. Scheduler still owns music.</p>
+      </div>
     </div>
   </div>
 

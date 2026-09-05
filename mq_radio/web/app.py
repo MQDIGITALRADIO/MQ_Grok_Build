@@ -12,6 +12,13 @@ from typing import Optional
 from mq_radio.config import DATA_DIR, DB_PATH
 from mq_radio.engine.mock_engine import MockEngine
 from mq_radio.living_log.service import list_events, now_and_upcoming
+from mq_radio.voice_tracker.inserter import generate_ai_breaks
+from mq_radio.voice_tracker.script_generator import daypart_for_hour
+from mq_radio.voice_tracker.service import (
+    approve_ai_breaks,
+    list_vt,
+    script_for_transition,
+)
 from mq_radio.web.settings_store import load_audio_outputs, save_audio_outputs
 
 def _static_dir() -> Path:
@@ -93,6 +100,12 @@ def make_handler(db_path: Path):
                 _json_response(self, load_audio_outputs(DATA_DIR))
                 return
 
+            if path == "/api/vt":
+                status = (qs.get("status") or [None])[0]
+                rows = list_vt(log_date, db_path=db_path, status=status)
+                _json_response(self, {"date": log_date, "voice_tracks": rows})
+                return
+
             self.send_error(404)
 
         def do_POST(self):
@@ -113,6 +126,53 @@ def make_handler(db_path: Path):
                 if not isinstance(outputs, dict):
                     outputs = {}
                 result = save_audio_outputs(outputs, DATA_DIR)
+                _json_response(self, result)
+                return
+
+            if path == "/api/ai-breaks/generate":
+                try:
+                    payload = json.loads(body.decode("utf-8") or "{}")
+                except json.JSONDecodeError:
+                    payload = {}
+                result = generate_ai_breaks(
+                    log_date,
+                    db_path=db_path,
+                    station_name=payload.get("station_name") or "MQ Digital",
+                    style=payload.get("style") or "warm",
+                    insert_gaps=not payload.get("no_insert"),
+                )
+                status = 200 if result.get("ok") else 400
+                _json_response(self, result, status=status)
+                return
+
+            if path == "/api/ai-breaks/approve":
+                result = approve_ai_breaks(log_date, db_path=db_path)
+                status = 200 if result.get("ok") else 400
+                _json_response(self, result, status=status)
+                return
+
+            if path == "/api/vt/generate-script":
+                try:
+                    payload = json.loads(body.decode("utf-8") or "{}")
+                except json.JSONDecodeError:
+                    payload = {}
+                hour = payload.get("hour")
+                if hour is None and payload.get("scheduled_at"):
+                    try:
+                        hour = int(str(payload["scheduled_at"]).split("T")[1].split(":")[0])
+                    except Exception:
+                        hour = 12
+                if hour is None:
+                    hour = 12
+                daypart = payload.get("daypart") or daypart_for_hour(int(hour))
+                result = script_for_transition(
+                    prev_track=payload.get("prev_track"),
+                    next_track=payload.get("next_track"),
+                    daypart=daypart,
+                    station_name=payload.get("station_name") or "MQ Digital",
+                    style=payload.get("style") or "warm",
+                    variation=payload.get("variation"),
+                )
                 _json_response(self, result)
                 return
 

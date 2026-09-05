@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mq-radio-automation"
-version = "0.1.0"
-description = "MQ Radio Automation M1 — Living Log scheduler + MockEngine On-Air prototype"
+version = "0.2.0"
+description = "MQ Radio Automation M2 — Living Log + AI announcer / VT scripts + On-Air desk"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = []

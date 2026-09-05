@@ -11,6 +11,35 @@ from mq_radio.db.connection import get_connection
 from mq_radio.scheduler.rules import HistoryWindow, Ruleset, score_track
 
 
+
+def _clear_log_event_dependents(conn, daily_log_id: int, only_non_manual: bool = False) -> None:
+    """Remove as_played / vt_scripts rows that would block log_event deletes."""
+    if only_non_manual:
+        ids = [
+            int(r["id"])
+            for r in conn.execute(
+                "SELECT id FROM log_events WHERE daily_log_id=? AND manual_flag != 'MANUAL'",
+                (daily_log_id,),
+            )
+        ]
+    else:
+        ids = [
+            int(r["id"])
+            for r in conn.execute(
+                "SELECT id FROM log_events WHERE daily_log_id=?",
+                (daily_log_id,),
+            )
+        ]
+    if not ids:
+        return
+    placeholders = ",".join("?" * len(ids))
+    conn.execute(f"DELETE FROM as_played WHERE log_event_id IN ({placeholders})", ids)
+    # vt_scripts has ON DELETE CASCADE, but explicit clear is safer across SQLite builds
+    try:
+        conn.execute(f"DELETE FROM vt_scripts WHERE log_event_id IN ({placeholders})", ids)
+    except Exception:
+        pass
+
 MUSIC_EVENT_TYPES = {"MUSIC"}
 ASSET_EVENT_TYPES = {"SWEEPER", "ID", "PROMO", "VOICE_TRACK", "BED", "FILLER"}
 
@@ -125,6 +154,7 @@ def generate_log(
             (existing["id"],),
         ).fetchall()
         manual_rows = {int(r["position"]): dict(r) for r in manuals}
+        _clear_log_event_dependents(conn, existing["id"], only_non_manual=True)
         conn.execute("DELETE FROM log_events WHERE daily_log_id = ? AND manual_flag != 'MANUAL'",
                      (existing["id"],))
         daily_log_id = existing["id"]
@@ -134,6 +164,7 @@ def generate_log(
             (rules_id, daily_log_id),
         )
     elif existing and force:
+        _clear_log_event_dependents(conn, existing["id"], only_non_manual=False)
         conn.execute("DELETE FROM log_events WHERE daily_log_id = ?", (existing["id"],))
         daily_log_id = existing["id"]
         conn.execute(
@@ -231,6 +262,11 @@ def generate_log(
                 # structural markers — no track required
                 duration_ms = 0 if et == "ETM" else (30_000 if et == "BREAK" else 0)
                 title = slot.get("label") or et
+            elif et == "VOICE_TRACK":
+                # VT placeholder — filled later by generate-ai-breaks / VT studio
+                duration_ms = 8_000
+                title = slot.get("label") or "VOICE_TRACK"
+                artist = "MQ Digital"
             else:
                 candidates = _tracks_for_category(conn, cat, et)
                 track, score = _pick_best(candidates, when, history, rules, cat, used_ids)

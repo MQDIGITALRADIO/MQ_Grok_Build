@@ -15,6 +15,8 @@ from mq_radio.library.scanner import scan_directory
 from mq_radio.living_log.service import list_events
 from mq_radio.music_director.seed import seed_demo
 from mq_radio.scheduler.generator import generate_log
+from mq_radio.voice_tracker.inserter import generate_ai_breaks
+from mq_radio.voice_tracker.service import approve_ai_breaks, list_vt
 
 
 def cmd_init_db(args: argparse.Namespace) -> int:
@@ -96,8 +98,57 @@ def cmd_serve(args: argparse.Namespace) -> int:
     return 0
 
 
+
+def cmd_generate_ai_breaks(args: argparse.Namespace) -> int:
+    init_db(Path(args.db) if args.db else None)
+    log_date = args.date or date.today().isoformat()
+    result = generate_ai_breaks(
+        log_date,
+        db_path=Path(args.db) if args.db else None,
+        station_name=args.station,
+        style=args.style,
+        insert_gaps=not args.no_insert,
+        max_per_hour=args.max_per_hour,
+        stride=args.stride,
+    )
+    print(json.dumps(result, indent=2))
+    return 0 if result.get("ok", True) and "error" not in result else 1
+
+
+def cmd_approve_ai_breaks(args: argparse.Namespace) -> int:
+    init_db(Path(args.db) if args.db else None)
+    log_date = args.date or date.today().isoformat()
+    result = approve_ai_breaks(log_date, db_path=Path(args.db) if args.db else None)
+    print(json.dumps(result, indent=2))
+    return 0 if result.get("ok") else 1
+
+
+def cmd_list_vt(args: argparse.Namespace) -> int:
+    init_db(Path(args.db) if args.db else None)
+    log_date = args.date  # optional
+    rows = list_vt(
+        log_date,
+        db_path=Path(args.db) if args.db else None,
+        status=args.status,
+    )
+    if not rows:
+        print("No voice-track scripts" + (f" for {log_date}" if log_date else ""))
+        return 0
+    print(f"{'ID':>4}  {'DATE':<10}  {'POS':>4}  {'STATUS':<9}  {'VARIATION':<14}  SCRIPT")
+    print("-" * 100)
+    for r in rows:
+        script = (r.get("script_text") or "").replace("\n", " ")
+        if len(script) > 55:
+            script = script[:52] + "..."
+        print(
+            f"{r['id']:4d}  {r.get('log_date',''):<10}  {r.get('position',0):4d}  "
+            f"{r.get('status',''):<9}  {r.get('variation',''):<14}  {script}"
+        )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="mq-radio", description="MQ Radio Automation M1 CLI")
+    p = argparse.ArgumentParser(prog="mq-radio", description="MQ Radio Automation CLI (M2)")
     p.add_argument("--db", default=None, help="SQLite DB path (default: data/mq_radio.db)")
     sub = p.add_subparsers(dest="command", required=True)
 
@@ -126,6 +177,25 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--date", default=None)
     s.add_argument("--action", choices=["step", "play", "stop", "skip"], default="step")
     s.set_defaults(func=cmd_engine_step)
+
+
+    s = sub.add_parser("generate-ai-breaks", help="Generate AI VT scripts into Living Log gaps/placeholders")
+    s.add_argument("--date", default=None, help="YYYY-MM-DD (default: today)")
+    s.add_argument("--station", default="MQ Digital")
+    s.add_argument("--style", default="warm")
+    s.add_argument("--no-insert", action="store_true", help="Only fill existing VT placeholders")
+    s.add_argument("--max-per-hour", type=int, default=2)
+    s.add_argument("--stride", type=int, default=2, help="Insert on every Nth music→music gap")
+    s.set_defaults(func=cmd_generate_ai_breaks)
+
+    s = sub.add_parser("approve-ai-breaks", help="Approve DRAFT AI voice-track scripts")
+    s.add_argument("--date", default=None, help="YYYY-MM-DD (default: today)")
+    s.set_defaults(func=cmd_approve_ai_breaks)
+
+    s = sub.add_parser("list-vt", help="List voice-track scripts")
+    s.add_argument("--date", default=None)
+    s.add_argument("--status", default=None, help="DRAFT|APPROVED")
+    s.set_defaults(func=cmd_list_vt)
 
     s = sub.add_parser("serve", help="Start On-Air web prototype")
     s.add_argument("--host", default="127.0.0.1")

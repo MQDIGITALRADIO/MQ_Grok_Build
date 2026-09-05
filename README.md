@@ -1,4 +1,4 @@
-# MQ Radio Automation — Milestone 1
+# MQ Radio Automation — Milestone 2 (M1 + AI Announcer)
 
 Modular broadcast automation for **MQ DIGITAL RADIO**.  
 One app UX; playout engines underneath so **UI crash ≠ station dead air**.
@@ -19,7 +19,7 @@ flowchart TB
     MD[music_director]
     SCH[scheduler]
     LL[living_log]
-    VT[voice_tracker stub]
+    VT[voice_tracker / AI announcer]
     PROD[production stub]
     SM[stream_manager stub]
     REM[remote stub]
@@ -89,6 +89,50 @@ python -m mq_radio serve --host 127.0.0.1 --port 8080
 | `show-log [--date] [--limit N]` | Print log |
 | `engine-step [--action step\|play\|stop\|skip]` | MockEngine advance |
 | `serve [--port 8080]` | On-Air prototype |
+| `generate-ai-breaks [--date] [--no-insert]` | Fill VT placeholders + insert AI scripts (DRAFT) |
+| `approve-ai-breaks [--date]` | Promote DRAFT VT scripts to APPROVED / COMMITTED |
+| `list-vt [--date] [--status]` | List voice-track scripts |
+
+
+
+## 24/7 AUTO + jump-in workflow
+
+Matt’s locked vision: automated 24/7 playout he can jump into whenever inspired/free.
+
+| Mode | Who talks | Who picks music |
+|------|-----------|-----------------|
+| **AUTO** (default) | AI overnight announcer scripts on the *committed* Living Log | Deterministic scheduler only |
+| **ASSIST / LIVE** | Matt (Voice Tracking / live mic) | Still the committed log — AI never picks next song live |
+| Hand-back | Flip mode → AUTO; AI / imaging continue from the log | Same Living Log |
+
+### AI announcer vs Voice Tracking
+
+- **AI announcer (M2):** template/rules scripts (optional LLM hook later) → `VOICE_TRACK` rows + `vt_scripts` table. Status **DRAFT** until approved. No real TTS audio yet — script + log placement is enough.
+- **Voice Tracking (jump-in):** operator opens VT studio on a log transition, can generate/edit a script, Record is stubbed for now. When Matt goes LIVE/ASSIST he talks; when done, hand back to AUTO.
+
+### Try it (CLI)
+
+```bash
+python -m mq_radio init-db
+python -m mq_radio seed-demo
+python -m mq_radio generate-log --date 2026-09-05
+python -m mq_radio generate-ai-breaks --date 2026-09-05
+python -m mq_radio list-vt --date 2026-09-05 --status DRAFT
+python -m mq_radio approve-ai-breaks --date 2026-09-05
+python -m mq_radio show-log --date 2026-09-05 --limit 40
+```
+
+### Try it (On-Air desk)
+
+```bash
+python -m mq_radio serve --host 127.0.0.1 --port 8080
+```
+
+1. Open the Living Log date.
+2. Click **Generate AI breaks** → VT rows appear / fill with script previews (DRAFT).
+3. Click **Approve drafts** when happy.
+4. Click any log row (especially VT) → **Voice Track Studio** stub: **AI Generate Script** works; **Record** stays disabled for M2.
+5. Mode bank AUTO / ASSIST / LIVE is the jump-in control surface (ASSIST also shows VOCALS IN talk-up).
 
 ## M1 vs roadmap
 
@@ -98,7 +142,7 @@ python -m mq_radio serve --host 127.0.0.1 --port 8080
 | Scheduler | Clock expansion, separation scoring, MANUAL preserve | Multi-clock grids, fills, hard ETMs |
 | Engine | MockEngine + Liquidsoap stub | Real Liquidsoap / stream chain |
 | UI | On-Air Living Log prototype | Full HOME + STUDIO surfaces |
-| Voice / production / remote | Package stubs | Voice tracker, production cart, remotes |
+| Voice / production / remote | AI VT scripts + studio stub (no TTS yet) | Real VT audio, production cart, remotes |
 | Stream manager | Stub | Encoders, mounts, failover |
 
 ## Package layout
@@ -109,7 +153,8 @@ mq_radio/
   music_director/   # seed, rules helpers
   scheduler/        # clock expansion + scored log generate
   living_log/       # query Living Log
-  voice_tracker/    # stub
+  voice_tracker/    # AI announcer scripts + VT studio hooks (M2)
+  ai_announcer/     # alias → voice_tracker
   production/       # stub
   stream_manager/   # stub
   remote/           # stub
