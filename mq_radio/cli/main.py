@@ -12,7 +12,7 @@ from mq_radio.config import DB_PATH
 from mq_radio.db.connection import init_db
 from mq_radio.engine.mock_engine import MockEngine
 from mq_radio.library.scanner import scan_directory
-from mq_radio.living_log.service import list_events
+from mq_radio.living_log.service import list_events, load_sample_hour
 from mq_radio.music_director.seed import seed_demo
 from mq_radio.scheduler.generator import generate_log
 from mq_radio.voice_tracker.inserter import generate_ai_breaks
@@ -89,6 +89,22 @@ def cmd_engine_step(args: argparse.Namespace) -> int:
     print(f"[{st.message}] running={st.running} pos={st.position} "
           f"{st.current_artist or ''} — {st.current_title or ''}")
     return 0
+
+
+
+def cmd_load_sample_hour(args: argparse.Namespace) -> int:
+    init_db(Path(args.db) if args.db else None)
+    log_date = args.date or date.today().isoformat()
+    if str(log_date).lower() in ("today",):
+        log_date = date.today().isoformat()
+    result = load_sample_hour(
+        log_date,
+        db_path=Path(args.db) if args.db else None,
+        hour=args.hour,
+        clear_day=not args.no_clear,
+    )
+    print(json.dumps(result, indent=2))
+    return 0 if result.get("ok") else 1
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
@@ -196,6 +212,13 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--date", default=None)
     s.add_argument("--status", default=None, help="DRAFT|APPROVED")
     s.set_defaults(func=cmd_list_vt)
+
+
+    s = sub.add_parser("load-sample-hour", help="Load editable 1-hour sample Living Log block")
+    s.add_argument("--date", default="today", help="YYYY-MM-DD or today")
+    s.add_argument("--hour", type=int, default=12, help="Hour start 0-23 (default 12)")
+    s.add_argument("--no-clear", action="store_true", help="Do not clear existing day events")
+    s.set_defaults(func=cmd_load_sample_hour)
 
     s = sub.add_parser("serve", help="Start On-Air web prototype")
     s.add_argument("--host", default="127.0.0.1")

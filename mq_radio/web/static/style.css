@@ -997,3 +997,170 @@ input { border-radius: 0; }
   margin-top: 4px;
   margin-bottom: 12px;
 }
+
+
+/* —— Living Log selection + programming —— */
+.log-row.selected {
+  outline: 2px solid #ffb000 !important;
+  background: rgba(255, 176, 0, 0.18) !important;
+}
+.hk-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+.hotkey-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 220px;
+  max-width: 280px;
+}
+.hotkey-panel.expanded {
+  max-width: 420px;
+  min-width: 360px;
+}
+.hotkey-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  padding: 6px;
+  overflow-y: auto;
+  max-height: calc(100vh - 420px);
+}
+.hotkey-panel.expanded .hotkey-grid {
+  grid-template-columns: repeat(4, 1fr);
+  max-height: calc(100vh - 360px);
+}
+.hotkey.empty {
+  opacity: 0.55;
+  font-style: italic;
+}
+.hotkey-grid.edit-mode .hotkey {
+  cursor: grab;
+  outline: 1px dashed #606060;
+}
+.btn-chrome.active, #btn-hk-edit.active {
+  background: #ddaa00;
+}
+
+/* Library picker */
+.lib-dialog { width: min(560px, 96vw); }
+.lib-search-row {
+  display: grid;
+  grid-template-columns: 1fr 140px;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.lib-search-row input, .lib-search-row select {
+  font-family: var(--ui);
+  font-size: 11px;
+  padding: 4px 6px;
+  border: 2px inset var(--border-mid);
+}
+.lib-list {
+  height: 280px;
+  overflow-y: auto;
+  background: #fff;
+  border: 2px inset var(--border-mid);
+}
+.lib-item {
+  display: grid;
+  grid-template-columns: 70px 1fr 48px;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  padding: 4px 6px;
+  border: none;
+  border-bottom: 1px solid #ddd;
+  background: #fff;
+  cursor: pointer;
+  font-family: var(--ui);
+  font-size: 11px;
+}
+.lib-item:hover, .lib-item.selected { background: #000080; color: #fff; }
+.lib-cat { font-weight: 700; color: #604000; }
+.lib-item.selected .lib-cat { color: #ffb000; }
+.lib-empty { padding: 16px; color: #666; }
+
+/* VT record */
+.vt-record-panel {
+  margin: 8px 0;
+  padding: 8px;
+  background: var(--panel-inset);
+  border: 1px solid var(--border-mid);
+}
+.vt-record-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.vt-wave {
+  width: 100%;
+  height: 64px;
+  background: #0a120a;
+  border: 1px solid #335533;
+  display: block;
+}
+.vt-trim-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 6px;
+  font-size: 11px;
+}
+.vt-trim-row input { width: 80px; }
+.vt-playback { max-width: 180px; height: 28px; }
+.btn-dialog.danger { background: #a00000; color: #fff; }
+
+/* Segue Editor */
+.segue-dialog { width: min(720px, 96vw); }
+.segue-lanes {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.segue-lane {
+  background: var(--panel-inset);
+  border: 1px solid var(--border-mid);
+  padding: 8px;
+}
+.segue-lane-h {
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  font-size: 10px;
+  margin-bottom: 4px;
+}
+.segue-lane.out .segue-lane-h { color: #a02020; }
+.segue-lane.vt .segue-lane-h { color: #006060; }
+.segue-lane.in .segue-lane-h { color: #2040a0; }
+.segue-cart {
+  font-family: var(--mono);
+  font-size: 11px;
+  min-height: 2.4em;
+  margin-bottom: 6px;
+}
+.segue-lane label {
+  display: block;
+  font-size: 10px;
+  margin-bottom: 4px;
+}
+.segue-lane input, .segue-controls input {
+  width: 90px;
+  font-size: 11px;
+  margin-left: 4px;
+}
+.segue-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.segue-msg { font-size: 10px; color: var(--muted); }
+
+.hk-edit-dialog { width: min(420px, 94vw); }
+.settings-static { font-family: var(--mono); }

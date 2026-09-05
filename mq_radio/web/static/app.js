@@ -43,6 +43,11 @@ const DEFAULT_VOCLONER = {
 let playoutMode = "AUTO";
 let lastStatus = null;
 let lastEvents = null;
+let selectedEventId = null;
+let selectedPosition = null;
+window.mqSelectedEventId = null;
+window.mqSelectedPosition = null;
+window.mqLastEvents = null;
 
 /** Local timer extrapolation state synced from /api/status timing */
 let timingSnap = {
@@ -431,10 +436,12 @@ async function refresh() {
   const log = await fetch(`/api/log?date=${date}`).then((r) => r.json());
   const events = log.events || [];
   lastEvents = events;
+  window.mqLastEvents = events;
   document.getElementById("log-count").textContent = `${events.length} events`;
 
   updateETM(events, up);
-  buildHotkeys(up);
+  if (typeof window.renderHotkeyBank === "function") window.renderHotkeyBank(up);
+  else buildHotkeys(up);
 
   const body = document.getElementById("log-body");
   body.innerHTML = "";
@@ -471,7 +478,20 @@ async function refresh() {
       <td class="col-status">${e.status || ""}</td>`;
     tr.dataset.eventId = e.id;
     tr.dataset.position = e.position;
-    tr.addEventListener("click", () => openVtStudio(e, events));
+    if (selectedEventId != null && String(e.id) === String(selectedEventId)) {
+      tr.classList.add("selected");
+    }
+    tr.addEventListener("click", (ev) => {
+      selectedEventId = e.id;
+      selectedPosition = e.position;
+      window.mqSelectedEventId = e.id;
+      window.mqSelectedPosition = e.position;
+      body.querySelectorAll("tr.selected").forEach((r) => r.classList.remove("selected"));
+      tr.classList.add("selected");
+      const msg = document.getElementById("engine-msg");
+      if (msg) msg.textContent = `Selected #${e.position} ${e.event_type || ""} ${e.title || ""}`;
+    });
+    tr.addEventListener("dblclick", () => openVtStudio(e, events));
     body.appendChild(tr);
   });
 
@@ -728,10 +748,13 @@ document.addEventListener("keydown", (ev) => {
       closeVtStudio();
       return;
     }
-    const bd = document.getElementById("settings-backdrop");
-    if (bd.classList.contains("open")) {
-      closeSettings();
-      return;
+    for (const id of ["lib-backdrop", "segue-backdrop", "hk-edit-backdrop", "settings-backdrop"]) {
+      const el = document.getElementById(id);
+      if (el && el.classList.contains("open")) {
+        el.classList.remove("open");
+        el.setAttribute("aria-hidden", "true");
+        return;
+      }
     }
     postAction("/api/stop");
     return;
@@ -741,17 +764,14 @@ document.addEventListener("keydown", (ev) => {
     postAction("/api/play");
     return;
   }
-  const m = /^F([1-8])$/.exec(ev.key);
-  if (m) {
-    ev.preventDefault();
-    const idx = Number(m[1]) - 1;
-    const btn = document.querySelectorAll(".hotkey")[idx];
-    if (btn) btn.click();
-  }
+  // F-keys handled by desk_programming.js (full hotkey bank)
 });
 
 initSettings();
 initVtStudio();
+window.mqRefresh = refresh;
+window.mqOpenVtStudio = openVtStudio;
+window.mqPostAction = postAction;
 setInterval(tickClock, 250);
 tickClock();
 refresh();
@@ -815,6 +835,8 @@ function openVtStudio(event, events) {
     next: nextForScript,
     daypart,
   };
+  window.mqVtEventId = event && event.id;
+  window.vtContext = vtContext;
 
   const fromLabel = prevForScript
     ? `${prevForScript.artist || ""} — ${prevForScript.title || ""}`

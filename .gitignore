@@ -17,3 +17,6 @@ desktop/resources/MQRadioEngine/
 build/
 dist/
 data/audio_outputs.json
+data/hotkeys.json
+data/vt/
+data/vocloner.json

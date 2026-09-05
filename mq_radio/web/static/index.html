@@ -140,6 +140,11 @@
           <span class="panel-title">LIVING LOG</span>
           <span class="panel-hint" id="log-count">0 events</span>
           <div class="log-actions">
+            <button type="button" id="btn-sample-hour" class="btn-chrome btn-ai" title="Load editable sample hour">Load sample hour</button>
+            <button type="button" id="btn-log-delete" class="btn-chrome btn-ai" title="Delete selected row">Delete</button>
+            <button type="button" id="btn-log-insert" class="btn-chrome btn-ai" title="Insert after selected">Insert…</button>
+            <button type="button" id="btn-log-replace" class="btn-chrome btn-ai" title="Replace selected cart">Replace…</button>
+            <button type="button" id="btn-segue" class="btn-chrome btn-ai" title="Segue Editor">Segue…</button>
             <button type="button" id="btn-gen-ai" class="btn-chrome btn-ai" title="Generate AI breaks">Generate AI breaks</button>
             <button type="button" id="btn-approve-ai" class="btn-chrome btn-ai" title="Approve draft VTs">Approve drafts</button>
             <button type="button" id="btn-render-vocloner" class="btn-chrome btn-ai" title="Copy selected/approved VT script and open Vocloner">Render in Vocloner</button>
@@ -166,15 +171,20 @@
         </div>
       </section>
 
-      <aside class="hotkey-panel">
+      <aside class="hotkey-panel" id="hotkey-panel">
         <div class="panel-chrome">
           <span class="panel-title">HOTKEYS</span>
+          <div class="hk-toolbar">
+            <button type="button" id="btn-hk-page-prev" class="btn-chrome btn-ai" title="Previous page">◀</button>
+            <span id="hk-page-label" class="panel-hint">Page 1/2</span>
+            <button type="button" id="btn-hk-page-next" class="btn-chrome btn-ai" title="Next page">▶</button>
+            <button type="button" id="btn-hk-edit" class="btn-chrome btn-ai" title="Edit hotkey bank">Edit</button>
+            <button type="button" id="btn-hk-expand" class="btn-chrome btn-ai" title="Expand hotkey rail">▣</button>
+          </div>
         </div>
-        <div class="hotkey-grid" id="hotkey-grid">
-          <!-- filled by app.js -->
-        </div>
+        <div class="hotkey-grid" id="hotkey-grid"></div>
         <div class="hotkey-footer">
-          F1–F8 fire cart · Space = PLAY · Esc = STOP
+          F1–F12 fire page 1 · click any slot · Edit to add/reorder
         </div>
       </aside>
     </div>
@@ -217,10 +227,25 @@
           <strong>Vocloner (default)</strong>
           <span class="vt-model-hint" id="vt-vocloner-model"></span>
         </div>
+
+        <div class="vt-record-panel" id="vt-record-panel">
+          <div class="vt-record-row">
+            <span class="vt-label">MIC RECORD</span>
+            <span id="vt-record-status">Idle</span>
+            <button type="button" class="btn-dialog" id="btn-vt-stop-rec" hidden>Stop</button>
+          </div>
+          <canvas id="vt-wave" width="480" height="64" class="vt-wave"></canvas>
+          <div class="vt-trim-row">
+            <label>IN <input type="number" id="vt-trim-in" value="0" min="0" step="10" /> ms</label>
+            <label>OUT <input type="number" id="vt-trim-out" value="" min="0" step="10" /> ms</label>
+            <button type="button" class="btn-dialog" id="btn-vt-save-rec">Save recording</button>
+            <audio id="vt-playback" controls class="vt-playback"></audio>
+          </div>
+        </div>
         <div class="vt-actions">
           <button type="button" class="btn-dialog" id="btn-vt-ai">AI Generate Script</button>
           <button type="button" class="btn-dialog" id="btn-vt-vocloner" title="Copy script + open Vocloner">Render in Vocloner</button>
-          <button type="button" class="btn-dialog" id="btn-vt-record" disabled title="M2 stub — recording comes later">● Record (disabled)</button>
+          <button type="button" class="btn-dialog danger" id="btn-vt-record" title="Record mic into this VT">● Record</button>
           <button type="button" class="btn-dialog primary" id="btn-vt-done">Done</button>
         </div>
         <p class="vt-hint" id="vt-vocloner-tip">Approve → Render in Vocloner (script copied) → paste/generate WAV → drop into library/VT slot. No public API yet.</p>
@@ -286,6 +311,109 @@
       </div>
     </div>
   </div>
+
+  <!-- Library picker (Insert / Replace) -->
+  <div class="settings-backdrop" id="lib-backdrop" aria-hidden="true">
+    <div class="settings-dialog lib-dialog" role="dialog" aria-labelledby="lib-title">
+      <div class="settings-titlebar">
+        <span id="lib-title">Library Picker</span>
+        <button type="button" class="settings-close" id="btn-lib-close" title="Close">×</button>
+      </div>
+      <div class="settings-body">
+        <div class="lib-search-row">
+          <input type="search" id="lib-search" placeholder="Search artist / title / category…" autocomplete="off" />
+          <select id="lib-event-type" title="Event type for freeform insert">
+            <option value="">(from track)</option>
+            <option value="MUSIC">MUSIC</option>
+            <option value="ID">ID</option>
+            <option value="SWEEPER">SWEEPER</option>
+            <option value="PROMO">PROMO</option>
+            <option value="VOICE_TRACK">VT</option>
+          </select>
+        </div>
+        <div class="lib-list" id="lib-list"></div>
+        <div class="settings-actions">
+          <button type="button" class="btn-dialog" id="btn-lib-cancel">Cancel</button>
+          <button type="button" class="btn-dialog primary" id="btn-lib-ok">OK</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Segue Editor -->
+  <div class="settings-backdrop" id="segue-backdrop" aria-hidden="true">
+    <div class="settings-dialog segue-dialog" role="dialog" aria-labelledby="segue-title">
+      <div class="settings-titlebar">
+        <span id="segue-title">MQ Radio — Segue Editor</span>
+        <button type="button" class="settings-close" id="btn-segue-close" title="Close">×</button>
+      </div>
+      <div class="settings-body">
+        <div class="segue-lanes">
+          <div class="segue-lane out">
+            <div class="segue-lane-h">OUTGOING</div>
+            <div id="segue-out-label" class="segue-cart">—</div>
+            <label>Outro mark (ms) <input type="number" id="segue-outro-mark" value="0" step="100" /></label>
+          </div>
+          <div class="segue-lane vt">
+            <div class="segue-lane-h">VT (optional)</div>
+            <div id="segue-vt-label" class="segue-cart">—</div>
+            <label>VT in <input type="number" id="segue-vt-in" value="0" step="50" /></label>
+            <label>VT out <input type="number" id="segue-vt-out" value="" step="50" /></label>
+          </div>
+          <div class="segue-lane in">
+            <div class="segue-lane-h">INCOMING</div>
+            <div id="segue-in-label" class="segue-cart">—</div>
+            <label>Intro mark (ms) <input type="number" id="segue-intro-mark" value="0" step="100" /></label>
+          </div>
+        </div>
+        <div class="segue-controls">
+          <label>Duck level (dB) <input type="number" id="segue-duck" value="-11" step="0.5" /></label>
+          <label>Crossfade (ms) <input type="number" id="segue-xfade" value="0" step="50" /></label>
+          <button type="button" class="btn-dialog" id="btn-segue-audition">▶ Audition</button>
+          <span id="segue-audition-msg" class="segue-msg"></span>
+        </div>
+        <div class="settings-actions">
+          <button type="button" class="btn-dialog" id="btn-segue-cancel">Cancel</button>
+          <button type="button" class="btn-dialog primary" id="btn-segue-save">Save segue</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hotkey edit dialog -->
+  <div class="settings-backdrop" id="hk-edit-backdrop" aria-hidden="true">
+    <div class="settings-dialog hk-edit-dialog" role="dialog" aria-labelledby="hk-edit-title">
+      <div class="settings-titlebar">
+        <span id="hk-edit-title">Edit Hotkey Slot</span>
+        <button type="button" class="settings-close" id="btn-hk-edit-close" title="Close">×</button>
+      </div>
+      <div class="settings-body">
+        <div class="audio-route-row"><label>Slot</label><div id="hk-edit-slot" class="settings-static">0</div></div>
+        <div class="audio-route-row"><label for="hk-edit-label">Label</label><input type="text" id="hk-edit-label" /></div>
+        <div class="audio-route-row"><label for="hk-edit-type">Type</label>
+          <select id="hk-edit-type">
+            <option value="">(empty)</option>
+            <option value="ID">ID</option>
+            <option value="SWEEPER">SWEEPER</option>
+            <option value="PROMO">PROMO</option>
+            <option value="MUSIC">MUSIC</option>
+            <option value="VT">VT</option>
+            <option value="MACRO">MACRO</option>
+          </select>
+        </div>
+        <div class="audio-route-row"><label for="hk-edit-target">Target / cart id</label><input type="text" id="hk-edit-target" placeholder="track id or freeform" /></div>
+        <div class="audio-route-row"><label for="hk-edit-macro">Macro</label><input type="text" id="hk-edit-macro" placeholder="optional macro name" /></div>
+        <div class="settings-actions">
+          <button type="button" class="btn-dialog" id="btn-hk-clear">Clear slot</button>
+          <button type="button" class="btn-dialog" id="btn-hk-up">▲</button>
+          <button type="button" class="btn-dialog" id="btn-hk-down">▼</button>
+          <button type="button" class="btn-dialog" id="btn-hk-edit-cancel">Cancel</button>
+          <button type="button" class="btn-dialog primary" id="btn-hk-edit-save">OK</button>
+        </div>
+      </div>
+    </div>
+  </div>
   <script src="/static/app.js"></script>
+  <script src="/static/desk_programming.js"></script>
 </body>
 </html>

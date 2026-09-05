@@ -1,4 +1,4 @@
-# MQ Radio Automation — Milestone 2 (M1 + AI Announcer)
+# MQ Radio Automation — Milestone 2+ (Living Log programming)
 
 Modular broadcast automation for **MQ DIGITAL RADIO**.  
 One app UX; playout engines underneath so **UI crash ≠ station dead air**.
@@ -73,6 +73,9 @@ python -m mq_radio show-log --limit 40
 python -m mq_radio engine-step
 python -m mq_radio engine-step --action play
 
+# Editable sample hour
+python -m mq_radio load-sample-hour --date today
+
 # On-Air web prototype
 python -m mq_radio serve --host 127.0.0.1 --port 8080
 # open http://127.0.0.1:8080/
@@ -92,6 +95,7 @@ python -m mq_radio serve --host 127.0.0.1 --port 8080
 | `generate-ai-breaks [--date] [--no-insert]` | Fill VT placeholders + insert AI scripts (DRAFT) |
 | `approve-ai-breaks [--date]` | Promote DRAFT VT scripts to APPROVED / COMMITTED |
 | `list-vt [--date] [--status]` | List voice-track scripts |
+| `load-sample-hour [--date today] [--hour 12]` | Clear day fluff; load editable 1-hour MANUAL sample |
 
 
 
@@ -108,7 +112,7 @@ Matt’s locked vision: automated 24/7 playout he can jump into whenever inspire
 ### AI announcer vs Voice Tracking
 
 - **AI announcer (M2):** template/rules scripts (optional LLM hook later) → `VOICE_TRACK` rows + `vt_scripts` table. Status **DRAFT** until approved. No real TTS audio yet — script + log placement is enough.
-- **Voice Tracking (jump-in):** operator opens VT studio on a log transition, can generate/edit a script, Record is stubbed for now. When Matt goes LIVE/ASSIST he talks; when done, hand back to AUTO.
+- **Voice Tracking (jump-in):** operator opens VT studio on a log transition, can generate/edit a script, **Record** via browser mic (MediaRecorder) with trim in/out; saves under data/vt/ and attaches to the VT event. Vocloner remains. When Matt goes LIVE/ASSIST he talks; when done, hand back to AUTO.
 - **Voice renderer (default: Vocloner):** Matt’s Vocloner Basic Yearly (~1.2M chars/year). No public API — MQ copies the approved script and opens Vocloner for paste/render.
 
 ### Vocloner pipeline (default voice render)

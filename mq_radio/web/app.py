@@ -11,20 +11,32 @@ from typing import Optional
 
 from mq_radio.config import DATA_DIR, DB_PATH
 from mq_radio.engine.mock_engine import MockEngine
-from mq_radio.living_log.service import list_events, now_and_upcoming
+from mq_radio.living_log.service import (
+    delete_event,
+    insert_event,
+    list_events,
+    list_library,
+    load_sample_hour,
+    now_and_upcoming,
+    replace_event,
+)
+from mq_radio.segue.service import get_segue, save_segue, segue_context_for_event
 from mq_radio.voice_tracker.inserter import generate_ai_breaks
+from mq_radio.voice_tracker.recording import save_vt_recording
 from mq_radio.voice_tracker.script_generator import daypart_for_hour
 from mq_radio.voice_tracker.service import (
     approve_ai_breaks,
     list_vt,
     script_for_transition,
 )
+from mq_radio.web.hotkeys_store import load_hotkeys, save_hotkeys
 from mq_radio.web.settings_store import (
     load_audio_outputs,
     load_vocloner,
     save_audio_outputs,
     save_vocloner,
 )
+
 
 def _static_dir() -> Path:
     here = Path(__file__).resolve().parent / "static"
@@ -52,10 +64,25 @@ def _json_response(handler: BaseHTTPRequestHandler, data, status: int = 200) -> 
     handler.wfile.write(body)
 
 
+def _read_json(handler: BaseHTTPRequestHandler, body: bytes) -> dict:
+    try:
+        payload = json.loads(body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
 def make_handler(db_path: Path):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, fmt, *args):
             print(f"[on-air] {self.address_string()} {fmt % args}")
+
+        def do_OPTIONS(self):
+            self.send_response(204)
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.end_headers()
 
         def do_GET(self):
             parsed = urllib.parse.urlparse(self.path)
@@ -80,6 +107,8 @@ def make_handler(db_path: Path):
                     return
                 data = fp.read_bytes()
                 ctype = "text/css" if fp.suffix == ".css" else "application/javascript"
+                if fp.suffix == ".js":
+                    ctype = "application/javascript"
                 self.send_response(200)
                 self.send_header("Content-Type", ctype)
                 self.send_header("Content-Length", str(len(data)))
@@ -101,6 +130,16 @@ def make_handler(db_path: Path):
                 _json_response(self, {"date": log_date, "events": events})
                 return
 
+            if path == "/api/library":
+                q = (qs.get("q") or [""])[0]
+                tracks = list_library(q=q, db_path=db_path)
+                _json_response(self, {"tracks": tracks, "q": q})
+                return
+
+            if path == "/api/hotkeys":
+                _json_response(self, load_hotkeys(DATA_DIR))
+                return
+
             if path == "/api/settings/audio":
                 _json_response(self, load_audio_outputs(DATA_DIR))
                 return
@@ -115,6 +154,27 @@ def make_handler(db_path: Path):
                 _json_response(self, {"date": log_date, "voice_tracks": rows})
                 return
 
+            if path == "/api/segue":
+                try:
+                    eid = int((qs.get("event_id") or ["0"])[0])
+                except ValueError:
+                    _json_response(self, {"ok": False, "error": "event_id required"}, status=400)
+                    return
+                _json_response(self, segue_context_for_event(eid, db_path=db_path))
+                return
+
+            if path == "/api/segue/get":
+                try:
+                    from_id = int((qs.get("from_event_id") or ["0"])[0])
+                except ValueError:
+                    _json_response(self, {"ok": False, "error": "from_event_id required"}, status=400)
+                    return
+                to_raw = (qs.get("to_event_id") or [None])[0]
+                to_id = int(to_raw) if to_raw else None
+                row = get_segue(from_id, to_id, db_path=db_path)
+                _json_response(self, {"ok": True, "segue": row})
+                return
+
             self.send_error(404)
 
         def do_POST(self):
@@ -124,37 +184,96 @@ def make_handler(db_path: Path):
             log_date = (qs.get("date") or [date.today().isoformat()])[0]
             length = int(self.headers.get("Content-Length") or 0)
             body = self.rfile.read(length) if length else b""
+            payload = _read_json(self, body)
 
             if path == "/api/settings/audio":
-                try:
-                    payload = json.loads(body.decode("utf-8") or "{}")
-                except json.JSONDecodeError:
-                    _json_response(self, {"ok": False, "error": "invalid json"}, status=400)
-                    return
                 outputs = payload.get("outputs") if isinstance(payload.get("outputs"), dict) else payload
                 if not isinstance(outputs, dict):
                     outputs = {}
-                result = save_audio_outputs(outputs, DATA_DIR)
-                _json_response(self, result)
+                _json_response(self, save_audio_outputs(outputs, DATA_DIR))
                 return
 
             if path == "/api/settings/vocloner":
-                try:
-                    payload = json.loads(body.decode("utf-8") or "{}")
-                except json.JSONDecodeError:
-                    _json_response(self, {"ok": False, "error": "invalid json"}, status=400)
+                _json_response(self, save_vocloner(payload, DATA_DIR))
+                return
+
+            if path == "/api/hotkeys":
+                items = payload.get("hotkeys") if isinstance(payload.get("hotkeys"), list) else payload
+                if not isinstance(items, list):
+                    _json_response(self, {"ok": False, "error": "hotkeys list required"}, status=400)
                     return
-                if not isinstance(payload, dict):
-                    payload = {}
-                result = save_vocloner(payload, DATA_DIR)
-                _json_response(self, result)
+                _json_response(self, save_hotkeys(items, DATA_DIR))
+                return
+
+            if path == "/api/log/delete":
+                eid = payload.get("event_id")
+                if eid is None:
+                    _json_response(self, {"ok": False, "error": "event_id required"}, status=400)
+                    return
+                result = delete_event(int(eid), db_path=db_path)
+                _json_response(self, result, status=200 if result.get("ok") else 400)
+                return
+
+            if path == "/api/log/insert":
+                d = payload.get("date") or log_date
+                after = payload.get("after_position")
+                if after is None:
+                    after = -1
+                event_dict = {
+                    "track_id": payload.get("track_id"),
+                    "event_type": payload.get("event_type"),
+                    "title": payload.get("title"),
+                    "artist": payload.get("artist"),
+                    "duration_ms": payload.get("duration_ms"),
+                }
+                result = insert_event(d, int(after), event_dict, db_path=db_path)
+                _json_response(self, result, status=200 if result.get("ok") else 400)
+                return
+
+            if path == "/api/log/replace":
+                eid = payload.get("event_id")
+                tid = payload.get("track_id")
+                if eid is None or tid is None:
+                    _json_response(self, {"ok": False, "error": "event_id and track_id required"}, status=400)
+                    return
+                result = replace_event(int(eid), int(tid), db_path=db_path)
+                _json_response(self, result, status=200 if result.get("ok") else 400)
+                return
+
+            if path == "/api/log/sample-hour":
+                d = payload.get("date") or log_date
+                if d in ("today", "Today"):
+                    d = date.today().isoformat()
+                hour = int(payload.get("hour") if payload.get("hour") is not None else 12)
+                clear = payload.get("clear_day", True)
+                result = load_sample_hour(d, db_path=db_path, hour=hour, clear_day=bool(clear))
+                _json_response(self, result, status=200 if result.get("ok") else 400)
+                return
+
+            if path == "/api/vt/record":
+                eid = payload.get("event_id") or payload.get("log_event_id")
+                if eid is None:
+                    _json_response(self, {"ok": False, "error": "event_id required"}, status=400)
+                    return
+                result = save_vt_recording(
+                    int(eid),
+                    audio_b64=payload.get("audio_b64") or payload.get("audio") or "",
+                    mime=payload.get("mime") or "audio/webm",
+                    trim_in_ms=int(payload.get("trim_in_ms") or 0),
+                    trim_out_ms=payload.get("trim_out_ms"),
+                    script_text=payload.get("script_text") or payload.get("script"),
+                    db_path=db_path,
+                    data_dir=DATA_DIR,
+                )
+                _json_response(self, result, status=200 if result.get("ok") else 400)
+                return
+
+            if path == "/api/segue/save":
+                result = save_segue(payload, db_path=db_path)
+                _json_response(self, result, status=200 if result.get("ok") else 400)
                 return
 
             if path == "/api/ai-breaks/generate":
-                try:
-                    payload = json.loads(body.decode("utf-8") or "{}")
-                except json.JSONDecodeError:
-                    payload = {}
                 result = generate_ai_breaks(
                     log_date,
                     db_path=db_path,
@@ -173,10 +292,6 @@ def make_handler(db_path: Path):
                 return
 
             if path == "/api/vt/generate-script":
-                try:
-                    payload = json.loads(body.decode("utf-8") or "{}")
-                except json.JSONDecodeError:
-                    payload = {}
                 hour = payload.get("hour")
                 if hour is None and payload.get("scheduled_at"):
                     try:
