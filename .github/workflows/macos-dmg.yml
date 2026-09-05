@@ -69,13 +69,22 @@ jobs:
           ZIP="dist/MQ-Radio-${VERSION}-arm64.zip"
           DMG="dist/MQ-Radio-${VERSION}-arm64.dmg"
 
-          # ZIP preserves macOS resource forks / app bundle layout
+          # Prefer ZIP for distribution: Finder unzip preserves signature better than some DMG paths
           ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
 
-          # DMG from the same signed app
+          # DMG from a freshly re-signed copy (avoids stale quarantine bits in staging)
           STAGE=$(mktemp -d)
           ditto "$APP" "$STAGE/MQ Radio.app"
-          ln -s /Applications "$STAGE/Applications"
+          codesign --force --deep --sign - "$STAGE/MQ Radio.app"
+          ln -sf /Applications "$STAGE/Applications"
+          cat > "$STAGE/README-INSTALL.txt" <<'NOTE'
+MQ Radio — unsigned CI build
+1. Prefer the .zip: double-click to unzip, then drag MQ Radio.app to Applications.
+2. If macOS says "damaged": 
+   xattr -cr "/Applications/MQ Radio.app"
+   codesign --force --deep --sign - "/Applications/MQ Radio.app"
+3. Right-click → Open the first time (Gatekeeper).
+NOTE
           hdiutil create -volname "MQ Radio" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
           rm -rf "$STAGE"
 
