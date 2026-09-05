@@ -1,0 +1,6 @@
+{
+  "voice_renderer": "vocloner",
+  "preferred_model": "",
+  "notes": "Matt Vocloner Basic Yearly (~1.2M chars/year). Default voice renderer — no public API; paste approved script in Vocloner, export WAV, drop into library/VT slot.",
+  "url": "https://vocloner.com/"
+}

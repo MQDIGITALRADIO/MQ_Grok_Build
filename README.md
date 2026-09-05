@@ -109,6 +109,19 @@ Matt’s locked vision: automated 24/7 playout he can jump into whenever inspire
 
 - **AI announcer (M2):** template/rules scripts (optional LLM hook later) → `VOICE_TRACK` rows + `vt_scripts` table. Status **DRAFT** until approved. No real TTS audio yet — script + log placement is enough.
 - **Voice Tracking (jump-in):** operator opens VT studio on a log transition, can generate/edit a script, Record is stubbed for now. When Matt goes LIVE/ASSIST he talks; when done, hand back to AUTO.
+- **Voice renderer (default: Vocloner):** Matt’s Vocloner Basic Yearly (~1.2M chars/year). No public API — MQ copies the approved script and opens Vocloner for paste/render.
+
+### Vocloner pipeline (default voice render)
+
+1. Generate AI breaks → review scripts on the Living Log / VT Studio.
+2. **Approve drafts** (CLI `approve-ai-breaks` or On-Air **Approve drafts**).
+3. **Render in Vocloner** (VT Studio or Living Log toolbar): copies the script to the clipboard and opens [vocloner.com](https://vocloner.com/). Prefer your saved model/voice name from Settings.
+4. In Vocloner: paste → generate → export **WAV**.
+5. Drop the WAV into the library / VT slot for that break.
+
+Settings ⚙ → **Voice renderer: Vocloner (default)** + notes / preferred model field. Persists to `localStorage` and `data/vocloner.json` (`voice_renderer: vocloner`) via `/api/settings/vocloner`. Audio bus routing stays in `data/audio_outputs.json`.
+
+Future: browser automation / official API if Vocloner adds one — until then this clipboard + open URL path is intentional.
 
 ### Try it (CLI)
 
@@ -131,8 +144,8 @@ python -m mq_radio serve --host 127.0.0.1 --port 8080
 1. Open the Living Log date.
 2. Click **Generate AI breaks** → VT rows appear / fill with script previews (DRAFT).
 3. Click **Approve drafts** when happy.
-4. Click any log row (especially VT) → **Voice Track Studio** stub: **AI Generate Script** works; **Record** stays disabled for M2.
-5. Mode bank AUTO / ASSIST / LIVE is the jump-in control surface (ASSIST also shows VOCALS IN talk-up).
+4. Click any log row (especially VT) → **Voice Track Studio**: **AI Generate Script** works; **Render in Vocloner** copies the script and opens Vocloner; **Record** stays disabled for M2.
+5. Drop the Vocloner WAV into the library / VT slot; Mode bank AUTO / ASSIST / LIVE is the jump-in control surface (ASSIST also shows VOCALS IN talk-up).
 
 ## M1 vs roadmap
 
@@ -142,7 +155,7 @@ python -m mq_radio serve --host 127.0.0.1 --port 8080
 | Scheduler | Clock expansion, separation scoring, MANUAL preserve | Multi-clock grids, fills, hard ETMs |
 | Engine | MockEngine + Liquidsoap stub | Real Liquidsoap / stream chain |
 | UI | On-Air Living Log prototype | Full HOME + STUDIO surfaces |
-| Voice / production / remote | AI VT scripts + studio stub (no TTS yet) | Real VT audio, production cart, remotes |
+| Voice / production / remote | AI VT scripts + Vocloner render path (clipboard) | Vocloner automation/API if available, production cart, remotes |
 | Stream manager | Stub | Encoders, mounts, failover |
 
 ## Package layout
@@ -220,6 +233,8 @@ No proprietary logos, trademarks, or pixel-perfect clones. Avoid modern SaaS / S
 - UI readout examples: `FADE · 8.0s`, `INTRO 5.2s · FADE · 8.0s`
 
 **Audio outputs (Settings ⚙):** Multi-bus routing — Program/On-Air, Monitor/Cue, Headphones/Talent, Stream Encode (or Same as Program), Record Bus. Choices persist to `localStorage` and `data/audio_outputs.json` via `/api/settings/audio`. The web prototype lists **mock devices** (Built-in Output, USB Interface, Aggregate Device, BlackHole 2ch, None) for UX; **real CoreAudio device enumeration comes with the Mac engine**.
+
+**Voice renderer (Settings ⚙ / VT Studio):** Default **Vocloner** (`voice_renderer: vocloner` in `data/vocloner.json` + `localStorage`). Preferred model/voice notes field; **Render in Vocloner** copies script → opens https://vocloner.com/.
 
 ## Mac install (DMG)
 

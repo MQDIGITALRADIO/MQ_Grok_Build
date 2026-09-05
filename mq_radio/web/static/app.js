@@ -21,6 +21,8 @@ const MOCK_AUDIO_DEVICES = [
 
 const AUDIO_ROLES = ["program", "monitor", "headphones", "stream", "record"];
 const SETTINGS_LS_KEY = "mq_radio_audio_outputs_v1";
+const VOCLONER_LS_KEY = "mq_radio_vocloner_v1";
+const VOCLONER_URL = "https://vocloner.com/";
 
 const DEFAULT_AUDIO_ROUTES = {
   program: "builtin",
@@ -28,6 +30,14 @@ const DEFAULT_AUDIO_ROUTES = {
   headphones: "usb",
   stream: "same_as_program",
   record: "none",
+};
+
+const DEFAULT_VOCLONER = {
+  voice_renderer: "vocloner",
+  preferred_model: "",
+  notes:
+    "Matt Vocloner Basic Yearly (~1.2M chars/year). Default voice renderer — no public API; paste approved script in Vocloner, export WAV, drop into library/VT slot.",
+  url: VOCLONER_URL,
 };
 
 let playoutMode = "AUTO";
@@ -502,6 +512,94 @@ function setMode(mode) {
   tickTimers();
 }
 
+/* —— Vocloner voice renderer (default) —— */
+function loadVoclonerSettings() {
+  try {
+    const raw = localStorage.getItem(VOCLONER_LS_KEY);
+    if (raw) return { ...DEFAULT_VOCLONER, ...JSON.parse(raw), voice_renderer: "vocloner" };
+  } catch (_) {}
+  return { ...DEFAULT_VOCLONER };
+}
+
+function saveVoclonerSettings(cfg) {
+  const cleaned = {
+    voice_renderer: "vocloner",
+    preferred_model: (cfg.preferred_model || "").trim(),
+    notes: (cfg.notes || "").trim(),
+    url: (cfg.url || VOCLONER_URL).trim() || VOCLONER_URL,
+  };
+  localStorage.setItem(VOCLONER_LS_KEY, JSON.stringify(cleaned));
+  fetch("/api/settings/vocloner", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(cleaned),
+  }).catch(() => {});
+  return cleaned;
+}
+
+function populateVoclonerForm(cfg) {
+  const model = document.getElementById("vocloner-model");
+  const notes = document.getElementById("vocloner-notes");
+  if (model) model.value = cfg.preferred_model || "";
+  if (notes) notes.value = cfg.notes || "";
+  const hint = document.getElementById("vt-vocloner-model");
+  if (hint) {
+    hint.textContent = cfg.preferred_model
+      ? `· preferred: ${cfg.preferred_model}`
+      : "";
+  }
+}
+
+function readVoclonerForm() {
+  const model = document.getElementById("vocloner-model");
+  const notes = document.getElementById("vocloner-notes");
+  return {
+    voice_renderer: "vocloner",
+    preferred_model: model ? model.value : "",
+    notes: notes ? notes.value : "",
+    url: VOCLONER_URL,
+  };
+}
+
+async function copyTextToClipboard(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    await navigator.clipboard.writeText(text);
+    return true;
+  }
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.setAttribute("readonly", "");
+  ta.style.position = "fixed";
+  ta.style.left = "-9999px";
+  document.body.appendChild(ta);
+  ta.select();
+  let ok = false;
+  try {
+    ok = document.execCommand("copy");
+  } catch (_) {}
+  document.body.removeChild(ta);
+  return ok;
+}
+
+async function renderInVocloner(scriptText) {
+  const cfg = loadVoclonerSettings();
+  const script = (scriptText || "").trim();
+  if (!script) {
+    document.getElementById("engine-msg").textContent =
+      "No script to render — open a VT or generate/approve first";
+    return;
+  }
+  const copied = await copyTextToClipboard(script);
+  const url = cfg.url || VOCLONER_URL;
+  window.open(url, "_blank", "noopener,noreferrer");
+  const modelTip = cfg.preferred_model
+    ? ` Prefer model/voice: ${cfg.preferred_model}.`
+    : "";
+  document.getElementById("engine-msg").textContent = copied
+    ? `Script copied → Vocloner opened.${modelTip} Paste → generate WAV → drop into library/VT slot.`
+    : `Vocloner opened (copy failed — paste manually).${modelTip}`;
+}
+
 /* —— Audio output settings —— */
 function loadAudioRoutes() {
   try {
@@ -557,6 +655,7 @@ function readSettingsForm() {
 
 function openSettings() {
   populateSettingsForm(loadAudioRoutes());
+  populateVoclonerForm(loadVoclonerSettings());
   const bd = document.getElementById("settings-backdrop");
   bd.classList.add("open");
   bd.setAttribute("aria-hidden", "false");
@@ -575,7 +674,10 @@ function initSettings() {
   document.getElementById("btn-settings-save").onclick = () => {
     const routes = readSettingsForm();
     saveAudioRoutes(routes);
-    document.getElementById("engine-msg").textContent = "Audio outputs saved";
+    const voc = saveVoclonerSettings(readVoclonerForm());
+    populateVoclonerForm(voc);
+    document.getElementById("engine-msg").textContent =
+      "Settings saved (audio + Vocloner)";
     closeSettings();
   };
   document.getElementById("settings-backdrop").addEventListener("click", (ev) => {
@@ -588,6 +690,17 @@ function initSettings() {
       if (data && data.outputs) {
         const merged = { ...loadAudioRoutes(), ...data.outputs };
         localStorage.setItem(SETTINGS_LS_KEY, JSON.stringify(merged));
+      }
+    })
+    .catch(() => {});
+  fetch("/api/settings/vocloner")
+    .then((r) => (r.ok ? r.json() : null))
+    .then((data) => {
+      if (data && data.voice_renderer) {
+        const merged = { ...loadVoclonerSettings(), ...data, voice_renderer: "vocloner" };
+        delete merged.source;
+        localStorage.setItem(VOCLONER_LS_KEY, JSON.stringify(merged));
+        populateVoclonerForm(merged);
       }
     })
     .catch(() => {});
@@ -715,6 +828,7 @@ function openVtStudio(event, events) {
     event.vt_variation || (event.event_type === "VOICE_TRACK" ? "—" : "new");
   document.getElementById("vt-script").value =
     event.vt_script || event.vt_preview || "";
+  populateVoclonerForm(loadVoclonerSettings());
 
   const bd = document.getElementById("vt-backdrop");
   bd.classList.add("open");
@@ -775,27 +889,59 @@ async function approveAiBreaksUi() {
     method: "POST",
   }).then((r) => r.json());
   document.getElementById("engine-msg").textContent = res.ok
-    ? `Approved ${res.approved} VT draft(s)`
+    ? `Approved ${res.approved} VT draft(s) — next: open VT → Render in Vocloner → drop WAV into library/VT slot`
     : res.error || "Approve failed";
   await refresh();
+}
+
+async function renderVoclonerFromLog() {
+  // Prefer open studio script; else first APPROVED VT with script on the date
+  const studio = document.getElementById("vt-script");
+  if (studio && studio.value.trim()) {
+    await renderInVocloner(studio.value);
+    return;
+  }
+  const date = document.getElementById("log-date").value || todayISO();
+  const rows = await fetch(`/api/vt?date=${date}`).then((r) => r.json()).catch(() => null);
+  const list = (rows && rows.voice_tracks) || [];
+  const textOf = (r) =>
+    (r && (r.script_text || r.script || r.body || r.vt_script || "")) || "";
+  const hit =
+    list.find((r) => (r.status || "").toUpperCase() === "APPROVED" && textOf(r).trim()) ||
+    list.find((r) => textOf(r).trim());
+  const script =
+    textOf(hit) ||
+    (lastEvents || [])
+      .filter((e) => e.event_type === "VOICE_TRACK")
+      .map((e) => e.vt_script || e.vt_preview || "")
+      .find((s) => s && s.trim());
+  await renderInVocloner(script || "");
 }
 
 function initVtStudio() {
   const gen = document.getElementById("btn-gen-ai");
   const appr = document.getElementById("btn-approve-ai");
+  const renderLog = document.getElementById("btn-render-vocloner");
   if (gen) gen.onclick = generateAiBreaksUi;
   if (appr) appr.onclick = approveAiBreaksUi;
+  if (renderLog) renderLog.onclick = renderVoclonerFromLog;
   const close = document.getElementById("btn-vt-close");
   const done = document.getElementById("btn-vt-done");
   const ai = document.getElementById("btn-vt-ai");
+  const voc = document.getElementById("btn-vt-vocloner");
   if (close) close.onclick = closeVtStudio;
   if (done) done.onclick = closeVtStudio;
   if (ai) ai.onclick = vtGenerateScript;
+  if (voc) {
+    voc.onclick = () =>
+      renderInVocloner(document.getElementById("vt-script").value || "");
+  }
   const bd = document.getElementById("vt-backdrop");
   if (bd) {
     bd.addEventListener("click", (ev) => {
       if (ev.target.id === "vt-backdrop") closeVtStudio();
     });
   }
+  populateVoclonerForm(loadVoclonerSettings());
 }
 

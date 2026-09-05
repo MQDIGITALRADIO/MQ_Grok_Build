@@ -142,6 +142,7 @@
           <div class="log-actions">
             <button type="button" id="btn-gen-ai" class="btn-chrome btn-ai" title="Generate AI breaks">Generate AI breaks</button>
             <button type="button" id="btn-approve-ai" class="btn-chrome btn-ai" title="Approve draft VTs">Approve drafts</button>
+            <button type="button" id="btn-render-vocloner" class="btn-chrome btn-ai" title="Copy selected/approved VT script and open Vocloner">Render in Vocloner</button>
           </div>
         </div>
         <div class="log-scroll">
@@ -211,12 +212,18 @@
         </div>
         <label class="vt-script-label" for="vt-script">SCRIPT</label>
         <textarea id="vt-script" class="vt-script" rows="6" placeholder="AI or operator script…"></textarea>
+        <div class="vt-renderer">
+          <span class="vt-label">VOICE RENDERER</span>
+          <strong>Vocloner (default)</strong>
+          <span class="vt-model-hint" id="vt-vocloner-model"></span>
+        </div>
         <div class="vt-actions">
           <button type="button" class="btn-dialog" id="btn-vt-ai">AI Generate Script</button>
+          <button type="button" class="btn-dialog" id="btn-vt-vocloner" title="Copy script + open Vocloner">Render in Vocloner</button>
           <button type="button" class="btn-dialog" id="btn-vt-record" disabled title="M2 stub — recording comes later">● Record (disabled)</button>
           <button type="button" class="btn-dialog primary" id="btn-vt-done">Done</button>
         </div>
-        <p class="vt-hint">Stub studio: scripts only for M2. Real VT audio / talk-up later. Scheduler still owns music.</p>
+        <p class="vt-hint" id="vt-vocloner-tip">Approve → Render in Vocloner (script copied) → paste/generate WAV → drop into library/VT slot. No public API yet.</p>
       </div>
     </div>
   </div>
@@ -233,6 +240,24 @@
           Broadcast-style output routing. Web demo lists mock devices for UX;
           Mac engine will enumerate real CoreAudio devices.
         </p>
+        <div class="settings-section-title">VOICE RENDERER</div>
+        <div class="audio-route-row">
+          <label>Default renderer</label>
+          <div class="settings-static">Vocloner (default)</div>
+        </div>
+        <div class="audio-route-row">
+          <label for="vocloner-model">Preferred model / voice</label>
+          <input type="text" id="vocloner-model" placeholder="Vocloner model or voice name" autocomplete="off" />
+        </div>
+        <div class="audio-route-row audio-route-notes">
+          <label for="vocloner-notes">Notes</label>
+          <textarea id="vocloner-notes" rows="3" placeholder="Plan notes, voice prefs…"></textarea>
+        </div>
+        <p class="settings-intro settings-vocloner-blurb">
+          Matt: Vocloner Basic Yearly (~1.2M chars/year). No public API — use
+          <strong>Render in Vocloner</strong> to copy the approved script and open Vocloner.
+        </p>
+
         <div class="settings-section-title">AUDIO OUTPUTS</div>
         <div class="audio-route-row">
           <label for="out-program">Program / On-Air</label>

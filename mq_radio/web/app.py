@@ -19,7 +19,12 @@ from mq_radio.voice_tracker.service import (
     list_vt,
     script_for_transition,
 )
-from mq_radio.web.settings_store import load_audio_outputs, save_audio_outputs
+from mq_radio.web.settings_store import (
+    load_audio_outputs,
+    load_vocloner,
+    save_audio_outputs,
+    save_vocloner,
+)
 
 def _static_dir() -> Path:
     here = Path(__file__).resolve().parent / "static"
@@ -100,6 +105,10 @@ def make_handler(db_path: Path):
                 _json_response(self, load_audio_outputs(DATA_DIR))
                 return
 
+            if path == "/api/settings/vocloner":
+                _json_response(self, load_vocloner(DATA_DIR))
+                return
+
             if path == "/api/vt":
                 status = (qs.get("status") or [None])[0]
                 rows = list_vt(log_date, db_path=db_path, status=status)
@@ -126,6 +135,18 @@ def make_handler(db_path: Path):
                 if not isinstance(outputs, dict):
                     outputs = {}
                 result = save_audio_outputs(outputs, DATA_DIR)
+                _json_response(self, result)
+                return
+
+            if path == "/api/settings/vocloner":
+                try:
+                    payload = json.loads(body.decode("utf-8") or "{}")
+                except json.JSONDecodeError:
+                    _json_response(self, {"ok": False, "error": "invalid json"}, status=400)
+                    return
+                if not isinstance(payload, dict):
+                    payload = {}
+                result = save_vocloner(payload, DATA_DIR)
                 _json_response(self, result)
                 return
 
