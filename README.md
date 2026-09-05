@@ -147,18 +147,13 @@ Demo audio: `fixtures/demo_audio/` (synthetic short WAVs + JSON metadata)
 
 ## Mac install (DMG)
 
-
 ### One-time: enable the DMG builder (needs workflow file on GitHub)
-
 
 The GitHub OAuth token used to push code does **not** include the `workflow` scope, so the Actions file lives in-repo as a template:
 
-
 `packaging/ci/macos-dmg.yml`
 
-
 **Matt — do this once in the browser (signed in as MQDIGITALRADIO):**
-
 
 1. Open https://github.com/MQDIGITALRADIO/MQ_Grok_Build/new/main?filename=.github/workflows/macos-dmg.yml
 
@@ -170,9 +165,7 @@ The GitHub OAuth token used to push code does **not** include the `workflow` sco
 
 5. When green, open the run → Artifacts → download **MQ-Radio-macOS-DMG**.
 
-
 Optional later: `gh auth refresh -s workflow` so future pushes can update workflows from git.
-
 
 ### Install the DMG on your Mac
 
