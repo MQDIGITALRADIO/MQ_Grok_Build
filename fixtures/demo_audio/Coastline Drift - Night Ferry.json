@@ -1,0 +1,18 @@
+{
+  "artist": "Coastline Drift",
+  "title": "Night Ferry",
+  "album": "Tidal Nights",
+  "year": 2022,
+  "genre": "Indie Pop",
+  "bpm": 102,
+  "energy": 4,
+  "mood": "chill",
+  "gender": "M",
+  "australian": true,
+  "era": "2020s",
+  "rotation_category": "Recurrent",
+  "intro_ms": 5000,
+  "outro_ms": 10000,
+  "isrc": "AU-MQ0-22-00002",
+  "duration_ms": 16000
+}

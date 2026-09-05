@@ -1,0 +1,18 @@
+{
+  "artist": "Sapphire Lane",
+  "title": "Quiet Hours",
+  "album": "Afterglow Soft",
+  "year": 2023,
+  "genre": "Pop",
+  "bpm": 96,
+  "energy": 3,
+  "mood": "soft",
+  "gender": "F",
+  "australian": true,
+  "era": "2020s",
+  "rotation_category": "Gold",
+  "intro_ms": 4000,
+  "outro_ms": 8000,
+  "isrc": "AU-MQ0-23-00004",
+  "duration_ms": 15000
+}

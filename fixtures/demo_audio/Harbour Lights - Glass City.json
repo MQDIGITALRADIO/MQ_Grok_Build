@@ -1,0 +1,18 @@
+{
+  "artist": "Harbour Lights",
+  "title": "Glass City",
+  "album": "Skyline",
+  "year": 2020,
+  "genre": "Synth Pop",
+  "bpm": 112,
+  "energy": 5,
+  "mood": "cool",
+  "gender": "MIX",
+  "australian": true,
+  "era": "2020s",
+  "rotation_category": "Recurrent",
+  "intro_ms": 9000,
+  "outro_ms": 10000,
+  "isrc": "AU-MQ0-20-00006",
+  "duration_ms": 16500
+}

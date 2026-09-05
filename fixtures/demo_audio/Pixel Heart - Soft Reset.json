@@ -1,0 +1,18 @@
+{
+  "artist": "Pixel Heart",
+  "title": "Soft Reset",
+  "album": "Boot",
+  "year": 2023,
+  "genre": "Electropop",
+  "bpm": 116,
+  "energy": 6,
+  "mood": "playful",
+  "gender": "F",
+  "australian": false,
+  "era": "2020s",
+  "rotation_category": "Current",
+  "intro_ms": 5500,
+  "outro_ms": 8500,
+  "isrc": "US-MQ0-23-00013",
+  "duration_ms": 14500
+}

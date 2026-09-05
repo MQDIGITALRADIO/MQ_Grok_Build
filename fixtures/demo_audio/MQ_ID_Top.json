@@ -1,0 +1,9 @@
+{
+  "artist": "MQ DIGITAL",
+  "title": "MQ ID Top of Hour",
+  "event_type": "ID",
+  "rotation_category": "ID",
+  "energy": 7,
+  "australian": true,
+  "duration_ms": 4000
+}

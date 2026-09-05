@@ -1,0 +1,18 @@
+{
+  "artist": "Bridge & Beacon",
+  "title": "Harbour Song",
+  "album": "Pier",
+  "year": 2020,
+  "genre": "Folk",
+  "bpm": 94,
+  "energy": 4,
+  "mood": "warm",
+  "gender": "M",
+  "australian": true,
+  "era": "2020s",
+  "rotation_category": "Gold",
+  "intro_ms": 8000,
+  "outro_ms": 10000,
+  "isrc": "AU-MQ0-20-00022",
+  "duration_ms": 16000
+}

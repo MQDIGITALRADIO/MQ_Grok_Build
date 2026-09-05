@@ -1,0 +1,18 @@
+{
+  "artist": "Northern Relay",
+  "title": "Paper Planes",
+  "album": "Signal",
+  "year": 2019,
+  "genre": "Indie",
+  "bpm": 108,
+  "energy": 5,
+  "mood": "warm",
+  "gender": "F",
+  "australian": false,
+  "era": "2010s",
+  "rotation_category": "Gold",
+  "intro_ms": 5000,
+  "outro_ms": 9000,
+  "isrc": "US-MQ0-19-00007",
+  "duration_ms": 14000
+}

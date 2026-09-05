@@ -1,0 +1,18 @@
+{
+  "artist": "Chrome Orchid",
+  "title": "Laser Rain",
+  "album": "Orchid",
+  "year": 2023,
+  "genre": "Synth",
+  "bpm": 125,
+  "energy": 8,
+  "mood": "bright",
+  "gender": "MIX",
+  "australian": false,
+  "era": "2020s",
+  "rotation_category": "Power",
+  "intro_ms": 4000,
+  "outro_ms": 7000,
+  "isrc": "US-MQ0-23-00023",
+  "duration_ms": 14500
+}

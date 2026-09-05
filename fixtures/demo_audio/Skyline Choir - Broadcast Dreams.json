@@ -1,0 +1,18 @@
+{
+  "artist": "Skyline Choir",
+  "title": "Broadcast Dreams",
+  "album": "On Air",
+  "year": 2022,
+  "genre": "Pop Rock",
+  "bpm": 114,
+  "energy": 6,
+  "mood": "hopeful",
+  "gender": "MIX",
+  "australian": true,
+  "era": "2020s",
+  "rotation_category": "Current",
+  "intro_ms": 7000,
+  "outro_ms": 11000,
+  "isrc": "AU-MQ0-22-00019",
+  "duration_ms": 18500
+}

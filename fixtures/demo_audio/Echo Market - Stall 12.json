@@ -1,0 +1,18 @@
+{
+  "artist": "Echo Market",
+  "title": "Stall 12",
+  "album": "Market",
+  "year": 2019,
+  "genre": "Pop",
+  "bpm": 105,
+  "energy": 5,
+  "mood": "easy",
+  "gender": "F",
+  "australian": false,
+  "era": "2010s",
+  "rotation_category": "Gold",
+  "intro_ms": 7000,
+  "outro_ms": 9000,
+  "isrc": "GB-MQ0-19-00025",
+  "duration_ms": 15500
+}

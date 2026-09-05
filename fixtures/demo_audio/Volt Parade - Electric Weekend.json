@@ -1,0 +1,19 @@
+{
+  "artist": "Volt Parade",
+  "title": "Electric Weekend",
+  "album": "Charge",
+  "year": 2024,
+  "genre": "Dance Pop",
+  "bpm": 128,
+  "energy": 9,
+  "mood": "party",
+  "gender": "MIX",
+  "australian": false,
+  "era": "2020s",
+  "rotation_category": "Power",
+  "intro_ms": 4000,
+  "outro_ms": 7000,
+  "explicit": false,
+  "isrc": "GB-MQ0-24-00009",
+  "duration_ms": 17500
+}

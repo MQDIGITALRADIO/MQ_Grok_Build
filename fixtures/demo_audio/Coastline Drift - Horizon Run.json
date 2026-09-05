@@ -1,0 +1,18 @@
+{
+  "artist": "Coastline Drift",
+  "title": "Horizon Run",
+  "album": "Tidal",
+  "year": 2022,
+  "genre": "Indie Pop",
+  "bpm": 118,
+  "energy": 6,
+  "mood": "uplift",
+  "gender": "M",
+  "australian": true,
+  "era": "2020s",
+  "rotation_category": "Power",
+  "intro_ms": 8000,
+  "outro_ms": 12000,
+  "isrc": "AU-MQ0-22-00001",
+  "duration_ms": 18000
+}

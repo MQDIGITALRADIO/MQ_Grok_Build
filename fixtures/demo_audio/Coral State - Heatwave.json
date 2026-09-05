@@ -1,0 +1,18 @@
+{
+  "artist": "Coral State",
+  "title": "Heatwave",
+  "album": "Reef Heat",
+  "year": 2021,
+  "genre": "R&B",
+  "bpm": 104,
+  "energy": 7,
+  "mood": "summer",
+  "gender": "F",
+  "australian": true,
+  "era": "2020s",
+  "rotation_category": "Power",
+  "intro_ms": 4500,
+  "outro_ms": 9000,
+  "isrc": "AU-MQ0-21-00016",
+  "duration_ms": 16000
+}

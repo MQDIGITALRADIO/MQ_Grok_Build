@@ -1,0 +1,18 @@
+{
+  "artist": "Glass Orchard",
+  "title": "Ripe",
+  "album": "Orchard",
+  "year": 2018,
+  "genre": "Dream Pop",
+  "bpm": 98,
+  "energy": 3,
+  "mood": "soft",
+  "gender": "F",
+  "australian": true,
+  "era": "2010s",
+  "rotation_category": "Gold",
+  "intro_ms": 9000,
+  "outro_ms": 12000,
+  "isrc": "AU-MQ0-18-00027",
+  "duration_ms": 18000
+}

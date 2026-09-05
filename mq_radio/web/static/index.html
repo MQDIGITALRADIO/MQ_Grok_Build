@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MQ DIGITAL — Master Control (M1)</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span class="callsign">MQ</span>
+      <div>
+        <h1>Master Control</h1>
+        <p class="sub">HOME · Living Log · On-Air prototype (M1)</p>
+      </div>
+    </div>
+    <div class="clock" id="wallclock">--:--:--</div>
+  </header>
+
+  <section class="now-playing">
+    <div class="label">NOW PLAYING</div>
+    <div class="np-title" id="np-title">—</div>
+    <div class="np-artist" id="np-artist">—</div>
+    <div class="np-meta" id="np-meta"></div>
+  </section>
+
+  <section class="controls">
+    <button id="btn-play" class="go">PLAY</button>
+    <button id="btn-stop">STOP</button>
+    <button id="btn-skip">SKIP</button>
+    <button id="btn-step">ENGINE STEP</button>
+    <span id="engine-msg" class="msg"></span>
+  </section>
+
+  <section class="log-panel">
+    <div class="panel-head">
+      <h2>Living Log</h2>
+      <label>Date <input type="date" id="log-date" /></label>
+      <button id="btn-refresh">Refresh</button>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th><th>Airtime</th><th>Type</th><th>Chain</th><th>Timing</th>
+          <th>Artist</th><th>Title</th><th>Dur</th><th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="log-body"></tbody>
+    </table>
+  </section>
+
+  <footer>
+    MQ Engine is independent of this control surface — UI crash ≠ dead air.
+  </footer>
+  <script src="/static/app.js"></script>
+</body>
+</html>

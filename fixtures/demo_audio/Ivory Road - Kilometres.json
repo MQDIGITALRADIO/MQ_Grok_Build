@@ -1,0 +1,18 @@
+{
+  "artist": "Ivory Road",
+  "title": "Kilometres",
+  "album": "Road",
+  "year": 2020,
+  "genre": "Rock",
+  "bpm": 122,
+  "energy": 7,
+  "mood": "open",
+  "gender": "M",
+  "australian": true,
+  "era": "2020s",
+  "rotation_category": "Recurrent",
+  "intro_ms": 5000,
+  "outro_ms": 8000,
+  "isrc": "AU-MQ0-20-00029",
+  "duration_ms": 16500
+}

@@ -1,0 +1,18 @@
+{
+  "artist": "Coral State",
+  "title": "Blue Room",
+  "album": "Reef",
+  "year": 2021,
+  "genre": "R&B",
+  "bpm": 88,
+  "energy": 4,
+  "mood": "smooth",
+  "gender": "F",
+  "australian": true,
+  "era": "2020s",
+  "rotation_category": "Recurrent",
+  "intro_ms": 8000,
+  "outro_ms": 12000,
+  "isrc": "AU-MQ0-21-00015",
+  "duration_ms": 17000
+}

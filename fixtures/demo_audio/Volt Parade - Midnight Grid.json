@@ -1,0 +1,18 @@
+{
+  "artist": "Volt Parade",
+  "title": "Midnight Grid",
+  "album": "Charge Night",
+  "year": 2024,
+  "genre": "Dance Pop",
+  "bpm": 122,
+  "energy": 7,
+  "mood": "night",
+  "gender": "MIX",
+  "australian": false,
+  "era": "2020s",
+  "rotation_category": "Current",
+  "intro_ms": 5000,
+  "outro_ms": 9000,
+  "isrc": "GB-MQ0-24-00010",
+  "duration_ms": 16000
+}

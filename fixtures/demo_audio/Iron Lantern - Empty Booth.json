@@ -1,0 +1,18 @@
+{
+  "artist": "Iron Lantern",
+  "title": "Empty Booth",
+  "album": "Closing Soft",
+  "year": 2017,
+  "genre": "Rock",
+  "bpm": 110,
+  "energy": 5,
+  "mood": "moody",
+  "gender": "M",
+  "australian": false,
+  "era": "2010s",
+  "rotation_category": "Gold",
+  "intro_ms": 6000,
+  "outro_ms": 10000,
+  "isrc": "US-MQ0-17-00018",
+  "duration_ms": 16500
+}

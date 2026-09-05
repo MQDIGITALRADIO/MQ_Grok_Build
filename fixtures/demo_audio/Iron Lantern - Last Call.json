@@ -1,0 +1,18 @@
+{
+  "artist": "Iron Lantern",
+  "title": "Last Call",
+  "album": "Closing Time",
+  "year": 2017,
+  "genre": "Rock",
+  "bpm": 136,
+  "energy": 8,
+  "mood": "raw",
+  "gender": "M",
+  "australian": false,
+  "era": "2010s",
+  "rotation_category": "Gold",
+  "intro_ms": 3000,
+  "outro_ms": 7000,
+  "isrc": "US-MQ0-17-00017",
+  "duration_ms": 15500
+}

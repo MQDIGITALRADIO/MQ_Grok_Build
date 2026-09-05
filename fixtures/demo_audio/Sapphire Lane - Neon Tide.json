@@ -1,0 +1,18 @@
+{
+  "artist": "Sapphire Lane",
+  "title": "Neon Tide",
+  "album": "Afterglow",
+  "year": 2023,
+  "genre": "Pop",
+  "bpm": 124,
+  "energy": 7,
+  "mood": "bright",
+  "gender": "F",
+  "australian": true,
+  "era": "2020s",
+  "rotation_category": "Power",
+  "intro_ms": 6000,
+  "outro_ms": 9000,
+  "isrc": "AU-MQ0-23-00003",
+  "duration_ms": 17000
+}

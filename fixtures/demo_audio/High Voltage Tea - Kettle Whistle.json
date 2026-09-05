@@ -1,0 +1,18 @@
+{
+  "artist": "High Voltage Tea",
+  "title": "Kettle Whistle",
+  "album": "Brew",
+  "year": 2024,
+  "genre": "Dance",
+  "bpm": 128,
+  "energy": 9,
+  "mood": "party",
+  "gender": "MIX",
+  "australian": false,
+  "era": "2020s",
+  "rotation_category": "Power",
+  "intro_ms": 3000,
+  "outro_ms": 6000,
+  "isrc": "US-MQ0-24-00028",
+  "duration_ms": 13000
+}

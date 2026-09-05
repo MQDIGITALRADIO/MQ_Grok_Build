@@ -1,0 +1,18 @@
+{
+  "artist": "Red Dirt Echo",
+  "title": "Outback Static",
+  "album": "Dust",
+  "year": 2021,
+  "genre": "Alt Rock",
+  "bpm": 130,
+  "energy": 8,
+  "mood": "drive",
+  "gender": "M",
+  "australian": true,
+  "era": "2020s",
+  "rotation_category": "Power",
+  "intro_ms": 7000,
+  "outro_ms": 11000,
+  "isrc": "AU-MQ0-21-00005",
+  "duration_ms": 19000
+}
