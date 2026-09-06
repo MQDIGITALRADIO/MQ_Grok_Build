@@ -2,6 +2,22 @@
 
 Lean build log for Matt. SHAs are on `main` (`MQDIGITALRADIO/MQ_Grok_Build`).
 
+## Desk grind 2026-09-07 (idle meters/VU + import destinations)
+
+| SHA | Theme |
+|-----|--------|
+| *(this commit)* | Idle Deck A meter empty; VU live/idle/STOP; Import Send-to Library\|Living Log\|Hotkey\|Deck A; Electron browse; broadcast scenario e2e |
+
+**Meters (P0 visual):** Historic `.meter-bar { width: 62% }` default painted a stuck ~60% green bar when idle / false ON AIR. Default + `.idle` now **width 0 / dark**. JS `setMeterIdle` / `setMeterProgress` set inline width. ON AIR lamp/label only when `running`/`timing.playing` (`deckOnAir`). STOP clears meters + VU immediately.
+
+**VU:** `resolveDeskVu` prefers Web Audio analyser (Living Log + hotkey oneshot); synthetic fallback uses **live** progress (not frozen snap). Server `_synthetic_vu` moves during oneshot; idle = fully dark; STOP clears.
+
+**Import:** Electron native `mq:open-audio-files` dialog (absolute paths); FormData fallback; strip errors for missing file / empty multipart / ffmpeg hints. **Send to** dropdown: Library only · Living Log · Hotkey cart · Cue Deck A.
+
+**Tests:** `tests/test_desk_live_radio_scenarios.py` — idle desk, import destinations, PLAY→progress/VU→STOP, hotkey oneshot vs log ON AIR, insert/replace/delete, multi-cart skip, bad path / empty upload. Full suite green.
+
+**Not Done:** AU host / Harbor / notarization (unchanged Partial).
+
 ## Overnight grind 2026-09-06 (0.1.3 · P1 desk readable + acceptance audit)
 
 | SHA | Theme |

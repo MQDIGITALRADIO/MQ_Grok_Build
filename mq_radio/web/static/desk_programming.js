@@ -896,6 +896,13 @@
     return i >= 0 ? String(name).slice(i).toLowerCase() : "";
   }
 
+  function ingestDestination() {
+    const sel = document.getElementById("ingest-dest");
+    const v = sel && sel.value ? String(sel.value) : "library";
+    if (["library", "living_log", "hotkey", "deck_a"].includes(v)) return v;
+    return "library";
+  }
+
   function resolveIngestFilePath(file) {
     if (!file) return "";
     try {
@@ -910,6 +917,16 @@
     return "";
   }
 
+  function formatIngestError(res, fallbackName) {
+    const err = (res && res.error) || fallbackName || "Import failed";
+    const hint = res && res.hint ? ` — ${res.hint}` : "";
+    let out = String(err) + hint;
+    if (/ffmpeg/i.test(out) && !/brew install/i.test(out)) {
+      out += " — WAV/MP3 work without ffmpeg; for mp4/flac install ffmpeg or use the Mac package runtime.";
+    }
+    return out;
+  }
+
   async function parseIngestResponse(r) {
     let res = null;
     try {
@@ -917,18 +934,45 @@
     } catch (_) {
       return {
         ok: false,
-        error: `Import HTTP ${r.status}${r.statusText ? " " + r.statusText : ""} — server did not return JSON`,
+        error: `Import HTTP ${r.status}${r.statusText ? " " + r.statusText : ""} — server did not return JSON (engine down?)`,
       };
     }
     if (!res) return { ok: false, error: "empty import response" };
     if (!r.ok && res.ok !== true) {
-      const hint = res.hint ? ` — ${res.hint}` : "";
       return {
         ok: false,
-        error: (res.error || `Import HTTP ${r.status}`) + hint,
+        error: formatIngestError(res, `Import HTTP ${r.status}`),
+        hint: res.hint,
       };
     }
     return res;
+  }
+
+  async function ingestByAbsolutePath(abs, meta) {
+    const title = (meta && meta.title) || PathStem(abs);
+    const artist = (meta && meta.artist) || "Imported";
+    const et = (meta && meta.event_type) || guessEventType(abs);
+    const r = await fetch("/api/library/ingest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: abs,
+        title,
+        artist,
+        event_type: et,
+      }),
+    });
+    return parseIngestResponse(r);
+  }
+
+  function PathStem(name) {
+    const base = String(name || "cart").split(/[/\\]/).pop() || "cart";
+    return base.replace(/\.[^.]+$/, "");
+  }
+
+  function guessEventType(name) {
+    const lower = String(name || "").toLowerCase();
+    return /vocloner|voice.?track|\bvt[_-]|\bvt\b/.test(lower) ? "VOICE_TRACK" : "MUSIC";
   }
 
   async function ingestFileBlob(file) {
@@ -939,30 +983,18 @@
     if (!file || !file.size) {
       return { ok: false, error: `${file && file.name ? file.name : "file"} is empty (0 bytes)` };
     }
-    const title = file.name.replace(/\.[^.]+$/, "");
+    const title = PathStem(file.name);
     const artist = "Imported";
-    const lower = file.name.toLowerCase();
-    const et =
-      /vocloner|voice.?track|\bvt[_-]|\bvt\b/.test(lower) ? "VOICE_TRACK" : "MUSIC";
+    const et = guessEventType(file.name);
 
     // Electron / Mac app: absolute path → server copies (reliable for large carts)
     const abs = resolveIngestFilePath(file);
     if (abs) {
       try {
-        const r = await fetch("/api/library/ingest", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            path: abs,
-            title,
-            artist,
-            event_type: et,
-          }),
-        });
-        const res = await parseIngestResponse(r);
+        const res = await ingestByAbsolutePath(abs, { title, artist, event_type: et });
         if (res && res.ok) return res;
         // Fall through to multipart blob if path ingest rejected (sandbox / missing file)
-        if (res && /not a file|not found|permission/i.test(String(res.error || ""))) {
+        if (res && /not a file|not found|permission|Cannot write/i.test(String(res.error || ""))) {
           /* continue to FormData */
         } else if (res && res.ok === false) {
           return res;
@@ -981,9 +1013,95 @@
     try {
       r = await fetch("/api/library/ingest", { method: "POST", body: fd });
     } catch (e) {
-      return { ok: false, error: `network: ${e && e.message ? e.message : e}` };
+      return {
+        ok: false,
+        error: `network: ${e && e.message ? e.message : e} — is the On-Air engine running?`,
+      };
     }
     return parseIngestResponse(r);
+  }
+
+  async function routeIngestedCart(res, dest) {
+    if (!res || !res.ok || !res.track_id) return { ok: true, note: "library" };
+    const tid = res.track_id;
+    const title = res.title || "Imported";
+    const artist = res.artist || "";
+    const duration_ms = res.duration_ms || 0;
+    const event_type = res.event_type || "MUSIC";
+    const file_path = res.file_path || null;
+
+    if (dest === "library") {
+      return { ok: true, note: "library" };
+    }
+
+    if (dest === "living_log" || dest === "deck_a") {
+      // Insert at start so Deck A / now picks it up when idle (cue)
+      const after = dest === "deck_a" ? -1 : (window.mqSelectedEventId != null ? undefined : -1);
+      let after_position = -1;
+      if (dest === "living_log") {
+        const sel = selectedEvent();
+        after_position = sel && typeof sel.position === "number" ? sel.position : -1;
+      }
+      try {
+        const body = {
+          date: dateVal(),
+          after_position,
+          track_id: tid,
+          event_type,
+          title,
+          artist,
+          duration_ms,
+        };
+        const r = await fetch("/api/log/insert", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }).then((x) => x.json());
+        if (!r || !r.ok) {
+          return { ok: false, error: (r && r.error) || "Living Log insert failed" };
+        }
+        return {
+          ok: true,
+          note: dest === "deck_a" ? "cued Deck A (Living Log)" : "Living Log",
+        };
+      } catch (e) {
+        return { ok: false, error: "Living Log insert: " + (e && e.message ? e.message : e) };
+      }
+    }
+
+    if (dest === "hotkey") {
+      try {
+        await loadHotkeys();
+        const slots = hotkeysState.hotkeys || [];
+        let slot = slots.findIndex((h) => h && (h.empty || (!h.label && !h.path && !h.target)));
+        if (slot < 0) slot = 0;
+        const item = slots[slot] || {
+          slot,
+          label: "",
+          type: "",
+          target: null,
+          path: null,
+          inject_mode: "over_program",
+        };
+        item.slot = slot;
+        item.label = title;
+        item.type = event_type === "VOICE_TRACK" ? "VOICE_TRACK" : (event_type || "MUSIC");
+        item.target = tid;
+        item.path = file_path || item.path || null;
+        item.inject_mode = item.inject_mode || "over_program";
+        item.empty = false;
+        hotkeysState.hotkeys[slot] = item;
+        const saved = await persistHotkeys();
+        if (saved && saved.ok === false) {
+          return { ok: false, error: (saved && saved.error) || "Hotkey save failed" };
+        }
+        return { ok: true, note: `hotkey slot ${slot + 1}` };
+      } catch (e) {
+        return { ok: false, error: "Hotkey assign: " + (e && e.message ? e.message : e) };
+      }
+    }
+
+    return { ok: true, note: "library" };
   }
 
   async function ingestFiles(fileList) {
@@ -992,18 +1110,32 @@
       ingestStatus("No files selected — drop .wav/.mp3/.flac/.mp4 or click Import audio", { error: true });
       return;
     }
-    ingestStatus(`Importing ${files.length} file(s) into library…`);
+    const dest = ingestDestination();
+    const destLabel = {
+      library: "library",
+      living_log: "Living Log",
+      hotkey: "hotkey cart",
+      deck_a: "Deck A cue",
+    }[dest] || dest;
+    ingestStatus(`Importing ${files.length} file(s) → ${destLabel}…`);
     let ok = 0;
     const errors = [];
     const titles = [];
+    const notes = [];
     for (const f of files) {
       try {
         const res = await ingestFileBlob(f);
         if (res && res.ok) {
           ok += 1;
           if (res.title) titles.push(res.title);
+          const routed = await routeIngestedCart(res, dest);
+          if (routed && routed.ok === false) {
+            errors.push(`${f.name}: imported but ${routed.error}`);
+          } else if (routed && routed.note) {
+            notes.push(routed.note);
+          }
         } else {
-          errors.push(`${f.name}: ${(res && res.error) || "failed"}`);
+          errors.push(`${f.name}: ${formatIngestError(res, "failed")}`);
         }
       } catch (e) {
         errors.push(`${f.name}: ${e && e.message ? e.message : e}`);
@@ -1020,15 +1152,89 @@
       );
     } else {
       const sample = titles.slice(0, 2).join(", ");
+      const routeNote = notes[0] ? ` → ${notes[0]}` : "";
       ingestStatus(
-        `Imported ${ok} cart(s)${sample ? ` — ${sample}` : ""} · open Library to categorise · add to Clocks / Living Log`
+        `Imported ${ok} cart(s)${sample ? ` — ${sample}` : ""}${routeNote}`
       );
     }
     if (typeof refresh === "function") await refresh();
     else if (window.mqRefresh) await window.mqRefresh();
   }
 
-  function wireDropZone() {
+  async function ingestAbsolutePaths(paths) {
+    const list = (paths || []).filter(Boolean);
+    if (!list.length) {
+      ingestStatus("No files selected", { error: true });
+      return;
+    }
+    // Build File-like stubs so we reuse path ingest
+    const fakeFiles = list.map((abs) => {
+      const name = String(abs).split(/[/\\]/).pop() || "cart.wav";
+      return { name, size: 1, path: abs, _abs: abs };
+    });
+    // Override path resolution by temporarily wrapping
+    const dest = ingestDestination();
+    const destLabel = {
+      library: "library",
+      living_log: "Living Log",
+      hotkey: "hotkey cart",
+      deck_a: "Deck A cue",
+    }[dest] || dest;
+    ingestStatus(`Importing ${list.length} file(s) → ${destLabel}…`);
+    let ok = 0;
+    const errors = [];
+    const titles = [];
+    const notes = [];
+    for (const abs of list) {
+      const name = String(abs).split(/[/\\]/).pop() || "cart.wav";
+      const ext = fileExt(name);
+      if (!INGEST_EXTS.has(ext)) {
+        errors.push(`${name}: unsupported ${ext || "type"}`);
+        continue;
+      }
+      try {
+        const res = await ingestByAbsolutePath(abs, {
+          title: PathStem(name),
+          artist: "Imported",
+          event_type: guessEventType(name),
+        });
+        if (res && res.ok) {
+          ok += 1;
+          if (res.title) titles.push(res.title);
+          const routed = await routeIngestedCart(res, dest);
+          if (routed && routed.ok === false) {
+            errors.push(`${name}: imported but ${routed.error}`);
+          } else if (routed && routed.note) {
+            notes.push(routed.note);
+          }
+        } else {
+          errors.push(`${name}: ${formatIngestError(res, "failed")}`);
+        }
+      } catch (e) {
+        errors.push(`${name}: ${e && e.message ? e.message : e}`);
+      }
+    }
+    if (errors.length) {
+      const shown = errors.slice(0, 3).join(" · ");
+      const more = errors.length > 3 ? ` (+${errors.length - 3} more)` : "";
+      ingestStatus(
+        ok
+          ? `Imported ${ok}/${list.length}. Errors: ${shown}${more}`
+          : `Import failed: ${shown}${more}`,
+        { error: true }
+      );
+    } else {
+      const sample = titles.slice(0, 2).join(", ");
+      const routeNote = notes[0] ? ` → ${notes[0]}` : "";
+      ingestStatus(
+        `Imported ${ok} cart(s)${sample ? ` — ${sample}` : ""}${routeNote}`
+      );
+    }
+    if (typeof refresh === "function") await refresh();
+    else if (window.mqRefresh) await window.mqRefresh();
+  }
+
+    function wireDropZone() {
     const zone = document.getElementById("drop-zone");
     const overlay = document.getElementById("desk-drop-overlay");
     const desk = document.getElementById("desk-root") || document.querySelector(".desk");
@@ -1056,9 +1262,26 @@
       };
     }
     if (browse) {
-      browse.onclick = (ev) => {
+      browse.onclick = async (ev) => {
         ev.preventDefault();
         ev.stopPropagation();
+        // Electron: native dialog → absolute paths (reliable on Mac). Web: file input.
+        try {
+          if (window.mqDesktop && typeof window.mqDesktop.openAudioFiles === "function") {
+            const paths = await window.mqDesktop.openAudioFiles();
+            if (paths && paths.length) {
+              await ingestAbsolutePaths(paths);
+              return;
+            }
+            // User cancelled — do not fall through to empty file input noise
+            if (Array.isArray(paths)) return;
+          }
+        } catch (e) {
+          ingestStatus(
+            "Desktop browse failed — " + (e && e.message ? e.message : e) + " · trying file picker",
+            { error: true }
+          );
+        }
         if (input) input.click();
       };
     }

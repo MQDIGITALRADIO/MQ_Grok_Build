@@ -12,7 +12,7 @@
  * operator_message "native chain active — AU host not loaded", and still
  * runs native. Do not claim AU hosting until that path is real.
  */
-const { app, BrowserWindow, dialog, shell } = require('electron');
+const { app, BrowserWindow, dialog, shell, ipcMain } = require('electron');
 const { spawn } = require('child_process');
 const http = require('http');
 const path = require('path');
@@ -182,6 +182,23 @@ function stopEngine() {
 }
 
 app.whenReady().then(async () => {
+  // Browse Import audio — absolute paths for /api/library/ingest JSON path mode
+  ipcMain.handle('mq:open-audio-files', async () => {
+    const win = BrowserWindow.getFocusedWindow() || mainWindow;
+    const result = await dialog.showOpenDialog(win || undefined, {
+      title: 'Import audio',
+      properties: ['openFile', 'multiSelections'],
+      filters: [
+        { name: 'Audio', extensions: ['wav', 'mp3', 'flac', 'm4a', 'ogg', 'aac', 'mp4', 'mov', 'mkv', 'webm'] },
+        { name: 'All files', extensions: ['*'] },
+      ],
+    });
+    if (result.canceled || !result.filePaths || !result.filePaths.length) {
+      return { paths: [] };
+    }
+    return { paths: result.filePaths };
+  });
+
   startEngine();
   try {
     await waitForServer();

@@ -3,10 +3,22 @@
  * Exposes a safe desktop bridge so the On-Air UI can resolve absolute paths
  * for hotkey drops. Electron 32+ removed File.path; use webUtils instead.
  */
-const { contextBridge, webUtils } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('mqDesktop', {
   isElectron: true,
+  /**
+   * Native Mac/Windows open dialog — returns absolute paths (Browse import).
+   * Prefer this over <input type=file> in Electron (hidden inputs are flaky).
+   */
+  async openAudioFiles() {
+    try {
+      const res = await ipcRenderer.invoke('mq:open-audio-files');
+      return res && Array.isArray(res.paths) ? res.paths : [];
+    } catch (_) {
+      return [];
+    }
+  },
   /** Packaging version string (Electron package.json). */
   appVersion: (() => {
     try {

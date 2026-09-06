@@ -210,7 +210,27 @@ function clearEndRamp(deckEl, meterEl) {
   }
 }
 
+function setMeterIdle(meterEl) {
+  if (!meterEl) return;
+  meterEl.className = "meter-bar idle";
+  meterEl.style.setProperty("--progress", "0");
+  meterEl.style.width = "0";
+  meterEl.style.minWidth = "0";
+  meterEl.style.background = "";
+}
+
+function setMeterProgress(meterEl, progress) {
+  if (!meterEl) return;
+  const p = Math.max(0, Math.min(1, Number(progress) || 0));
+  meterEl.className = "meter-bar progressing";
+  meterEl.style.setProperty("--progress", String(p));
+  // Inline width beats any leftover default CSS (historic 62% bug)
+  meterEl.style.width = (p * 100).toFixed(3) + "%";
+  meterEl.style.minWidth = "0";
+}
+
 function applyEndRamp(deckEl, meterEl, remainingMs) {
+
   clearEndRamp(deckEl, meterEl);
   if (remainingMs == null || remainingMs > 5000 || remainingMs < 0) return;
   // Intensify over last 5s: level 1 at ~5s … level 5 in final second
@@ -246,7 +266,7 @@ function fillDeck(prefix, event, stateClass, stateText) {
     if (artistEl) artistEl.textContent = "Import audio · Clocks → Generate";
     if (chainEl) chainEl.textContent = "—";
     if (durEl) durEl.textContent = "0:00";
-    if (meterEl) meterEl.className = "meter-bar idle";
+    if (meterEl) setMeterIdle(meterEl);
     if (endingEl) {
       endingEl.textContent = "—";
       endingEl.className = "timer-ending";
@@ -277,7 +297,17 @@ function fillDeck(prefix, event, stateClass, stateText) {
   if (chainEl) chainEl.textContent = `${event.chain_mode || "—"}/${event.timing_mode || "—"}`;
   if (durEl) durEl.textContent = fmtDur(event.duration_ms);
   if (meterEl) {
-    meterEl.className = (stateClass === "onair" || stateClass === "fading") ? "meter-bar progressing" : "meter-bar idle";
+    // fillDeck never paints a fake green bar — tickTimers drives width only while playing.
+    // CUED/NEXT/READY/empty → idle width 0. ON AIR label alone is not enough.
+    const maybeLive = stateClass === "onair" || stateClass === "fading";
+    if (maybeLive && timingSnap && timingSnap.playing) {
+      // Keep class progressing; width comes from last tick (or 0 until first tick)
+      if (!meterEl.classList.contains("progressing")) {
+        setMeterProgress(meterEl, timingSnap.progress || 0);
+      }
+    } else {
+      setMeterIdle(meterEl);
+    }
   }
 
   if (endingEl) {
@@ -640,15 +670,41 @@ function applyVu(vu) {
   if (panel) panel.classList.toggle("playing", playing);
 }
 
-function synthVuLocal(playing) {
+function synthVuLocal(playing, progressOpt) {
   if (!playing) {
-    return { playing: false, left: 0, right: 0 };
+    return { playing: false, left: 0, right: 0, peak_left: 0, peak_right: 0 };
   }
   const t = Date.now() / 1000;
-  const env = 0.55 + 0.35 * Math.sin((timingSnap.progress || 0.5) * Math.PI);
+  // Prefer live progress (advances every tick) — frozen timingSnap.progress looked "stuck"
+  let prog = progressOpt;
+  if (prog == null || !Number.isFinite(prog)) {
+    try { prog = liveTiming().progress; } catch (_) { prog = timingSnap.progress; }
+  }
+  if (prog == null || !Number.isFinite(prog)) prog = 0.5;
+  const env = 0.55 + 0.35 * Math.sin(Math.max(0, Math.min(1, prog)) * Math.PI);
   const left = Math.min(1, env * (0.72 + 0.28 * Math.sin(t * 9.3)));
   const right = Math.min(1, env * (0.70 + 0.30 * Math.sin(t * 11.1 + 0.7)));
-  return { playing: true, left, right };
+  return { playing: true, left, right, peak_left: left, peak_right: right };
+}
+
+function resolveDeskVu(livePlaying, liveProgress) {
+  // Prefer Web Audio analyser (Living Log decks + hotkey oneshot)
+  const analyserVu =
+    window.MQProgramAudio && typeof window.MQProgramAudio.getVu === "function"
+      ? window.MQProgramAudio.getVu()
+      : null;
+  if (analyserVu && analyserVu.playing && (analyserVu.source === "analyser" || analyserVu.left > 0.001)) {
+    return analyserVu;
+  }
+  if (livePlaying) {
+    return synthVuLocal(true, liveProgress);
+  }
+  // Hotkey oneshot may play while Living Log timingSnap.playing is false
+  const shot = lastStatus && lastStatus.oneshot;
+  if (shot && shot.active) {
+    return synthVuLocal(true, 0.45);
+  }
+  return synthVuLocal(false);
 }
 
 function tickTimers() {
@@ -660,42 +716,26 @@ function tickTimers() {
 
   if (!timingSnap.playing) {
     // Show full duration as remaining when next cart is cued but not on air
-    if (lastStatus && lastStatus.now && lastStatus.now.status !== "ON_AIR") {
+    if (elapsedEl && remainEl && lastStatus && lastStatus.now && lastStatus.now.status !== "ON_AIR") {
       const dur = Number(lastStatus.now.duration_ms || 0);
       elapsedEl.textContent = "0:00.0";
       remainEl.textContent = fmtTimer(dur);
+    } else if (elapsedEl && remainEl && (!lastStatus || !lastStatus.now)) {
+      elapsedEl.textContent = "0:00.0";
+      remainEl.textContent = "0:00.0";
     }
     clearEndRamp(deckEl, meterEl);
-    if (meterEl && meterEl.classList.contains("progressing")) {
-      meterEl.style.setProperty("--progress", "0");
-    }
-    applyVu(lastStatus && lastStatus.vu ? lastStatus.vu : synthVuLocal(false));
+    setMeterIdle(meterEl);
+    // VU: analyser/oneshot may still be live (hotkey); else force dark
+    applyVu(resolveDeskVu(false, 0));
     return;
   }
 
-  elapsedEl.textContent = fmtTimer(live.elapsed_ms);
-  remainEl.textContent = fmtTimer(live.remaining_ms);
-  if (meterEl) {
-    meterEl.classList.add("progressing");
-    meterEl.classList.remove("idle");
-    meterEl.style.setProperty("--progress", String(live.progress));
-  }
+  if (elapsedEl) elapsedEl.textContent = fmtTimer(live.elapsed_ms);
+  if (remainEl) remainEl.textContent = fmtTimer(live.remaining_ms);
+  setMeterProgress(meterEl, live.progress);
   applyEndRamp(deckEl, meterEl, live.remaining_ms);
-  const analyserVu =
-    window.MQProgramAudio && typeof window.MQProgramAudio.getVu === "function"
-      ? window.MQProgramAudio.getVu()
-      : null;
-  if (analyserVu && analyserVu.source === "analyser" && analyserVu.playing) {
-    applyVu(analyserVu);
-  } else if (lastStatus && lastStatus.vu && lastStatus.vu.playing) {
-    applyVu({
-      playing: true,
-      left: synthVuLocal(true).left,
-      right: synthVuLocal(true).right,
-    });
-  } else {
-    applyVu(synthVuLocal(true));
-  }
+  applyVu(resolveDeskVu(true, live.progress));
 
   // End-pulse: AUTO advances when remaining enters pulse window (not only EOF)
   const pulseMs = Number(
@@ -775,6 +815,7 @@ async function refresh() {
     const up = Array.isArray(st.upcoming) ? st.upcoming : [];
 
     const onAir = !!(np && np.status === "ON_AIR");
+    const deckOnAir = !!(onAir && (st.running || (st.timing && st.timing.playing)));
     const decks = st.decks && typeof st.decks === "object" ? st.decks : {};
     const active = String(st.active_deck || decks.active || "A").toUpperCase();
     const overlap = !!(st.overlap_active || decks.overlap_active);
@@ -820,7 +861,7 @@ async function refresh() {
     let labelA;
     let labelB;
 
-    if (onAir && (decks.a || decks.b || decks.program)) {
+    if (deckOnAir && (decks.a || decks.b || decks.program)) {
       evA = deckEventFromSlot(decks.a, active === "A" ? np : null);
       evB = deckEventFromSlot(decks.b, active === "B" ? np : null);
       if (active === "A") {
@@ -849,20 +890,14 @@ async function refresh() {
     } else {
       evA = np;
       evB = up[0] || null;
-      stateA = onAir ? "onair" : "onair";
-      labelA = onAir ? "ON AIR" : "CUED";
+      // ON AIR lamp/class only when actually playing — never default to onair when idle
+      stateA = deckOnAir ? "onair" : (np ? "next" : "");
+      labelA = deckOnAir ? "ON AIR" : (np ? "CUED" : "—");
       stateB = assistGo ? "go" : "next";
       labelB = assistGo ? "GO" : "NEXT";
     }
 
     fillDeck("deck-a", evA, stateA, labelA);
-    if (!onAir && np && stateA !== "fading") {
-      const aState = document.getElementById("deck-a-state");
-      if (aState) {
-        aState.className = "deck-state next";
-        aState.textContent = "CUED";
-      }
-    }
     fillDeck("deck-b", evB, stateB, labelB);
     // READY: when B is fading/GO, promote upcoming[0] into C
     let cEv = up[1] || null;
@@ -877,12 +912,12 @@ async function refresh() {
     const deckAEl = document.getElementById("deck-a");
     const deckBEl = document.getElementById("deck-b");
     if (deckAEl) {
-      deckAEl.classList.toggle("is-program", active === "A" && onAir);
+      deckAEl.classList.toggle("is-program", active === "A" && deckOnAir);
       deckAEl.classList.toggle("is-fading", stateA === "fading");
       deckAEl.classList.toggle("assist-go", stateA === "go");
     }
     if (deckBEl) {
-      deckBEl.classList.toggle("is-program", active === "B" && onAir);
+      deckBEl.classList.toggle("is-program", active === "B" && deckOnAir);
       deckBEl.classList.toggle("is-fading", stateB === "fading");
       deckBEl.classList.toggle("assist-go", stateB === "go");
     }
@@ -913,7 +948,9 @@ async function refresh() {
 
     const lampOn = document.getElementById("lamp-onair");
     const lampReady = document.getElementById("lamp-ready");
-    if (lampOn) lampOn.classList.toggle("lit", !!onAir);
+    // Lit only while actually playing — never with idle 0:00 timers
+    const reallyOnAir = !!(onAir && (st.running || (st.timing && st.timing.playing)));
+    if (lampOn) lampOn.classList.toggle("lit", reallyOnAir);
     if (lampReady) lampReady.classList.toggle("lit", !!up[0]);
     const procSt = document.getElementById("proc-status");
     if (procSt && st.processing) {
@@ -1140,6 +1177,24 @@ async function postAction(path) {
   if (window.MQProgramAudio) window.MQProgramAudio.resume();
   const dateEl = document.getElementById("log-date");
   const date = (dateEl && dateEl.value) || todayISO();
+  const isStop = String(path || "").indexOf("/api/stop") >= 0;
+  if (isStop) {
+    // Immediate idle UI — don't wait for status poll (VU/meter stuck on STOP)
+    timingSnap.playing = false;
+    timingSnap.progress = 0;
+    timingSnap.elapsed_ms = 0;
+    setMeterIdle(document.getElementById("deck-a-meter"));
+    setMeterIdle(document.getElementById("deck-b-meter"));
+    setMeterIdle(document.getElementById("deck-c-meter"));
+    applyVu(synthVuLocal(false));
+    const aState = document.getElementById("deck-a-state");
+    if (aState && /ON AIR/i.test(aState.textContent || "")) {
+      aState.className = "deck-state next";
+      aState.textContent = "CUED";
+    }
+    const lampOn = document.getElementById("lamp-onair");
+    if (lampOn) lampOn.classList.remove("lit");
+  }
   let res = {};
   try {
     const r = await fetch(`${path}?date=${date}`, { method: "POST" });
@@ -1161,6 +1216,10 @@ async function postAction(path) {
     await refresh();
   } catch (_) {
     /* refresh already self-guards */
+  }
+  if (isStop) {
+    setMeterIdle(document.getElementById("deck-a-meter"));
+    applyVu(synthVuLocal(false));
   }
 }
 

@@ -99,7 +99,7 @@
       <article class="deck deck-a" id="deck-a" data-deck="A">
         <header class="deck-head">
           <span class="deck-id">DECK A</span>
-          <span class="deck-state onair" id="deck-a-state">ON AIR</span>
+          <span class="deck-state" id="deck-a-state">—</span>
         </header>
         <div class="deck-body">
           <div class="deck-type" id="deck-a-type">—</div>
@@ -124,7 +124,7 @@
             </div>
           </div>
           <div class="deck-meter" aria-hidden="true">
-            <div class="meter-bar" id="deck-a-meter"></div>
+            <div class="meter-bar idle" id="deck-a-meter" style="--progress: 0"></div>
           </div>
         </div>
       </article>
@@ -176,11 +176,20 @@
 
     <div class="ingest-strip" id="ingest-strip">
       <div class="drop-zone" id="drop-zone" tabindex="0"
-           title="Drop .wav .mp3 .flac .mp4 here to ingest as library carts">
+           title="Drop .wav .mp3 .flac .mp4 here to import">
         <span class="drop-icon">⬇</span>
-        <span class="drop-text"><strong>Import audio</strong> — drop or click · wav / mp3 / flac / mp4 → library carts</span>
-        <input type="file" id="ingest-file-input" accept=".wav,.mp3,.flac,.mp4,.m4a,.ogg,.aac,.mov,.mkv,audio/*,video/mp4" multiple hidden />
+        <span class="drop-text"><strong>Import audio</strong> — drop or Browse · wav / mp3 / flac / mp4</span>
+        <input type="file" id="ingest-file-input" class="ingest-file-input-sr" accept=".wav,.mp3,.flac,.mp4,.m4a,.ogg,.aac,.mov,.mkv,audio/*,video/mp4" multiple />
         <button type="button" class="btn-nav" id="btn-ingest-browse" title="Choose audio files to import">Import audio</button>
+      </div>
+      <div class="ingest-dest" title="Where imported carts go after library write">
+        <label for="ingest-dest">Send to</label>
+        <select id="ingest-dest" aria-label="Import destination">
+          <option value="library" selected>Library only</option>
+          <option value="living_log">Living Log / playlist</option>
+          <option value="hotkey">Hotkey cart</option>
+          <option value="deck_a">Cue Deck A</option>
+        </select>
       </div>
       <div class="ingest-actions">
         <button type="button" id="btn-segment-editor" class="btn-nav" title="Cut long carts into shorter segments">Cut segment…</button>

@@ -427,17 +427,15 @@ html, body {
 }
 .meter-bar {
   height: 100%;
-  width: 62%;
-  background: repeating-linear-gradient(
-    90deg,
-    #22cc44 0 3px,
-    #111 3px 4px
-  );
-  animation: meter-pulse 0.9s steps(4) infinite;
+  width: 0;
+  min-width: 0;
+  background: #1a1a1a;
+  animation: none;
 }
 .meter-bar.idle {
-  width: 8%;
-  background: #444;
+  width: 0;
+  min-width: 0;
+  background: #1a1a1a;
   animation: none;
 }
 @keyframes meter-pulse {
@@ -755,11 +753,24 @@ input { border-radius: 0; }
   animation: end-pulse 0.35s steps(2) infinite;
 }
 
-/* Progress-driven meter width (JS sets --progress) */
+/* Progress-driven meter. Default/idle = empty dark (never 62% green).
+   JS also sets inline width for belt-and-braces against stale CSS. */
+.meter-bar.idle,
+.meter-bar:not(.progressing) {
+  width: 0 !important;
+  min-width: 0 !important;
+  background: #1a1a1a !important;
+  animation: none !important;
+}
 .meter-bar.progressing {
   animation: none;
   width: calc(var(--progress, 0) * 100%);
-  min-width: 2%;
+  min-width: 0;
+  background: repeating-linear-gradient(
+    90deg,
+    #22cc44 0 3px,
+    #111 3px 4px
+  );
   transition: width 0.2s linear, background 0.25s ease;
 }
 
@@ -2623,4 +2634,39 @@ body:has(.desk-hybrid) .settings-dialog {
   border-color: rgba(220, 180, 90, 0.45);
   background: rgba(56, 44, 20, 0.4);
   color: #f0e0c0;
+}
+
+/* Import destination (Send to) */
+.ingest-dest {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #ccc;
+}
+.ingest-dest label { white-space: nowrap; }
+.ingest-dest select {
+  font-size: 11px;
+  padding: 3px 6px;
+  background: #1a1a1a;
+  color: #eee;
+  border: 1px solid #666;
+  max-width: 160px;
+}
+.ingest-file-input-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.desk.desk-hybrid .ingest-dest select {
+  background: #0f172a;
+  border-color: #334155;
+  color: #e2e8f0;
 }

@@ -161,7 +161,7 @@ def _status_audio_route():
 
 
 def _synthetic_vu() -> dict:
-    """Classic stereo VU levels driven by MockEngine play session (synthetic analyser)."""
+    """Classic stereo VU levels driven by MockEngine play session or hotkey oneshot."""
     import math
     import time as _time
 
@@ -170,6 +170,13 @@ def _synthetic_vu() -> dict:
         started = SESSION.started_at
         dur = SESSION.duration_ms or 0
         etype = SESSION.event_type or ""
+        oneshot = dict(SESSION.oneshot) if SESSION.oneshot else None
+    # Prefer Living Log program; else hotkey oneshot so VU moves during over-program fire
+    if (not running or started is None) and oneshot and oneshot.get("started_at"):
+        started = float(oneshot["started_at"])
+        dur = int(oneshot.get("duration_ms") or 0)
+        etype = str(oneshot.get("event_type") or "SWEEPER")
+        running = True
     if not running or started is None:
         return {"playing": False, "left": 0.0, "right": 0.0, "peak_left": 0.0, "peak_right": 0.0}
     elapsed = max(0.0, _time.time() - started)
