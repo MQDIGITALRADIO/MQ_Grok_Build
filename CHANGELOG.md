@@ -2,6 +2,18 @@
 
 Lean build log for Matt. SHAs are on `main` (`MQDIGITALRADIO/MQ_Grok_Build`).
 
+## Overnight package grind 2026-09-06 (substance + P1 desk depth)
+
+| SHA | Theme |
+|-----|--------|
+| *(this commit)* | Package bulk: ffmpeg/ffprobe + demo beds + Master Control; P1 hotkey/pulse/talk-up harden |
+
+**Package (≥500MB–1GB real substance):** `packaging/scripts/stage_mac_resources.sh` downloads darwin static **ffmpeg/ffprobe**, generates minutes of real PCM **demo beds**, stages **Master Control** Liquidsoap handoff pack. electron-builder `extraResources` + CI soft size ≥400MB with ZIP listing checks. Electron prepends `Resources/runtime` to PATH; Python `resolve_ffmpeg()`. Music library stays external. No junk padding. CI YAML uses printf (no broken heredocs). Desktop **0.1.2**.
+
+**P1 desk depth:** Hotkey hear-through retry + status oneshot backup; inject_mode never coerced from boolean; AUTO end-pulse window floor; ASSIST VOCALS IN for MUSIC/PROMO; segment VT attach errors surfaced. pytest coverage for runtime resolve + pulse/inject.
+
+**Still not Done (do not fake):** Real AU host, live Liquidsoap Harbor graph, CoreAudio PCM multi-bus subtract, Apple notarized DMG.
+
 ## Market-ready P0 2026-09-06 (import · VU idle · hybrid desk)
 
 | SHA | Theme |

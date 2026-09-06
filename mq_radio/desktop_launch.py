@@ -48,7 +48,35 @@ def bootstrap_if_needed(db_path: Path) -> None:
     print("[MQ Radio] Demo ready.", flush=True)
 
 
+def _prepend_bundled_runtime() -> None:
+    """Ensure Electron-staged ffmpeg/ffprobe/liquidsoap are on PATH."""
+    runtime = os.environ.get("MQ_RADIO_RUNTIME_DIR")
+    candidates = []
+    if runtime:
+        candidates.append(Path(runtime))
+    if getattr(sys, "frozen", False):
+        exe_dir = Path(sys.executable).resolve().parent
+        candidates.append(exe_dir.parent / "runtime")
+        candidates.append(exe_dir / "runtime")
+    for root in candidates:
+        if not root.is_dir():
+            continue
+        parts = [
+            root / "ffmpeg",
+            root / "ffprobe",
+            root / "liquidsoap",
+            root,
+        ]
+        extras = [str(x) for x in parts if x.is_dir()]
+        if extras:
+            os.environ["PATH"] = os.pathsep.join(extras + [os.environ.get("PATH", "")])
+            os.environ.setdefault("MQ_RADIO_RUNTIME_DIR", str(root))
+            print(f"[MQ Radio] Bundled runtime on PATH: {root}", flush=True)
+            return
+
+
 def main() -> int:
+    _prepend_bundled_runtime()
     host = os.environ.get("MQ_RADIO_HOST", "127.0.0.1")
     port = int(os.environ.get("MQ_RADIO_PORT", "8080"))
     db_path = _configure_paths()

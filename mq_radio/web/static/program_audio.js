@@ -900,6 +900,9 @@
       return;
     }
 
+    // Hotkey oneshot hear-through backup (status-driven)
+    try { await syncOneshotFromStatus(st); } catch (_) {}
+
     // Steady-state: keep program deck in sync
     if (programChanged || !activeDeck.el || activeDeck.el.paused) {
       const ok = await playProgram(programUrl, {
@@ -925,7 +928,35 @@
     }
   }
 
+  let _oneshotStatusKey = "";
+
+  async function syncOneshotFromStatus(st) {
+    // Backup hear-through: engine oneshot with playable_url → desk audio if not already on it
+    const shot = st && st.oneshot;
+    if (!shot || !shot.active) {
+      _oneshotStatusKey = "";
+      return;
+    }
+    const url = shot.playable_url;
+    if (!url) return;
+    const key = String(shot.started_at || "") + "|" + url + "|" + (shot.label || "");
+    if (key === _oneshotStatusKey) return;
+    const already =
+      oneshotEl &&
+      !oneshotEl.paused &&
+      oneshotEl.src &&
+      (oneshotEl.src.indexOf(url) >= 0 ||
+        (shot.path && oneshotEl.src.indexOf(encodeURIComponent(shot.path)) >= 0));
+    if (already) {
+      _oneshotStatusKey = key;
+      return;
+    }
+    _oneshotStatusKey = key;
+    await playOneShot(url, shot.label || "Hotkey");
+  }
+
   async function playOneShot(url, label) {
+
     if (!url) return false;
     await resume();
     connectOneshotMedia();
@@ -1243,6 +1274,7 @@
     startCrossfade,
     syncFromStatus,
     playOneShot,
+    syncOneshotFromStatus,
     getVu,
     flashEndPulse,
     flashFirePulse,

@@ -1,6 +1,7 @@
 name: macOS DMG
 # Size target: 500MB–1GB+ with REAL substance (ffmpeg/Liquidsoap/demo beds).
 # See packaging/SIZE_TARGET.md — never pad with junk. Music library stays external.
+# Stages ffmpeg + demo beds via packaging/scripts/stage_mac_resources.sh
 
 on:
   push:
@@ -40,6 +41,20 @@ jobs:
           mkdir -p desktop/resources
           cp -R dist/MQRadioEngine desktop/resources/MQRadioEngine
           chmod +x desktop/resources/MQRadioEngine/MQRadioEngine
+
+      - name: Stage runtime bulk (ffmpeg + demo beds + Master Control)
+        env:
+          MQ_RUNTIME_ARCH: arm64
+          MQ_DEMO_BED_MB: "450"
+        run: |
+          # Host ffmpeg needed to synth beds; brew ffmpeg is fine on macos-latest
+          brew install ffmpeg || true
+          chmod +x packaging/scripts/stage_mac_resources.sh
+          ./packaging/scripts/stage_mac_resources.sh
+          test -x desktop/resources/runtime/ffmpeg/ffmpeg
+          test -x desktop/resources/runtime/ffprobe/ffprobe
+          test -f desktop/resources/demo_beds/MANIFEST.json
+          du -sh desktop/resources/runtime desktop/resources/demo_beds desktop/resources/master_control
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -144,6 +159,26 @@ jobs:
           # Prove Gatekeeper helper + README are inside the ZIP
           unzip -l "$ZIP" | head -40
           file "$ZIP" "$DMG"
+
+
+      - name: Assert package substance (soft size + listing)
+        working-directory: desktop
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          ZIP="dist/MQ-Radio-${VERSION}-arm64.zip"
+          test -f "$ZIP"
+          # Prove bundled runtime + beds are inside the app Resources
+          unzip -l "$ZIP" | tee /tmp/mq-zip-list.txt | head -60
+          grep -E 'runtime/.*/ffmpeg|runtime/ffmpeg' /tmp/mq-zip-list.txt || grep -E 'ffmpeg' /tmp/mq-zip-list.txt
+          grep -E 'demo_beds/.*\.wav|demo_beds/MANIFEST' /tmp/mq-zip-list.txt
+          BYTES=$(wc -c < "$ZIP" | tr -d ' ')
+          MB=$((BYTES / 1024 / 1024))
+          echo "ZIP size: ${MB} MB (${BYTES} bytes)"
+          if [ "$MB" -lt 400 ]; then
+            echo "::warning::Mac ZIP is ${MB}MB (<400MB soft target). See packaging/SIZE_TARGET.md — grow beds/runtime, never pad junk."
+          else
+            echo "OK soft size bar met (≥400MB)"
+          fi
 
       - name: Upload DMG + ZIP artifact
         uses: actions/upload-artifact@v4

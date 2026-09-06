@@ -262,6 +262,11 @@ def make_handler(db_path: Path):
                     overlap = SESSION.overlap_active
                     assist_go = SESSION.assist_go_ready
                     oneshot = SESSION.oneshot_snapshot()
+                if oneshot:
+                    oneshot = dict(oneshot)
+                    ourl = playable_url(oneshot.get("path") or "", oneshot.get("track_id"))
+                    if ourl:
+                        oneshot["playable_url"] = ourl
                 # Enrich deck playable URLs
                 def _enrich_deck(slot):
                     if not slot:
@@ -576,9 +581,11 @@ def make_handler(db_path: Path):
                 file_path = payload.get("path") or payload.get("file_path")
                 label = payload.get("label") or "Hotkey"
                 etype = (payload.get("type") or payload.get("event_type") or "SWEEPER")
-                inject_mode = str(
-                    payload.get("inject_mode") or payload.get("inject") or "over_program"
-                ).strip().lower().replace("-", "_")
+                raw_mode = payload.get("inject_mode")
+                if raw_mode is None or raw_mode is True or raw_mode is False:
+                    # Never coerce boolean inject flag into mode string
+                    raw_mode = "over_program"
+                inject_mode = str(raw_mode or "over_program").strip().lower().replace("-", "_")
                 do_inject = payload.get("inject", True)
                 if isinstance(do_inject, str):
                     do_inject = do_inject.strip().lower() not in ("0", "false", "no", "off")

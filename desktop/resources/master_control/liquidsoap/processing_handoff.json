@@ -1,0 +1,268 @@
+{
+  "version": 3,
+  "kind": "mq_radio_processing_handoff",
+  "engine_target": "liquidsoap",
+  "status": "stub",
+  "notes": "MQ native on-air processing handoff \u2014 NOT an Orban Optimod schematic clone. Topology is public broadcast practice: AGC \u2192 EQ \u2192 Multiband \u2192 Exciter \u2192 Peak Limiter. Browser On-Air is the live Program processor (desk or transmission_mode). Server peak/AGC stub: mq_radio.production.transmission_dsp.process_wav_file on exported WAV. Mac/Liquidsoap should wire these params on the transmission path; AU/AAX hosting remains later.",
+  "topology": "AGC / Leveler \u2192 EQ \u2192 Multiband \u2192 Exciter / Presence \u2192 Peak Limiter",
+  "stage_order": [
+    "agc",
+    "eq",
+    "multiband",
+    "exciter",
+    "limiter"
+  ],
+  "stage_labels": {
+    "agc": "AGC / Leveler",
+    "eq": "EQ",
+    "multiband": "Multiband",
+    "exciter": "Exciter / Presence",
+    "limiter": "Peak Limiter"
+  },
+  "current": {
+    "enabled": true,
+    "template": "FM",
+    "transmission_mode": false,
+    "output": {
+      "path": "FM",
+      "preemphasis": true,
+      "preemphasis_us": 50,
+      "stereo_enhance": 0.15
+    },
+    "stages": {
+      "agc": {
+        "enabled": true,
+        "target_db": -15.0,
+        "drive_db": 7.0,
+        "attack_ms": 50.0,
+        "release_ms": 900.0,
+        "gate_db": -42.0
+      },
+      "eq": {
+        "enabled": true,
+        "low_shelf_hz": 120.0,
+        "low_shelf_db": 1.5,
+        "presence_hz": 3200.0,
+        "presence_db": 1.5,
+        "air_hz": 10000.0,
+        "air_db": 0.75,
+        "high_cut_hz": 15000.0
+      },
+      "multiband": {
+        "enabled": true,
+        "bands": 4,
+        "crossovers_hz": [
+          200.0,
+          800.0,
+          3200.0
+        ],
+        "drive_db": [
+          3.5,
+          4.5,
+          4.0,
+          3.0
+        ],
+        "release_ms": [
+          400.0,
+          250.0,
+          180.0,
+          120.0
+        ],
+        "couple": true
+      },
+      "exciter": {
+        "enabled": true,
+        "amount": 0.3,
+        "harmonics": 0.35,
+        "mix": 0.22
+      },
+      "limiter": {
+        "enabled": true,
+        "ceiling_dbfs": -1.0,
+        "release_ms": 35.0,
+        "lookahead_ms": 3.0,
+        "isr": false
+      }
+    },
+    "notes": "Native MQ processing \u2014 AGC\u2192EQ\u2192Multiband\u2192Exciter\u2192Limiter. FM = classic dense on-air; Digital = cleaner streaming/DAB path. Not an Optimod clone; AU plugins are production-bus only (later). transmission_mode=true pushes FM denser / Digital cleaner for audible TX preview."
+  },
+  "liquidsoap_hints": {
+    "input": "harbor / playlist / request.queue (program bus)",
+    "insert_policy": "native_when_empty",
+    "map_stages": {
+      "agc": "compress / normalize (target_db, attack_ms, release_ms)",
+      "eq": "eq.filter / filter.iir (shelf + presence + air + high_cut)",
+      "multiband": "compress.multiband or parallel band compressors at crossovers_hz",
+      "exciter": "subtle harmonic / high-shelf wet-dry (amount, mix) \u2014 keep mild",
+      "limiter": "limit (ceiling_dbfs, lookahead_ms); ISR flag for digital path"
+    },
+    "fm_output": "preemphasis flag + stereo_enhance \u2014 apply only on FM path",
+    "digital_output": "no preemphasis; ISR-aware limiter ceiling",
+    "transmission_mode": "When true, push denser FM (more drive / tighter release) vs cleaner Digital (lower ceiling, milder exciter) \u2014 mirrors browser Program processor TX toggle",
+    "python_stub": "mq_radio.production.transmission_dsp.process_wav_file(src, dst, template=...)",
+    "mix_minus_mac": "Mac engine path: mix_minus_out = program_processed - aux_in_return (polarity invert + sum). Browser Web Audio implements this when Aux capture is live; CoreAudio dual-device subtract remains engine milestone.",
+    "master_control": "Operator path: install Liquidsoap on the Mac playout host, map stages from processing_handoff.json / template_*.json, run as Master Control for TX. Desk Web Audio remains the live Program processor until that graph is live."
+  },
+  "operator_install": {
+    "role": "Master Control / transmission chain (Mac playout host)",
+    "status": "documented \u2014 not auto-installed by MQ Radio DMG",
+    "macos_homebrew": "brew install liquidsoap",
+    "verify": "liquidsoap --version",
+    "config_inputs": [
+      "packaging/liquidsoap/processing_handoff.json",
+      "packaging/liquidsoap/template_fm.json",
+      "packaging/liquidsoap/template_digital.json",
+      "packaging/liquidsoap/mq_processing_stub.liq"
+    ],
+    "steps": [
+      "Install Liquidsoap on the Mac that owns the transmitter / encoder path (Homebrew or official binary).",
+      "Export or copy current FM/Digital params (Settings \u2192 processing export, or regenerate via Python).",
+      "Wire operators in a real .liq: harbor/playlist \u2192 AGC \u2192 EQ \u2192 Multiband \u2192 Exciter \u2192 Limiter \u2192 Icecast/soundcard.",
+      "Honour transmission_mode and output.preemphasis from the handoff JSON (FM denser / Digital cleaner).",
+      "Keep MQ Radio desk as control UI + Living Log; Liquidsoap owns Master Control TX audio."
+    ],
+    "not_included": [
+      "Bundled Liquidsoap binary in the Electron DMG",
+      "Live Telnet/Harbor control from MockEngine (LiquidsoapEngine stub only)",
+      "AU/AAX hosting"
+    ]
+  },
+  "templates": {
+    "FM": {
+      "enabled": true,
+      "insert_policy": "native_when_empty",
+      "template": "FM",
+      "transmission_mode": false,
+      "notes": "Native MQ processing \u2014 AGC\u2192EQ\u2192Multiband\u2192Exciter\u2192Limiter. FM = classic dense on-air; Digital = cleaner streaming/DAB path. Not an Optimod clone; AU plugins are production-bus only (later). transmission_mode=true pushes FM denser / Digital cleaner for audible TX preview.",
+      "stages": {
+        "agc": {
+          "enabled": true,
+          "target_db": -15.0,
+          "drive_db": 7.0,
+          "attack_ms": 50.0,
+          "release_ms": 900.0,
+          "gate_db": -42.0
+        },
+        "eq": {
+          "enabled": true,
+          "low_shelf_hz": 120.0,
+          "low_shelf_db": 1.5,
+          "presence_hz": 3200.0,
+          "presence_db": 1.5,
+          "air_hz": 10000.0,
+          "air_db": 0.75,
+          "high_cut_hz": 15000.0
+        },
+        "multiband": {
+          "enabled": true,
+          "bands": 4,
+          "crossovers_hz": [
+            200.0,
+            800.0,
+            3200.0
+          ],
+          "drive_db": [
+            3.5,
+            4.5,
+            4.0,
+            3.0
+          ],
+          "release_ms": [
+            400.0,
+            250.0,
+            180.0,
+            120.0
+          ],
+          "couple": true
+        },
+        "exciter": {
+          "enabled": true,
+          "amount": 0.3,
+          "harmonics": 0.35,
+          "mix": 0.22
+        },
+        "limiter": {
+          "enabled": true,
+          "ceiling_dbfs": -1.0,
+          "release_ms": 35.0,
+          "lookahead_ms": 3.0,
+          "isr": false
+        }
+      },
+      "output": {
+        "path": "FM",
+        "preemphasis": true,
+        "preemphasis_us": 50,
+        "stereo_enhance": 0.15
+      }
+    },
+    "DIGITAL": {
+      "enabled": true,
+      "insert_policy": "native_when_empty",
+      "template": "DIGITAL",
+      "transmission_mode": false,
+      "notes": "Native MQ processing \u2014 AGC\u2192EQ\u2192Multiband\u2192Exciter\u2192Limiter. FM = classic dense on-air; Digital = cleaner streaming/DAB path. Not an Optimod clone; AU plugins are production-bus only (later). transmission_mode=true pushes FM denser / Digital cleaner for audible TX preview.",
+      "stages": {
+        "agc": {
+          "enabled": true,
+          "target_db": -16.0,
+          "drive_db": 5.0,
+          "attack_ms": 50.0,
+          "release_ms": 1400.0,
+          "gate_db": -42.0
+        },
+        "eq": {
+          "enabled": true,
+          "low_shelf_hz": 120.0,
+          "low_shelf_db": 1.5,
+          "presence_hz": 3200.0,
+          "presence_db": 0.75,
+          "air_hz": 10000.0,
+          "air_db": 0.25,
+          "high_cut_hz": 18000.0
+        },
+        "multiband": {
+          "enabled": true,
+          "bands": 4,
+          "crossovers_hz": [
+            200.0,
+            800.0,
+            3200.0
+          ],
+          "drive_db": [
+            2.5,
+            3.0,
+            2.8,
+            2.0
+          ],
+          "release_ms": [
+            400.0,
+            250.0,
+            180.0,
+            120.0
+          ],
+          "couple": true
+        },
+        "exciter": {
+          "enabled": true,
+          "amount": 0.15,
+          "harmonics": 0.35,
+          "mix": 0.12
+        },
+        "limiter": {
+          "enabled": true,
+          "ceiling_dbfs": -1.0,
+          "release_ms": 50.0,
+          "lookahead_ms": 5.0,
+          "isr": true
+        }
+      },
+      "output": {
+        "path": "DIGITAL",
+        "preemphasis": false,
+        "preemphasis_us": 50,
+        "stereo_enhance": 0.08
+      }
+    }
+  }
+}

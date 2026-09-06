@@ -438,7 +438,11 @@ function syncTimingFromStatus(st) {
     elapsed_ms: Number(t.elapsed_ms || 0),
     remaining_ms: Number(t.remaining_ms || 0),
     progress: Number(t.progress || 0),
-    intro_ms: Number(t.intro_ms || (onAir && nowEv.intro_ms) || 0),
+    intro_ms: Number(
+      (t.intro_ms != null && t.intro_ms !== "" ? t.intro_ms : null) ??
+        (onAir && nowEv && nowEv.intro_ms) ??
+        0
+    ),
     end_pulse_ms: Number(
       t.end_pulse_ms != null
         ? t.end_pulse_ms
@@ -488,11 +492,12 @@ function updateVocalsInPopup(live) {
   // Talk-up is ASSIST / LIVE only — never in AUTO (Maestro-style intro countdown)
   const assistLike = playoutMode === "ASSIST" || playoutMode === "LIVE";
   const introMs = Number(timingSnap.intro_ms || 0);
-  const isMusic = (timingSnap.event_type || "") === "MUSIC";
+  const et = (timingSnap.event_type || "").toUpperCase();
+  const talkUpTypes = et === "MUSIC" || et === "PROMO" || et === "";
   const inIntro =
     assistLike &&
     timingSnap.playing &&
-    isMusic &&
+    talkUpTypes &&
     introMs > 0 &&
     live.elapsed_ms < introMs;
 
@@ -505,7 +510,7 @@ function updateVocalsInPopup(live) {
   if (
     assistLike &&
     timingSnap.playing &&
-    isMusic &&
+    talkUpTypes &&
     introMs > 0 &&
     live.elapsed_ms >= introMs &&
     live.elapsed_ms < introMs + 400 &&
@@ -668,10 +673,13 @@ function tickTimers() {
       ? timingSnap.end_pulse_ms
       : lastStatus && lastStatus.timing && lastStatus.timing.end_pulse_ms) || 0
   );
+  // Treat missing pulse as EOF-only (0); tiny pulses get a 50ms floor so AUTO still chains
+  const pulseWindow = pulseMs > 0 ? Math.max(50, pulseMs) : 0;
   if (
     timingSnap.playing &&
     timingSnap.duration_ms > 0 &&
-    live.remaining_ms <= Math.max(0, pulseMs) &&
+    live.remaining_ms <= pulseWindow &&
+    (pulseWindow > 0 || live.remaining_ms <= 0) &&
     !timingSnap._pulseSent
   ) {
     timingSnap._pulseSent = true;

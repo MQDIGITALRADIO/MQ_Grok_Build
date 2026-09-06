@@ -1,7 +1,7 @@
 {
   "name": "mq-radio",
   "productName": "MQ Radio",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "MQ Radio Automation On-Air Living Log desktop app",
   "main": "main.js",
   "author": "MQ DIGITAL RADIO",
@@ -29,6 +29,27 @@
       {
         "from": "resources/MQRadioEngine",
         "to": "MQRadioEngine",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "resources/runtime",
+        "to": "runtime",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "resources/demo_beds",
+        "to": "demo_beds",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "resources/master_control",
+        "to": "master_control",
         "filter": [
           "**/*"
         ]

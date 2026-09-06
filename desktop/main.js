@@ -60,11 +60,26 @@ function startEngine() {
   const dataDir = path.join(app.getPath('userData'), 'data');
   fs.mkdirSync(dataDir, { recursive: true });
 
+  // Bundled ffmpeg/ffprobe/liquidsoap under Resources/runtime (electron-builder extraResources)
+  const runtimeDir = app.isPackaged
+    ? path.join(process.resourcesPath, 'runtime')
+    : path.join(__dirname, 'resources', 'runtime');
+  const pathExtras = [];
+  for (const sub of ['ffmpeg', 'ffprobe', 'liquidsoap', '']) {
+    const p = sub ? path.join(runtimeDir, sub) : runtimeDir;
+    if (fs.existsSync(p)) pathExtras.push(p);
+  }
+  const envPath = pathExtras.length
+    ? pathExtras.join(path.delimiter) + path.delimiter + (process.env.PATH || '')
+    : process.env.PATH;
+
   const env = {
     ...process.env,
+    PATH: envPath,
     MQ_RADIO_DATA_DIR: dataDir,
     MQ_RADIO_HOST: HOST,
     MQ_RADIO_PORT: String(PORT),
+    MQ_RADIO_RUNTIME_DIR: runtimeDir,
   };
 
   engineProcess = spawn(bin, [], {

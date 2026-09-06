@@ -139,8 +139,90 @@ def save_vt_inbox_path(path: str | Path, data_dir: Optional[Path] = None) -> dic
     return {"ok": True, "path": str(p), "config": str(cfg)}
 
 
+def _bundled_runtime_bins() -> list[Path]:
+    """Locate ffmpeg/ffprobe shipped next to MQRadioEngine (Electron extraResources)."""
+    import sys
+    from mq_radio.config import ROOT
+
+    candidates: list[Path] = []
+    # Electron: resources/runtime/... beside MQRadioEngine
+    env = os.environ.get("MQ_RADIO_RUNTIME_DIR")
+    if env:
+        candidates.append(Path(env))
+    if getattr(sys, "frozen", False):
+        # PyInstaller exe lives in MQRadioEngine/; runtime is sibling under Resources
+        exe_dir = Path(sys.executable).resolve().parent
+        candidates.append(exe_dir.parent / "runtime")
+        candidates.append(exe_dir / "runtime")
+    candidates.append(ROOT / "desktop" / "resources" / "runtime")
+    candidates.append(ROOT / "runtime")
+    return candidates
+
+
+def _is_macho(path: Path) -> bool:
+    """True if file looks like a macOS Mach-O binary (skip on Linux hosts)."""
+    try:
+        with open(path, "rb") as fh:
+            magic = fh.read(4)
+        return magic in (
+            b"\xfe\xed\xfa\xce",
+            b"\xfe\xed\xfa\xcf",
+            b"\xcf\xfa\xed\xfe",
+            b"\xce\xfa\xed\xfe",
+            b"\xca\xfe\xba\xbe",
+        )
+    except OSError:
+        return False
+
+
+def _usable_binary(path: Path) -> bool:
+    if not path.is_file() or not os.access(path, os.X_OK):
+        return False
+    import sys as _sys
+
+    # Darwin static builds are Mach-O — do not prefer them on Linux/CI hosts
+    if _sys.platform != "darwin" and _is_macho(path):
+        return False
+    return True
+
+
+def _find_bundled(names: tuple[str, ...]) -> str | None:
+    for root in _bundled_runtime_bins():
+        for rel in names:
+            p = root / rel
+            if _usable_binary(p):
+                return str(p)
+    return None
+
+
+def resolve_ffmpeg() -> str | None:
+    """Prefer runnable bundled static ffmpeg (Mac app), else PATH."""
+    import sys as _sys
+
+    bundled = _find_bundled(("ffmpeg/ffmpeg", "ffmpeg.bin", "ffmpeg"))
+    path_ff = shutil.which("ffmpeg")
+    # Frozen / Electron Mac: bundled first. Dev Linux: PATH first (skip Mach-O).
+    if getattr(_sys, "frozen", False) or (
+        os.environ.get("MQ_RADIO_RUNTIME_DIR") and _sys.platform == "darwin"
+    ):
+        return bundled or path_ff
+    return path_ff or bundled
+
+
+def resolve_ffprobe() -> str | None:
+    import sys as _sys
+
+    bundled = _find_bundled(("ffprobe/ffprobe", "ffprobe.bin", "ffprobe"))
+    path_ff = shutil.which("ffprobe")
+    if getattr(_sys, "frozen", False) or (
+        os.environ.get("MQ_RADIO_RUNTIME_DIR") and _sys.platform == "darwin"
+    ):
+        return bundled or path_ff or resolve_ffmpeg()
+    return path_ff or bundled or resolve_ffmpeg()
+
+
 def ffmpeg_available() -> bool:
-    return shutil.which("ffmpeg") is not None
+    return resolve_ffmpeg() is not None
 
 
 def _safe_stem(name: str) -> str:
@@ -164,10 +246,11 @@ def probe_duration_ms(path: Path) -> int:
         ms = _duration_ms_wav(path)
         if ms:
             return ms
-    if not shutil.which("ffprobe") and not shutil.which("ffmpeg"):
+    probe = resolve_ffprobe()
+    if not probe:
         return 0
     cmd = [
-        shutil.which("ffprobe") or "ffprobe",
+        probe,
         "-v",
         "error",
         "-show_entries",
@@ -185,17 +268,19 @@ def probe_duration_ms(path: Path) -> int:
 
 def extract_audio_from_video(src: Path, dest: Path) -> dict:
     """Extract audio track from video to WAV via ffmpeg. Falls back with clear error."""
-    if not ffmpeg_available():
+    ff = resolve_ffmpeg()
+    if not ff:
         return {
             "ok": False,
             "error": (
                 "ffmpeg not found — install ffmpeg to extract audio from mp4/mov. "
-                "WAV/MP3 can still be ingested without ffmpeg."
+                "WAV/MP3 can still be ingested without ffmpeg. "
+                "Mac package ships ffmpeg under Resources/runtime/."
             ),
         }
     dest.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
-        "ffmpeg",
+        ff,
         "-y",
         "-i",
         str(src),
@@ -230,17 +315,18 @@ def cut_segment(
     """Cut [in_ms, out_ms) from src to dest (WAV) using ffmpeg."""
     if out_ms <= in_ms:
         return {"ok": False, "error": "out_ms must be greater than in_ms"}
-    if not ffmpeg_available():
+    ff = resolve_ffmpeg()
+    if not ff:
         # Fallback: only allow full-file copy for wav without cut
         return {
             "ok": False,
-            "error": "ffmpeg required to cut segments — install ffmpeg on PATH",
+            "error": "ffmpeg required to cut segments — install ffmpeg or use Mac package runtime",
         }
     dest.parent.mkdir(parents=True, exist_ok=True)
     start = max(0, in_ms) / 1000.0
     dur = (out_ms - in_ms) / 1000.0
     cmd = [
-        "ffmpeg",
+        ff,
         "-y",
         "-ss",
         f"{start:.3f}",

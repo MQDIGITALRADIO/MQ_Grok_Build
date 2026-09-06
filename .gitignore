@@ -32,3 +32,14 @@ data/filler/
 data/processing/
 data/clocks.json
 data/demo_audio/
+
+# Staged Mac package bulk (CI / local stage_mac_resources.sh) — do not commit binaries
+desktop/resources/runtime/ffmpeg/
+desktop/resources/runtime/ffprobe/
+desktop/resources/runtime/liquidsoap/liquidsoap
+desktop/resources/runtime/*.bin
+desktop/resources/demo_beds/*.wav
+desktop/resources/demo_beds/*.json
+!desktop/resources/demo_beds/README.md
+!desktop/resources/demo_beds/.gitkeep
+desktop/resources/master_control/processing/

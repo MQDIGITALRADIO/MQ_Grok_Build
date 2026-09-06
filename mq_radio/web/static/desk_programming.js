@@ -568,13 +568,21 @@
       const url = res && res.playable_url;
       if (url && window.MQProgramAudio && window.MQProgramAudio.playOneShot) {
         played = await window.MQProgramAudio.playOneShot(url, res.label || item.label);
+        if (!played) {
+          // One retry after resume (autoplay / AudioContext quirks)
+          try { await window.MQProgramAudio.resume(); } catch (_) {}
+          played = await window.MQProgramAudio.playOneShot(url, res.label || item.label);
+        }
         if (played && window.MQProgramAudio.flashFirePulse) {
           window.MQProgramAudio.flashFirePulse();
         }
       }
       if (btn) {
         if (played) {
-          // Keep fired look briefly; mark end when oneshot finishes (~estimate)
+          const durGuess = Math.max(
+            900,
+            Math.min(20000, Number((res.inject && res.inject.duration_ms) || res.duration_ms || 4000))
+          );
           setTimeout(() => {
             btn.classList.remove("fired");
             btn.classList.add("hk-ended");
@@ -582,7 +590,7 @@
               window.MQProgramAudio.flashEndPulse("A");
             }
             setTimeout(() => btn.classList.remove("hk-ended"), 320);
-          }, 900);
+          }, Math.min(durGuess, 8000));
         } else {
           setTimeout(() => btn.classList.remove("fired"), 220);
         }
@@ -1056,9 +1064,11 @@
           }).then((r) => r.json());
           if (attach && attach.ok) {
             attachMsg = ` · attached to VT event ${lastVtTakeEventId}`;
+          } else {
+            attachMsg = ` · attach failed: ${(attach && attach.error) || "unknown"}`;
           }
         } catch (e) {
-          attachMsg = "";
+          attachMsg = ` · attach error: ${e && e.message ? e.message : e}`;
         }
       }
       const trimTag = res.trim_mode === "markers_only" ? " · markers-only" : res.trim_mode === "cut" ? " · ffmpeg cut" : "";

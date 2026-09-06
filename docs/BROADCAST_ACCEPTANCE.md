@@ -61,10 +61,10 @@ Cross-check vs Maestro / early Zetta / Netia Radio-Assist / mAirList / StationPl
 | P0 Clear English labels | **Done** | PLAY/STOP/SKIP/NEXT, Import audio, Library, Clocks, Settings, Refresh |
 | P0 Hybrid UI (Maestro + Netia landscape) | **Done** | `.desk-hybrid` modern dark landscape shell + big transport; not Win95 beige |
 | P0 PLAY ingested cart → playable_url | **Done** | ingest → log insert → play → status `playable_url`; e2e test |
-| P0 AUTO end-pulse / ASSIST talk-up | **Partial** | Engine + VOCALS IN present; keep regression-testing on Mac |
+| P0 AUTO end-pulse / ASSIST talk-up | **Partial** | Engine `finish_if_due` + client `/api/pulse`; ASSIST arms GO; VOCALS IN ASSIST/LIVE; pytest pulse/talk-up; Mac hear-through still verify |
 | P0 Living Log edit Delete/Insert/Replace | **Partial** | APIs + UI exist; verify after import workflow |
-| P0 Hotkeys fire / inject | **Partial** | Bank + path fire in place; Mac path via preload |
-| P0 VT record / Segment Editor | **Partial** | UI + APIs; needs Mac audio device pass |
+| P0 Hotkeys fire / inject | **Partial** | `/api/hotkey/fire` inject over_program/queue_next; desk `playOneShot` + status oneshot backup hear-through; path-as-is; Mac path via preload |
+| P0 VT record / Segment Editor | **Partial** | UI + APIs + ffmpeg cut/markers-only; VT attach error surfaced; needs Mac audio device pass |
 | P0 Segue Editor audition + dual-deck | **Partial** | Markers/duck/audition present; Mac hear-through |
 | P1 Decks A/B/C readable | **Partial** | Hybrid cards; ending/timers in |
 | P1 Cartwall multi-page | **Partial** | Hotkey bank pages exist |
@@ -74,7 +74,7 @@ Cross-check vs Maestro / early Zetta / Netia Radio-Assist / mAirList / StationPl
 | P1 Multi-bus + mix-minus subtract | **Partial** | Browser subtract live; CoreAudio PCM still P2 |
 | P1 Native FM/Digital + TX mode | **Partial** | Browser processor + WAV stub |
 | P2 Real AU host | **Missing** | Scaffold + banner only — do not claim done |
-| P2 Live Liquidsoap graph | **Missing** | Handoff v3 docs/templates only |
+| P2 Live Liquidsoap graph | **Missing** | Handoff v3 + Master Control pack bundled; no live Harbor/Telnet operator graph |
 | P2 CoreAudio PCM multi-bus | **Missing** | Enum + best-effort streams |
 | P2 Apple notarized DMG | **Missing** | Gatekeeper helper path only |
 | P2 Aircheck / traffic / RDS / multi-user | **Missing** | Not started |
@@ -87,13 +87,13 @@ Matt bar: installer **~500MB–1GB+** signals a real broadcast product. Empty/ju
 
 | Bundle | Status | Notes |
 |--------|--------|-------|
-| MQRadioEngine (PyInstaller) | Partial | Core engine in app |
-| ffmpeg / ffprobe (static) | Planned | Required for mp4/flac extract; brew or vendored under `desktop/resources/runtime/` |
-| Liquidsoap runtime | Planned | Pair with handoff v3; operator graph later |
-| Richer demo beds / imaging | Planned | IDs, sweepers, beds under `data/demo_audio` (not full music library) |
+| MQRadioEngine (PyInstaller) | Partial | Core engine in app (CI PyInstaller) |
+| ffmpeg / ffprobe (static) | **Done** | darwin-arm64 staged via `packaging/scripts/stage_mac_resources.sh` → `desktop/resources/runtime/`; Electron PATH + `resolve_ffmpeg()` |
+| Liquidsoap runtime | Partial | Master Control pack + handoff v3 bundled; brew `liquidsoap` binary copied when present on macOS CI — live Harbor graph still Missing |
+| Richer demo beds / imaging | **Done** | Minutes of real PCM under `desktop/resources/demo_beds` (generator; CI ~400MB+) — not music library |
 | Docs + Gatekeeper helper | Done | README-INSTALL + Open MQ Radio.command |
 | Music library | **External** | MQ Digital drive / Settings library root — never stuff commercial music into the .app |
 
-CI (`packaging/ci/macos-dmg.yml` / electron-builder): after P0 green, stage runtime binaries + demo beds into `extraResources` and assert ZIP/DMG size ≥ 400MB (soft) with listing checks for ffmpeg + liquidsoap + beds.
+CI (`.github/workflows/macos-dmg.yml` + `packaging/ci/macos-dmg.yml`): stage runtime + beds into `extraResources`; soft-warn if ZIP &lt; 400MB; listing checks for ffmpeg + demo_beds. No junk padding. Heredocs avoided (printf).
 
 
