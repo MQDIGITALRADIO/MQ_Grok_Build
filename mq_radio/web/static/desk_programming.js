@@ -454,51 +454,19 @@
     if (res.ok) closeSegue();
   }
 
-  function auditionSegue() {
+  async function auditionSegue() {
     const duck = Number(document.getElementById("segue-duck").value || -11);
+    const xfade = Number(document.getElementById("segue-xfade").value || 1500);
     const el = document.getElementById("segue-audition-msg");
-    el.textContent = `Audition stub: OUT outro → duck ${duck} dB → VT → IN intro (demo tones silent OK)`;
-    // Web Audio beep stub
+    el.textContent = `Audition: equal-power crossfade ${xfade || 1500}ms · duck ${duck} dB`;
     try {
-      const ac = new (window.AudioContext || window.webkitAudioContext)();
-      const beep = (t, f, g) => {
-        const o = ac.createOscillator();
-        const gain = ac.createGain();
-        o.frequency.value = f;
-        gain.gain.value = g;
-        o.connect(gain);
-        gain.connect(ac.destination);
-        o.start(t);
-        o.stop(t + 0.18);
-      };
-      const now = ac.currentTime;
-      beep(now, 440, 0.08);
-      beep(now + 0.25, 330, 0.08 * Math.pow(10, duck / 20));
-      beep(now + 0.55, 523, 0.09);
-      setTimeout(() => ac.close().catch(() => {}), 1200);
+      if (window.MQProgramAudio && window.MQProgramAudio.auditionSegue) {
+        await window.MQProgramAudio.auditionSegue({
+          crossfadeMs: xfade > 0 ? xfade : 1500,
+          duckDb: duck,
+        });
+      }
     } catch (_) {}
-    msg("Segue audition (stub)");
-  }
-
-  /* —— Hotkeys bank —— */
-  async function loadHotkeys() {
-    const data = await fetch("/api/hotkeys").then((r) => r.json()).catch(() => null);
-    if (!data) return;
-    hotkeysState.hotkeys = data.hotkeys || [];
-    hotkeysState.pages = data.pages || 2;
-    hotkeysState.slots_per_page = data.slots_per_page || 16;
-    renderHotkeyBank();
-  }
-
-  async function persistHotkeys() {
-    const res = await fetch("/api/hotkeys", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ hotkeys: hotkeysState.hotkeys }),
-    }).then((r) => r.json());
-    if (res.hotkeys) hotkeysState.hotkeys = res.hotkeys;
-    msg(res.ok ? "Hotkeys saved" : "Hotkeys save failed");
-    renderHotkeyBank();
   }
 
   function renderHotkeyBank() {

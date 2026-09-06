@@ -211,9 +211,28 @@ def make_handler(db_path: Path):
                     sess_path = SESSION.file_path
                     sess_tid = SESSION.track_id
                     ramp_id = SESSION.ramp_profile
+                    decks = SESSION.decks_snapshot()
+                    segue = dict(SESSION.segue or {})
+                    active_deck = SESSION.active_deck
+                    overlap = SESSION.overlap_active
+                    assist_go = SESSION.assist_go_ready
+                # Enrich deck playable URLs
+                def _enrich_deck(slot):
+                    if not slot:
+                        return None
+                    out = dict(slot)
+                    url = playable_url(out.get("file_path") or "", out.get("track_id"))
+                    if url:
+                        out["playable_url"] = url
+                    return out
+                decks["a"] = _enrich_deck(decks.get("a"))
+                decks["b"] = _enrich_deck(decks.get("b"))
+                decks["program"] = _enrich_deck(decks.get("program"))
+                decks["fading"] = _enrich_deck(decks.get("fading"))
                 play_url = playable_url(sess_path, sess_tid) if (sess_path or sess_tid) else (
                     (now_ev or {}).get("playable_url")
                 )
+                fading_url = (decks.get("fading") or {}).get("playable_url")
                 _json_response(self, {
                     "date": log_date,
                     "now": now_ev,
@@ -225,7 +244,13 @@ def make_handler(db_path: Path):
                     "playout_mode": mode,
                     "auto_advance": auto,
                     "playable_url": play_url,
+                    "fading_playable_url": fading_url,
                     "ramp_profile": ramp_id or ramps.get("active_profile"),
+                    "active_deck": active_deck,
+                    "overlap_active": overlap,
+                    "assist_go_ready": assist_go,
+                    "decks": decks,
+                    "segue": segue,
                     "ramps": {
                         "active_profile": ramps.get("active_profile"),
                         "ai_dj_profile": ramps.get("ai_dj_profile"),
@@ -700,21 +725,32 @@ def make_handler(db_path: Path):
                 return
 
             if path == "/api/pulse":
-                # Client end-pulse flash → honor by finishing current if due/forced
-                force = bool(payload.get("force"))
+                # Client end-pulse / ASSIST GO → overlapping dual-deck advance
+                force = bool(payload.get("force") or payload.get("go"))
                 engine = MockEngine(log_date, db_path=db_path)
-                if force:
-                    st = engine.step()
+                with SESSION.lock:
+                    assist_armed = SESSION.assist_go_ready
+                    mode = SESSION.playout_mode
+                if force or (assist_armed and mode in ("ASSIST", "LIVE")):
+                    st = engine.advance_with_overlap(force=True)
                     advanced = True
                 else:
                     advanced = engine.finish_if_due()
                     st = engine.status()
+                with SESSION.lock:
+                    decks = SESSION.decks_snapshot()
+                    segue = dict(SESSION.segue or {})
                 _json_response(self, {
                     "ok": True,
                     "advanced": advanced,
                     "message": st.message,
                     "running": st.running,
                     "title": st.current_title,
+                    "overlap_active": decks.get("overlap_active"),
+                    "active_deck": decks.get("active"),
+                    "assist_go_ready": decks.get("assist_go_ready"),
+                    "segue": segue,
+                    "decks": decks,
                 })
                 return
 

@@ -1465,3 +1465,41 @@ input { border-radius: 0; }
 .deck.hotkey-pulse {
   box-shadow: inset 0 0 0 2px #44ff88, 0 0 12px rgba(68, 255, 136, 0.45);
 }
+
+
+/* Dual-deck overlapping segue */
+.deck.is-fading {
+  outline: 1px solid #c08020;
+  box-shadow: inset 0 0 18px rgba(192, 128, 32, 0.25);
+  opacity: 0.92;
+}
+.deck.is-fading .deck-state.fading,
+.deck-state.fading {
+  background: #a06010;
+  color: #fff8e0;
+  animation: go-pulse 0.9s ease-in-out infinite;
+}
+.deck.assist-go {
+  outline: 2px solid #20c060;
+  box-shadow: 0 0 14px rgba(32, 192, 96, 0.45);
+}
+.deck-state.go {
+  background: #109040;
+  color: #e8ffe8;
+  animation: go-pulse 0.55s ease-in-out infinite;
+}
+.deck.is-program .deck-head {
+  box-shadow: inset 0 -2px 0 #e8c020;
+}
+.segue-status {
+  margin-top: 4px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: #d0b060;
+  min-height: 1.1em;
+  font-family: var(--mono, ui-monospace, monospace);
+}
+@keyframes go-pulse {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.35); }
+}

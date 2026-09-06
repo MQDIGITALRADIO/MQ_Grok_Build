@@ -236,7 +236,7 @@ function fillDeck(prefix, event, stateClass, stateText) {
   artistEl.title = [event.artist, event.title, fmtDur(event.duration_ms)].filter(Boolean).join(" — ");
   chainEl.textContent = `${event.chain_mode || "—"}/${event.timing_mode || "—"}`;
   durEl.textContent = fmtDur(event.duration_ms);
-  meterEl.className = stateClass === "onair" ? "meter-bar progressing" : "meter-bar idle";
+  meterEl.className = (stateClass === "onair" || stateClass === "fading") ? "meter-bar progressing" : "meter-bar idle";
 
   if (endingEl) {
     endingEl.textContent = endingDisplay(event);
@@ -551,8 +551,15 @@ function tickTimers() {
         .then(() => refresh())
         .catch(() => refresh());
     } else {
-      // ASSIST/LIVE: flash only; operator advances
+      // ASSIST/LIVE: flash end-ramp + arm GO on next deck
       if (window.MQProgramAudio) window.MQProgramAudio.flashEndPulse();
+      fetch("/api/pulse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ force: false }),
+      })
+        .then(() => refresh())
+        .catch(() => refresh());
     }
   }
 
@@ -571,13 +578,115 @@ async function refresh() {
   const up = st.upcoming || [];
 
   const onAir = np && np.status === "ON_AIR";
-  fillDeck("deck-a", np, onAir ? "onair" : "onair", onAir ? "ON AIR" : "CUED");
-  if (!onAir && np) {
+  const decks = st.decks || {};
+  const active = (st.active_deck || decks.active || "A").toUpperCase();
+  const overlap = !!(st.overlap_active || decks.overlap_active);
+  const assistGo = !!(st.assist_go_ready || decks.assist_go_ready);
+  const fading = decks.fading || null;
+
+  // Build display events for A/B from dual-deck session when present
+  function deckEventFromSlot(slot, fallback) {
+    if (!slot) return fallback;
+    return {
+      id: slot.event_id,
+      title: slot.title,
+      artist: slot.artist,
+      event_type: slot.event_type,
+      duration_ms: slot.duration_ms,
+      intro_ms: slot.intro_ms,
+      outro_ms: slot.end_pulse_ms,
+      ending_type: slot.role === "fading" ? "FADE" : undefined,
+      ending_label: slot.role === "fading" ? "SEGUE FADE" : undefined,
+      chain_mode: slot.role === "fading" ? "XFADE" : "SEQ",
+      timing_mode: overlap ? "OVERLAP" : "AUTO",
+      status: slot.role === "program" ? "ON_AIR" : slot.role === "fading" ? "FADING" : "",
+      playable_url: slot.playable_url,
+    };
+  }
+
+  let evA;
+  let evB;
+  let stateA;
+  let stateB;
+  let labelA;
+  let labelB;
+
+  if (onAir && (decks.a || decks.b || decks.program)) {
+    evA = deckEventFromSlot(decks.a, active === "A" ? np : null);
+    evB = deckEventFromSlot(decks.b, active === "B" ? np : null);
+    if (active === "A") {
+      stateA = "onair"; labelA = "ON AIR";
+      if (overlap && fading && (fading.deck || "").toUpperCase() === "B") {
+        stateB = "fading"; labelB = "FADING";
+      } else if (assistGo) {
+        stateB = "go"; labelB = "GO";
+        evB = evB || up[0] || null;
+      } else {
+        stateB = "next"; labelB = "NEXT";
+        evB = evB || up[0] || null;
+      }
+    } else {
+      stateB = "onair"; labelB = "ON AIR";
+      if (overlap && fading && (fading.deck || "").toUpperCase() === "A") {
+        stateA = "fading"; labelA = "FADING";
+      } else if (assistGo) {
+        stateA = "go"; labelA = "GO";
+        evA = evA || up[0] || null;
+      } else {
+        stateA = "next"; labelA = "NEXT";
+        evA = evA || up[0] || null;
+      }
+    }
+  } else {
+    evA = np;
+    evB = up[0] || null;
+    stateA = onAir ? "onair" : "onair";
+    labelA = onAir ? "ON AIR" : "CUED";
+    stateB = assistGo ? "go" : "next";
+    labelB = assistGo ? "GO" : "NEXT";
+  }
+
+  fillDeck("deck-a", evA, stateA, labelA);
+  if (!onAir && np && stateA !== "fading") {
     document.getElementById("deck-a-state").className = "deck-state next";
     document.getElementById("deck-a-state").textContent = "CUED";
   }
-  fillDeck("deck-b", up[0] || null, "next", "NEXT");
-  fillDeck("deck-c", up[1] || null, "ready", "READY");
+  fillDeck("deck-b", evB, stateB, labelB);
+  // READY: when B is fading/GO, promote upcoming[0] into C
+  let cEv = up[1] || null;
+  if (overlap && fading) {
+    cEv = up[0] || null;
+  } else if (assistGo) {
+    cEv = up[1] || null;
+  }
+  fillDeck("deck-c", cEv, "ready", "READY");
+
+  // Visual overlap / GO classes
+  const deckAEl = document.getElementById("deck-a");
+  const deckBEl = document.getElementById("deck-b");
+  if (deckAEl) {
+    deckAEl.classList.toggle("is-program", active === "A" && onAir);
+    deckAEl.classList.toggle("is-fading", stateA === "fading");
+    deckAEl.classList.toggle("assist-go", stateA === "go");
+  }
+  if (deckBEl) {
+    deckBEl.classList.toggle("is-program", active === "B" && onAir);
+    deckBEl.classList.toggle("is-fading", stateB === "fading");
+    deckBEl.classList.toggle("assist-go", stateB === "go");
+  }
+
+  const xfadeEl = document.getElementById("segue-status");
+  if (xfadeEl) {
+    if (overlap && st.segue) {
+      const ms = st.segue.crossfade_ms || 0;
+      const duck = st.segue.duck_db;
+      xfadeEl.textContent = `SEGUE ${ms}ms` + (duck != null ? ` · duck ${duck}dB` : "");
+    } else if (assistGo) {
+      xfadeEl.textContent = "ASSIST GO — press NEXT / Space";
+    } else {
+      xfadeEl.textContent = "";
+    }
+  }
 
   syncTimingFromStatus(st);
   if (window.MQProgramAudio) {
@@ -1143,6 +1252,20 @@ document.addEventListener("keydown", (ev) => {
   }
   if (ev.code === "Space") {
     ev.preventDefault();
+    if (
+      (playoutMode === "ASSIST" || playoutMode === "LIVE") &&
+      lastStatus &&
+      (lastStatus.assist_go_ready || (lastStatus.decks && lastStatus.decks.assist_go_ready))
+    ) {
+      fetch("/api/pulse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ go: true, force: true }),
+      })
+        .then(() => refresh())
+        .catch(() => refresh());
+      return;
+    }
     postAction("/api/play");
     return;
   }

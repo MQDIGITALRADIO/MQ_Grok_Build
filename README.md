@@ -98,7 +98,6 @@ python -m mq_radio serve --host 127.0.0.1 --port 8080
 | `load-sample-hour [--date today] [--hour 12]` | Clear day fluff; load editable 1-hour MANUAL sample |
 
 
-
 ## 24/7 AUTO + jump-in workflow
 
 Matt’s locked vision: automated 24/7 playout he can jump into whenever inspired/free.
@@ -241,7 +240,6 @@ No proprietary logos, trademarks, or pixel-perfect clones. Avoid modern SaaS / S
 **Voice renderer (Settings ⚙ / VT Studio):** Default **Vocloner** (`voice_renderer: vocloner` in `data/vocloner.json` + `localStorage`). Preferred model/voice notes field; **Render in Vocloner** copies script → opens https://vocloner.com/.
 
 
-
 ## On-Air desk — VU, carts, ingest, Segment Editor, VT inbox, processing
 
 **PROGRAM VU:** Stereo LED meter on the top strip. Fed from Web Audio AnalyserNode on the program bus when carts/hotkeys play; synthetic fallback when the graph is idle. Peak-hold readout in dB; greens/ambers/reds like a classic on-air desk.
@@ -262,7 +260,6 @@ No proprietary logos, trademarks, or pixel-perfect clones. Avoid modern SaaS / S
 API highlights: `POST /api/library/ingest`, `POST /api/library/segment`, `POST /api/vt/import-inbox`, `GET|POST /api/settings/processing`, `vu` + `processing` on `/api/status`.
 
 
-
 ## Broadcast-ready bar (production-desk vs mock)
 
 Matt’s release bar: next DMG must meet **broadcast-ready specs**, not a thin stub ship.
@@ -278,6 +275,7 @@ Matt’s release bar: next DMG must meet **broadcast-ready specs**, not a thin s
 - **Hotkey / one-shot carts** store **absolute path references** and fire without copying into the library; library ingest only on explicit drop/import
 - **Native on-air processing** templates **FM** + **Digital** (AGC→EQ→Multiband→Exciter→Limiter) persisted in `data/processing.json` and applied in the browser On-Air Web Audio graph (audible template switch)
 - **End-pulse AUTO advance**: ingest outro/end-pulse marks; MockEngine fires next Living Log event on pulse (not only EOF); ASSIST/LIVE hold
+- **Overlapping dual-deck segue**: AUTO end-pulse starts the next Living Log cart on the **other** deck while the current fades (classic overlap). Web Audio: dual MediaElementSources (deck A/B) with crossfade gains into the program processing chain (equal-power + optional duck). Segue Editor markers (`from_outro_mark_ms` / `to_intro_mark_ms` / `vt_*` / `duck_db` / `crossfade_ms`) drive the overlap when present; otherwise defaults from end-pulse/outro. `/api/status` exposes `decks` A/B, `active_deck`, `overlap_active`, `segue`. ASSIST/LIVE arm **GO** on pulse (Space or STEP fires overlapping advance).
 - **AI DJ / overnight volume ramps**: fade in/out profiles applied on the program play path (`data/ramps.json`)
 - **Hotkey one-shot audio**: resolved path/track plays through the On-Air program bus with fire/end pulse flash
 - **MQ Digital library root** + VT inbox paths in Settings (ingest lands under configured root)
@@ -289,7 +287,6 @@ Matt’s release bar: next DMG must meet **broadcast-ready specs**, not a thin s
 - **AU/AAX hosting**: insert slot + config only — **not** hosting plugins on-air; optional AU remains later Mac *production-bus* feature
 - **True multiband DSP / hardware chain**: browser On-Air graph approximates AGC/EQ/multiband/exciter/limiter so FM vs Digital is audible; Liquidsoap/Mac engine still owns transmission-path processing
 - **Hotkey path on pure web**: browsers hide absolute paths — Electron/desktop provides `File.path`; web UI asks operator to paste path
-- **Overlapping dual-deck segue audio**: end-pulse advances the Living Log in AUTO; true crossfade overlap decks remain later
 
 ## Mac install (DMG)
 

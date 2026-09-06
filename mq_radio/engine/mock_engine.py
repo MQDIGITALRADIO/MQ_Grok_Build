@@ -1,20 +1,22 @@
-"""MockEngine — Living Log playout with real ON-AIR hold for timers.
+"""MockEngine — Living Log playout with overlapping dual-deck segue.
 
-AUTO honors end-pulse (ingest outro_ms): advances the next Living Log event when
-the cart enters its end-pulse window — not only at absolute EOF.
+AUTO honors end-pulse (ingest outro_ms): starts the next cart on the other
+deck while the current cart fades (classic overlapping segue), using Segue
+Editor markers (out/VT/in, duck, crossfade) when present.
 """
 
 from __future__ import annotations
 
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 from mq_radio.db.connection import get_connection
 from mq_radio.engine.base import EngineState, PlayoutEngine
-from mq_radio.engine.session import SESSION
+from mq_radio.engine.session import FadingDeck, SESSION
 from mq_radio.production.ramps import profile_for_context
+from mq_radio.segue.service import resolve_overlap_params
 
 
 def _resolve_end_pulse(outro_ms: int, duration_ms: int) -> int:
@@ -81,7 +83,7 @@ class MockEngine(PlayoutEngine):
             (daily_log_id,),
         ).fetchone()
 
-    def _bind_session(self, ev, duration: int) -> None:
+    def _bind_session(self, ev, duration: int, *, keep_overlap: bool = False) -> None:
         keys = ev.keys() if hasattr(ev, "keys") else ev
         intro = int(ev["intro_ms"] or 0) if "intro_ms" in keys else 0
         outro = int(ev["outro_ms"] or 0) if "outro_ms" in keys else 0
@@ -118,8 +120,30 @@ class MockEngine(PlayoutEngine):
             SESSION.track_id = track_id
             SESSION.file_path = file_path
             SESSION.ramp_profile = str(ramp.get("id") or "default")
+            SESSION.assist_go_ready = False
+            if not keep_overlap:
+                SESSION.clear_overlap()
 
-    def _start_event(self, conn, ev) -> EngineState:
+    def _snapshot_fading(self) -> FadingDeck:
+        with SESSION.lock:
+            timing = SESSION.timing()
+            return FadingDeck(
+                event_id=SESSION.event_id,
+                title=SESSION.title,
+                artist=SESSION.artist,
+                event_type=SESSION.event_type,
+                duration_ms=SESSION.duration_ms,
+                started_at=SESSION.started_at,
+                elapsed_at_fade=int(timing.get("elapsed_ms") or 0),
+                end_pulse_ms=SESSION.end_pulse_ms,
+                intro_ms=SESSION.intro_ms,
+                track_id=SESSION.track_id,
+                file_path=SESSION.file_path,
+                ramp_profile=SESSION.ramp_profile,
+                deck=SESSION.active_deck,
+            )
+
+    def _start_event(self, conn, ev, *, keep_overlap: bool = False) -> EngineState:
         conn.execute(
             "UPDATE log_events SET status='COMMITTED' WHERE status='ON_AIR' AND id!=?",
             (ev["id"],),
@@ -127,7 +151,7 @@ class MockEngine(PlayoutEngine):
         conn.execute("UPDATE log_events SET status='ON_AIR' WHERE id=?", (ev["id"],))
         conn.commit()
         duration = _air_duration(ev)
-        self._bind_session(ev, duration)
+        self._bind_session(ev, duration, keep_overlap=keep_overlap)
         self._state = EngineState(
             running=True,
             current_event_id=int(ev["id"]),
@@ -141,7 +165,7 @@ class MockEngine(PlayoutEngine):
         )
         return self._state
 
-    def _complete_current(self, conn, outcome: str = "PLAYED") -> Optional[dict]:
+    def _complete_current(self, conn, outcome: str = "PLAYED", *, clear_session: bool = True) -> Optional[dict]:
         with SESSION.lock:
             event_id = SESSION.event_id
             duration_ms = SESSION.duration_ms
@@ -150,11 +174,12 @@ class MockEngine(PlayoutEngine):
         ev = conn.execute("SELECT * FROM log_events WHERE id=?", (event_id,)).fetchone()
         if not ev:
             with SESSION.lock:
-                SESSION.clear()
+                if clear_session:
+                    SESSION.clear()
             return None
         status = "SKIPPED" if outcome == "SKIPPED" else "COMPLETED"
         conn.execute("UPDATE log_events SET status=? WHERE id=?", (status, event_id))
-        played_at = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+        played_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
         conn.execute(
             """INSERT INTO as_played
                (log_event_id, track_id, played_at, scheduled_at, event_type, title, artist, duration_ms, outcome, engine)
@@ -178,11 +203,18 @@ class MockEngine(PlayoutEngine):
                 (played_at, ev["track_id"]),
             )
         conn.commit()
-        with SESSION.lock:
-            SESSION.clear()
+        if clear_session:
+            with SESSION.lock:
+                SESSION.clear()
         return dict(ev)
 
+    def _clear_fade_if_due(self) -> None:
+        with SESSION.lock:
+            if SESSION.overlap_active and SESSION.fade_due():
+                SESSION.clear_overlap()
+
     def play(self) -> EngineState:
+        self._clear_fade_if_due()
         conn = get_connection(self.db_path)
         did = self._daily_log_id(conn)
         if not did:
@@ -225,6 +257,7 @@ class MockEngine(PlayoutEngine):
             event_id = SESSION.event_id
             SESSION.clear()
             SESSION.running = False
+            SESSION.active_deck = "A"
         if event_id:
             conn = get_connection(self.db_path)
             conn.execute(
@@ -245,6 +278,8 @@ class MockEngine(PlayoutEngine):
             self._state.message = "no log"
             return self._state
         self._complete_current(conn, outcome="SKIPPED")
+        with SESSION.lock:
+            SESSION.clear_overlap()
         if SESSION.event_id is None:
             ev = self._next_event(conn, did)
             if ev:
@@ -257,36 +292,153 @@ class MockEngine(PlayoutEngine):
         return self.play()
 
     def step(self) -> EngineState:
-        """Advance: complete current if any, then start next."""
+        """Advance with overlapping segue when a next cart exists."""
+        return self.advance_with_overlap(force=True)
+
+    def advance_with_overlap(self, *, force: bool = False) -> EngineState:
+        """Complete current (as-played), start next on the other deck, keep fade.
+
+        force=True: operator NEXT / ASSIST GO / step — always advance if possible.
+        force=False: only when pulse_due/finished (AUTO path).
+        """
+        self._clear_fade_if_due()
         conn = get_connection(self.db_path)
         did = self._daily_log_id(conn)
         if not did:
             conn.close()
             self._state.message = "no daily log — generate-log first"
             return self._state
-        self._complete_current(conn, outcome="PLAYED")
+
+        with SESSION.lock:
+            has_current = SESSION.event_id is not None and SESSION.started_at is not None
+            timing = SESSION.timing() if has_current else {}
+            running = SESSION.running
+            auto = SESSION.auto_advance
+            mode = SESSION.playout_mode
+            due = bool(timing.get("pulse_due") or timing.get("finished"))
+            from_id = SESSION.event_id
+            end_pulse = SESSION.end_pulse_ms
+            from_outro = SESSION.end_pulse_ms
+            outgoing_deck = SESSION.active_deck
+
+        if has_current and not force and not due:
+            conn.close()
+            return self.status()
+
+        # ASSIST/LIVE without force: arm GO instead of chaining
+        if has_current and not force and not auto and mode in ("ASSIST", "LIVE"):
+            if due:
+                with SESSION.lock:
+                    SESSION.assist_go_ready = True
+                # Still complete+hold? Classic ASSIST holds — mark assist ready only
+                conn.close()
+                self._state.message = "ASSIST GO — next armed"
+                return self.status()
+            conn.close()
+            return self.status()
+
+        next_ev = self._next_event(conn, did)
+        if not has_current:
+            conn.close()
+            return self.play()
+
+        if not next_ev:
+            # Nothing to overlap onto — finish cleanly
+            self._complete_current(conn, outcome="PLAYED")
+            with SESSION.lock:
+                SESSION.clear_overlap()
+            conn.close()
+            self._state.running = False
+            self._state.message = "log empty"
+            return self._state
+
+        # Resolve Segue Editor markers / defaults
+        to_intro = int(next_ev["intro_ms"] or 0) if "intro_ms" in next_ev.keys() else 0
+        params = resolve_overlap_params(
+            from_id,
+            int(next_ev["id"]),
+            end_pulse_ms=int(end_pulse or 0),
+            from_outro_ms=int(from_outro or 0),
+            to_intro_ms=to_intro,
+            next_event_type=next_ev["event_type"] or "",
+            db_path=self.db_path,
+        )
+
+        fading = self._snapshot_fading()
+        # Complete outgoing without clearing session yet
+        self._complete_current(conn, outcome="PLAYED", clear_session=False)
+
+        # Flip program deck to the other side and start incoming
+        with SESSION.lock:
+            SESSION.flip_deck()
+            incoming_deck = SESSION.active_deck
+            SESSION.fading = fading
+            SESSION.overlap_active = True
+            SESSION.assist_go_ready = False
+            SESSION.segue = {
+                **params,
+                "started_at": time.time(),
+                "outgoing_deck": outgoing_deck,
+                "incoming_deck": incoming_deck,
+            }
+
+        st = self._start_event(conn, next_ev, keep_overlap=True)
+        # Re-apply overlap after _start_event keep_overlap path
+        with SESSION.lock:
+            SESSION.fading = fading
+            SESSION.overlap_active = True
+            SESSION.segue = {
+                **params,
+                "started_at": time.time(),
+                "outgoing_deck": outgoing_deck,
+                "incoming_deck": SESSION.active_deck,
+            }
+            st.message = (
+                f"SEGUE {outgoing_deck}→{SESSION.active_deck} "
+                f"xfade {params['crossfade_ms']}ms · {st.message}"
+            )
         conn.close()
-        return self.play()
+        if not running and not force:
+            pass
+        return st
 
     def finish_if_due(self) -> bool:
-        """Complete ON AIR cart on end-pulse (AUTO) or EOF; chain next if auto_advance."""
+        """Complete ON AIR cart on end-pulse (AUTO) or EOF; overlapping chain if auto_advance."""
+        self._clear_fade_if_due()
         with SESSION.lock:
             if SESSION.started_at is None or SESSION.event_id is None:
                 return False
             timing = SESSION.timing()
             running = SESSION.running
             auto = SESSION.auto_advance
+            mode = SESSION.playout_mode
             due = bool(timing.get("pulse_due") or timing.get("finished"))
         if not due:
             return False
+
+        if not auto and mode in ("ASSIST", "LIVE"):
+            # Hold after pulse; arm GO for operator overlapping advance
+            with SESSION.lock:
+                SESSION.assist_go_ready = True
+            # If finished (EOF), still complete so we don't stick forever — but don't auto chain
+            if timing.get("finished"):
+                conn = get_connection(self.db_path)
+                self._complete_current(conn, outcome="PLAYED")
+                conn.close()
+            return True
+
+        if running and auto:
+            self.advance_with_overlap(force=False)
+            return True
+
+        # Fallback: complete without chain
         conn = get_connection(self.db_path)
         self._complete_current(conn, outcome="PLAYED")
         conn.close()
-        if running and auto:
-            self.play()
         return True
 
     def status(self) -> EngineState:
+        self._clear_fade_if_due()
         with SESSION.lock:
             self._state.running = SESSION.running
             self._state.current_event_id = SESSION.event_id

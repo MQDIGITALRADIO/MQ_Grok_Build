@@ -193,3 +193,75 @@ def segue_context_for_event(event_id: int, db_path: Optional[Path] = None) -> di
             "to_intro_mark_ms": default_intro,
         },
     }
+
+
+def resolve_overlap_params(
+    from_event_id: Optional[int],
+    to_event_id: Optional[int],
+    *,
+    end_pulse_ms: int = 0,
+    from_outro_ms: int = 0,
+    to_intro_ms: int = 0,
+    next_event_type: str = "",
+    db_path: Optional[Path] = None,
+) -> dict:
+    """Resolve crossfade/duck/marks for an overlapping dual-deck segue.
+
+    Prefers Segue Editor row when present; otherwise derives a broadcast-sensible
+    default from end-pulse / outro / intro marks.
+    """
+    from mq_radio.engine.session import DEFAULT_CROSSFADE_MS
+
+    link = None
+    if from_event_id and to_event_id:
+        link = get_segue(int(from_event_id), int(to_event_id), db_path=db_path)
+
+    duck = DEFAULT_DUCK_DB
+    crossfade = 0
+    from_outro_mark = int(from_outro_ms or 0)
+    to_intro_mark = int(to_intro_ms or 0)
+    vt_event_id = None
+    vt_in_ms = 0
+    vt_out_ms = None
+    notes = ""
+
+    if link:
+        duck = float(link.get("duck_db") if link.get("duck_db") is not None else DEFAULT_DUCK_DB)
+        crossfade = int(link.get("crossfade_ms") or 0)
+        from_outro_mark = int(link.get("from_outro_mark_ms") or from_outro_mark or 0)
+        to_intro_mark = int(link.get("to_intro_mark_ms") or to_intro_mark or 0)
+        vt_event_id = link.get("vt_event_id")
+        vt_in_ms = int(link.get("vt_in_ms") or 0)
+        vt_out_ms = link.get("vt_out_ms")
+        notes = link.get("notes") or ""
+
+    # Derive crossfade when editor left it at 0
+    if crossfade <= 0:
+        candidates = [p for p in (from_outro_mark, int(end_pulse_ms or 0)) if p and p > 0]
+        if candidates:
+            crossfade = min(max(candidates), 8000)
+        elif (next_event_type or "").upper() == "VOICE_TRACK":
+            crossfade = 800
+        else:
+            crossfade = DEFAULT_CROSSFADE_MS
+    crossfade = max(120, min(int(crossfade), 12000))
+
+    # Without an editor link, music→music uses equal-power only (no bed duck).
+    # Editor duck_db always wins when a segue_links row exists; VT beds keep default -11.
+    et = (next_event_type or "").upper()
+    if link is None and vt_event_id is None and et != "VOICE_TRACK":
+        duck = 0.0
+
+    return {
+        "from_event_id": from_event_id,
+        "to_event_id": to_event_id,
+        "vt_event_id": int(vt_event_id) if vt_event_id is not None else None,
+        "from_outro_mark_ms": from_outro_mark,
+        "to_intro_mark_ms": to_intro_mark,
+        "vt_in_ms": vt_in_ms,
+        "vt_out_ms": int(vt_out_ms) if vt_out_ms is not None else None,
+        "duck_db": float(duck),
+        "crossfade_ms": crossfade,
+        "notes": notes,
+        "has_editor_link": link is not None,
+    }
