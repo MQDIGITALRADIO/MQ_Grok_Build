@@ -361,11 +361,11 @@ Matt’s release bar: next DMG must meet **broadcast-ready specs**, not a thin s
 - **Liquidsoap processing handoff stub**: `packaging/liquidsoap/` (+ `data/processing/`) JSON + `.liq` snippet for FM/Digital templates — not a full Optimod clone (`POST /api/settings/processing/export`)
 - **MQ Digital library root** + VT inbox paths in Settings (ingest lands under configured root)
 - **Studio routing matrix**: Program (processed, **primary**), Monitor, Headphones, Aux 1/2, **Mix-minus ↔ Aux input** (`{out, aux_in, paired}`), Stream, Record — persisted; Mac opens best-effort CoreAudio streams per bus when `sounddevice` is available
-- **Program AU insert architecture**: path `source → [AU insert if set] → native processing → device`; `(none) / Native only` + optional `auval` names persisted; empty/none → native; AU selected without host → `au_insert_inactive`
+- **Program AU insert architecture**: path `source → [AU insert if set] → native processing → device`; `(none) / Native only` + optional `auval` names persisted; empty/none → native; AU selected without host → `au_insert_inactive` + operator message *native chain active — AU host not loaded*; interface `mq_radio/engine/au_insert.py` (`load`→`process` raises); Electron plan `desktop/au_insert/README.md`
 
 ### Still mock / deferred (called out, not fake-ready)
 - **Device enumeration + multi-bus routing**: `GET /api/audio/devices` + `audio_router` / `audio_route` on status — Program **primary** CoreAudio stream on Mac (`sounddevice`) + best-effort Monitor/Mix-minus/Stream/Record/Headphones/Aux; browser sink; mock multi-bus on Linux/web. Mix-minus `{out, aux_in, paired, subtract_active}`
-- **AU insert architecture** (not a full host): Program path `source → [AU insert if set] → native processing → device`; selected AU name persisted; without host → `au_insert_inactive` + native still runs. Optional Electron host later — see `desktop/main.js`
+- **AU insert architecture** (not a full host): Program path `source → [AU insert if set] → native processing → device`; selected AU name persisted; without host → `au_insert_inactive` + *native chain active — AU host not loaded* + native still runs. Python `au_insert.load/process` raises; Electron native-addon plan — `desktop/au_insert/README.md`
 - **True multiband / Mac Liquidsoap chain**: browser On-Air is the live Program processor (desk/TX mode); server WAV peak/AGC stub for offline preview; handoff v2 documents Liquidsoap wiring — full operator graph still Mac-later
 - **Hotkey engine inject on real Liquidsoap**: MockEngine inject works now; Liquidsoap telnet/harbor inject remains later
 - **Hotkey path on pure web**: browsers hide absolute paths — Electron/Mac app resolves via `webUtils.getPathForFile` (preload); web UI asks operator to paste path
@@ -399,6 +399,9 @@ Settings → **ON-AIR PROCESSING**: public broadcast topology **AGC → EQ → M
 - **Program processor** — *Desk* (milder) or *Transmission* (aggressive FM vs Digital — audible).
 Audible on the Web Audio program bus (template audition on Load). Offline WAV peak/AGC stub + Liquidsoap handoff v2; full Mac Liquidsoap chain later. Not an Orban clone.
 
+### Program AU insert
+Settings → **PROGRAM INSERT**: optional AU name on the Program path. Empty / Native only → MQ native chain is Program. Selecting an AU persists the choice and shows **Native chain active — AU host not loaded** (plugins are not processed). Docs: `desktop/au_insert/README.md`. Real host = Electron native addon or Mac helper — not claimed yet.
+
 ### Mix-minus
 Settings → routing matrix: **Mix-minus ↔ Aux input** for caller/Zoom return.
 Browser On-Air: when Aux capture is live, Web Audio subtracts Aux from processed Program (`mix_minus.subtract_active` via `POST /api/audio/mix-minus`). Without capture → pairing-only. Mac engine path: `program_processed − aux_return → mix_minus device` (CoreAudio PCM still later). Device dropdowns use `/api/audio/devices`.
@@ -428,7 +431,7 @@ Matt return brief — major SHAs this wave (see `CHANGELOG.md` for the table):
 - **Gatekeeper helper** — `639b2b4`
 - **Electron hotkey absolute-path drop** — preload `webUtils` (this polish); web still pastes path
 
-**Still deferred — do not claim DMG bar met:** real **AU/AAX hosting** (architecture + `au_insert_inactive` warning only — plugins are not loaded), Mac/Liquidsoap **full** transmission operator graph (browser TX mode + WAV stub + handoff v2 are in), CoreAudio **PCM** mix-minus subtract (browser Web Audio subtract is in). Multi-bus CoreAudio *stream open* (Program primary + best-effort secondaries) and device enumeration are in.
+**Still deferred — do not claim DMG bar met:** real **AU/AAX hosting** (interface + Settings banner + `au_insert_inactive` — plugins are not loaded; see `desktop/au_insert/README.md`), Mac/Liquidsoap **full** transmission operator graph (browser TX mode + WAV stub + handoff v2 are in), CoreAudio **PCM** mix-minus subtract (browser Web Audio subtract is in). Multi-bus CoreAudio *stream open* (Program primary + best-effort secondaries) and device enumeration are in.
 
 ## Mac install (DMG)
 

@@ -34,16 +34,17 @@ Without Aux capture, pairing-only behaviour remains (``subtract_active=false``).
 CoreAudio dual-device PCM subtract is still an engine milestone; browser graph
 is the live subtract today.
 
-Program insert chain (AU architecture stub — not a full AU host)
-----------------------------------------------------------------
+Program insert chain (AU architecture — not a full AU host)
+-------------------------------------------------------------
 Documented Program path::
 
     source → [AU insert if set] → native processing → device
 
-Selected AU name/slot persists via Settings ``insert``. Without an AU host
-(current Mac/Electron/Python paths), if insert is a real AU (``au:…``) the
-status warns ``au_insert_inactive`` and **native processing still runs**.
-Electron may host AUs later; see ``desktop/main.js`` note.
+Interface: ``mq_radio.engine.au_insert`` (``load(name)`` → ``process(buffer)``).
+Selected AU name/slot persists via Settings ``insert``. Without an AU host,
+``process()`` raises ``AuHostNotAvailable``, status warns ``au_insert_inactive``
+with operator message *native chain active — AU host not loaded*, and **native
+processing still runs**. Electron native-addon path: ``desktop/au_insert/README.md``.
 """
 
 from __future__ import annotations
@@ -55,6 +56,7 @@ import time
 from typing import Any, Optional
 
 from mq_radio.engine.audio_devices import list_audio_devices
+from mq_radio.engine import au_insert as au_insert_mod
 
 # Program is primary; everything else is best-effort secondary.
 PRIMARY_BUS = "program"
@@ -164,27 +166,36 @@ def _normalize_insert(insert: Optional[dict[str, Any]]) -> dict[str, Any]:
 
 def _au_insert_status(insert: dict[str, Any], *, host_available: bool = False) -> dict[str, Any]:
     """AU insert architecture status — warn when selected but no host."""
-    slot = insert.get("slot") or "none"
-    wants_au = bool(slot) and slot not in _NATIVE_INSERT_SLOTS
-    # Explicit au: prefix or any non-native slot counts as "AU selected"
-    if slot.startswith("au:"):
-        wants_au = True
-    active = bool(wants_au and host_available)
+    # Shared module status (docs / operator_message / probe); host flag from router.
+    # Router starts from au_insert.host_available(); a future Electron addon may
+    # flip ``_au_host_available`` only when a real Program-bus graph is live.
+    base = au_insert_mod.status_for_insert(insert)
+    slot = insert.get("slot") or base.get("slot") or "none"
+    wants_au = au_insert_mod.is_au_slot(str(slot))
+    host_ok = bool(host_available)
+    active = bool(wants_au and host_ok)
     warning = None
-    if wants_au and not host_available:
+    if wants_au and not host_ok:
         warning = "au_insert_inactive"
     return {
         "slot": slot,
-        "name": insert.get("name"),
+        "name": insert.get("name") or base.get("name"),
         "label": insert.get("label"),
         "mode": insert.get("mode"),
         "active": active,
-        "host_available": host_available,
+        "host_available": host_ok,
         "warning": warning,
-        # Chain: AU (if hosted) sits before native; native always remains on the path
         "chain": PROGRAM_PATH,
         "native_runs": True,
+        "operator_message": (
+            au_insert_mod.OPERATOR_INACTIVE_MSG if warning else None
+        ),
+        "docs": au_insert_mod.DOCS_RELPATH,
+        "docs_url": au_insert_mod.DOCS_URL,
+        "interface": "mq_radio.engine.au_insert",
+        "probe": base.get("probe") or au_insert_mod.probe_pyobjc(),
     }
+
 
 
 def _mix_minus_pairing(
@@ -332,8 +343,8 @@ class AudioRouter:
         self._applied_at: Optional[float] = None
         self._note: str = "Router idle — apply Settings to open Program route."
         self._warnings: list[str] = []
-        # No AU host in Python/Electron yet — future Electron host flips this
-        self._au_host_available: bool = False
+        # No AU host until au_insert.host_available() is real (Electron addon / Mac helper)
+        self._au_host_available: bool = bool(au_insert_mod.host_available())
         # Browser (or future Mac engine) reports live Program−Aux subtract
         self._mix_minus_subtract_active: bool = False
         self._mix_minus_subtract_mode: Optional[str] = None

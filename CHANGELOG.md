@@ -2,6 +2,21 @@
 
 Lean build log for Matt. SHAs are on `main` (`MQDIGITALRADIO/MQ_Grok_Build`).
 
+## Away session 2026-09-06 (AU insert interface + Settings UX)
+
+| SHA | Theme |
+|-----|--------|
+| *(this commit)* | AU insert `load`/`process` scaffold + Settings inactive banner |
+| `c5c48a3` | Mix-minus Program−Aux subtract + transmission DSP depth |
+| `8172f9e` | Multi-bus CoreAudio/mock router + AU insert architecture stub |
+
+**AU insert (not a host):** `mq_radio/engine/au_insert.py` defines `load(name) → process(buffer)` — raises `AuHostNotAvailable` / `NotImplementedError` until a real Mac host exists (never silent passthrough). `desktop/au_insert/README.md` documents the Electron native-addon path. Settings shows **Native chain active — AU host not loaded** when an AU is selected, with docs link. Status adds `operator_message` / `docs` / `docs_url`. Native MQ chain still runs.
+
+### Still deferred (not DMG-bar met)
+- Real **AU/AAX hosting** (plugin DSP on Program bus — interface + warning only)
+- Mac/Liquidsoap **full** transmission chain (browser Program processor + WAV peak/AGC stub + handoff stub — not a live Liquidsoap operator graph)
+- CoreAudio **PCM** mix-minus subtract on dual devices (browser graph is live subtract today)
+
 ## Away session 2026-09-06 (mix-minus subtract + TX DSP)
 
 | SHA | Theme |

@@ -452,18 +452,29 @@
           <button type="button" class="btn-dialog primary" id="btn-open-clock-editor">Open Clock Editor…</button>
         </div>
 
-        <div class="settings-section-title">PROGRAM INSERT (AU stub)</div>
+        <div class="settings-section-title">PROGRAM INSERT (AU architecture)</div>
         <p class="settings-intro">
-          Optional insert on the Program / On-Air path. When the slot is
-          <strong>(none)</strong> or <strong>Native only</strong>, the MQ native
-          chain (AGC→EQ→Multiband→Exciter→Limiter) is the main output.
+          Optional insert on the Program / On-Air path:
+          <code>source → [AU insert if set] → native processing → device</code>.
+          When the slot is <strong>(none)</strong> or <strong>Native only</strong>,
+          the MQ native chain (AGC→EQ→Multiband→Exciter→Limiter) is the main output.
           On macOS, installed Audio Units may appear as read-only names (via
-          <code>auval</code>) — <strong>hosting</strong> them on the Program bus
-          is still Mac-later / production-bus work. This slot persists the choice.
+          <code>auval</code>). Selecting an AU <strong>persists the name only</strong> —
+          plugins are not loaded until a real Mac host ships
+          (<code>mq_radio/engine/au_insert.py</code> + <code>desktop/au_insert/</code>).
         </p>
         <div class="audio-route-row">
           <label for="prog-insert">Insert</label>
           <select id="prog-insert"></select>
+        </div>
+        <div id="au-insert-banner" class="au-insert-banner" hidden role="status" aria-live="polite">
+          <div class="au-insert-banner-title">Native chain active — AU host not loaded</div>
+          <p class="au-insert-banner-body">
+            Selected Audio Unit is remembered for a future host. Program audio
+            continues through the <strong>native</strong> MQ chain — the plugin is
+            <em>not</em> processing buffers.
+            <a id="au-insert-docs-link" href="https://github.com/MQDIGITALRADIO/MQ_Grok_Build/blob/main/desktop/au_insert/README.md" target="_blank" rel="noopener noreferrer">AU insert docs</a>
+          </p>
         </div>
 
         <div class="settings-section-title">STUDIO ROUTING</div>

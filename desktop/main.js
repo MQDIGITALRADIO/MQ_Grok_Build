@@ -2,13 +2,15 @@
  * MQ Radio — Electron shell.
  * Starts the bundled MQRadioEngine (Python On-Air server) and opens the UI.
  *
- * Future AU host (not implemented): the Program path is
+ * AU insert (architecture only — not hosted): Program path is
  *   source → [AU insert if set] → native processing → device
+ * Python contract: mq_radio/engine/au_insert.py (load → process raises).
+ * Electron native-addon plan: desktop/au_insert/README.md
  * Selected AU name persists in Settings (`insert.slot` / `insert.name`).
- * Until this shell (or a native helper) hosts Audio Units, the engine sets
- * `audio_route.au_insert.warning = "au_insert_inactive"` and still runs native.
- * A future Mac build may load the selected AU in-process or via a helper bridge;
- * do not claim AU hosting until that path is real.
+ * Until this shell hosts Audio Units, the engine sets
+ * `audio_route.au_insert.warning = "au_insert_inactive"`,
+ * operator_message "native chain active — AU host not loaded", and still
+ * runs native. Do not claim AU hosting until that path is real.
  */
 const { app, BrowserWindow, dialog, shell } = require('electron');
 const { spawn } = require('child_process');

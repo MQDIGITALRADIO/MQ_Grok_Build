@@ -1195,6 +1195,20 @@ function outSelectId(role) {
   return `out-${role}`;
 }
 
+function updateAuInsertBanner(slot) {
+  const banner = document.getElementById("au-insert-banner");
+  if (!banner) return;
+  const s = String(slot || "none");
+  const wantsAu = s.startsWith("au:") || (s !== "none" && s !== "native_only" && s !== "");
+  if (wantsAu) {
+    banner.hidden = false;
+    banner.removeAttribute("hidden");
+  } else {
+    banner.hidden = true;
+    banner.setAttribute("hidden", "");
+  }
+}
+
 function populateSettingsForm(bundle, devicesPayload) {
   const routes = bundle.outputs || bundle;
   const inputs = bundle.inputs || DEFAULT_AUDIO_INPUTS;
@@ -1240,6 +1254,11 @@ function populateSettingsForm(bundle, devicesPayload) {
     const slot = insert.slot || "none";
     if ([...ins.options].some((o) => o.value === slot)) ins.value = slot;
     else ins.value = "none";
+    updateAuInsertBanner(ins.value);
+    if (!ins.dataset.auBannerBound) {
+      ins.dataset.auBannerBound = "1";
+      ins.addEventListener("change", () => updateAuInsertBanner(ins.value));
+    }
   }
 
   const badge = document.getElementById("audio-device-source");
@@ -1267,10 +1286,12 @@ function readSettingsForm() {
   };
   const slot = document.getElementById("prog-insert")?.value || "none";
   const insertOpts = (liveAudioDevices && liveAudioDevices.insert_options) || INSERT_OPTIONS;
+  const insertLabel = insertOpts.find((o) => o.id === slot)?.label || slot;
   const insert = {
     slot,
     mode: slot === "native_only" ? "force_native" : slot.startsWith("au:") ? "au_insert" : "native_when_empty",
-    label: insertOpts.find((o) => o.id === slot)?.label || slot,
+    label: insertLabel,
+    name: insertLabel,
   };
   return { outputs, inputs, insert };
 }
