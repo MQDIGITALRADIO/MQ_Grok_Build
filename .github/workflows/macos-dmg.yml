@@ -45,7 +45,7 @@ jobs:
       - name: Stage runtime bulk (ffmpeg + demo beds + Master Control)
         env:
           MQ_RUNTIME_ARCH: arm64
-          MQ_DEMO_BED_MB: "450"
+          MQ_DEMO_BED_MB: "850"
         run: |
           # Host ffmpeg needed to synth beds; brew ffmpeg is fine on macos-latest
           brew install ffmpeg || true
@@ -55,6 +55,11 @@ jobs:
           test -x desktop/resources/runtime/ffprobe/ffprobe
           test -f desktop/resources/demo_beds/MANIFEST.json
           du -sh desktop/resources/runtime desktop/resources/demo_beds desktop/resources/master_control
+          BED_MB=$(du -sm desktop/resources/demo_beds | awk '{print $1}')
+          echo "Staged demo beds: ${BED_MB} MB"
+          if [ "${BED_MB}" -lt 500 ]; then
+            echo "::warning::Staged demo beds ${BED_MB}MB < 500MB soft floor"
+          fi
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -174,10 +179,19 @@ jobs:
           BYTES=$(wc -c < "$ZIP" | tr -d ' ')
           MB=$((BYTES / 1024 / 1024))
           echo "ZIP size: ${MB} MB (${BYTES} bytes)"
-          if [ "$MB" -lt 400 ]; then
-            echo "::warning::Mac ZIP is ${MB}MB (<400MB soft target). See packaging/SIZE_TARGET.md — grow beds/runtime, never pad junk."
+          if [ "$MB" -lt 500 ]; then
+            echo "::warning::Mac ZIP is ${MB}MB (<500MB soft target). See packaging/SIZE_TARGET.md — grow beds/runtime, never pad junk."
           else
-            echo "OK soft size bar met (≥400MB)"
+            echo "OK soft size bar met (≥500MB)"
+          fi
+          DMG="dist/MQ-Radio-${VERSION}-arm64.dmg"
+          if [ -f "$DMG" ]; then
+            DBYTES=$(wc -c < "$DMG" | tr -d ' ')
+            DMB=$((DBYTES / 1024 / 1024))
+            echo "DMG size: ${DMB} MB (${DBYTES} bytes)"
+            if [ "$DMB" -lt 500 ]; then
+              echo "::warning::Mac DMG is ${DMB}MB (<500MB soft target). See packaging/SIZE_TARGET.md."
+            fi
           fi
 
       - name: Upload DMG + ZIP artifact

@@ -15,7 +15,7 @@ BEDS="$RES/demo_beds"
 MC="$RES/master_control"
 FFMPEG_TAG="${MQ_FFMPEG_STATIC_TAG:-b6.1.1}"
 FFMPEG_BASE="https://github.com/eugeneware/ffmpeg-static/releases/download/${FFMPEG_TAG}"
-TARGET_BED_MB="${MQ_DEMO_BED_MB:-450}"
+TARGET_BED_MB="${MQ_DEMO_BED_MB:-850}"
 ARCH="${MQ_RUNTIME_ARCH:-arm64}"
 
 echo "==> MQ Radio stage_mac_resources (arch=$ARCH beds≈${TARGET_BED_MB}MB)"
@@ -82,8 +82,14 @@ stage_beds() {
   fi
   python3 "$ROOT/packaging/scripts/generate_demo_beds.py" \
     --target-mb "$TARGET_BED_MB" \
-    --min-mb 80 \
+    --min-mb 500 \
     --out "$BEDS"
+  # Soft floor: packaged ZIP/DMG target is 500MB–1GB; beds are the bulk
+  BED_MB="$(du -sm "$BEDS" | awk '{print $1}')"
+  echo "  demo beds staged: ${BED_MB} MB"
+  if [ "${BED_MB}" -lt 500 ]; then
+    echo "WARN: demo beds ${BED_MB}MB < 500MB soft floor — raise MQ_DEMO_BED_MB" >&2
+  fi
 }
 
 stage_master_control() {
@@ -172,4 +178,12 @@ du -sh "$RES" 2>/dev/null || true
 test -x "$RUNTIME/ffmpeg/ffmpeg"
 test -x "$RUNTIME/ffprobe/ffprobe"
 test -f "$BEDS/MANIFEST.json"
+WAV_COUNT="$(find "$BEDS" -name '*.wav' | wc -l | tr -d ' ')"
+test "${WAV_COUNT}" -ge 1
+RES_MB="$(du -sm "$RES" | awk '{print $1}')"
+echo "  resources total: ${RES_MB} MB (${WAV_COUNT} bed WAVs)"
+# Soft warn: staged bulk alone should clear ~500MB so ZIP/DMG land 500MB–1GB
+if [ "${RES_MB}" -lt 500 ]; then
+  echo "WARN: staged resources ${RES_MB}MB < 500MB soft floor (ZIP/DMG may undershoot). See packaging/SIZE_TARGET.md" >&2
+fi
 echo "OK stage_mac_resources complete"

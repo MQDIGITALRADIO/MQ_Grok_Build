@@ -146,3 +146,27 @@ def test_demo_beds_manifest_shape_when_present():
     assert data.get("kind") == "mq_radio_demo_beds"
     assert data.get("mb", 0) >= 1
     assert data.get("files")
+
+
+def test_generate_demo_beds_dry_run_catalog_hits_soft_floor(tmp_path: Path):
+    """Catalog estimator should clear ~500MB soft floor at default CI target."""
+    import subprocess
+    import sys
+
+    script = Path(__file__).resolve().parents[1] / "packaging" / "scripts" / "generate_demo_beds.py"
+    proc = subprocess.run(
+        [sys.executable, str(script), "--dry-run", "--target-mb", "850", "--min-mb", "500"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    out = proc.stdout
+    assert "DRY-RUN" in out
+    # "33 beds ≈ 728 MB" style
+    assert "MB" in out
+    # Parse approximate MB
+    import re
+
+    m = re.search(r"≈\s*(\d+)\s*MB", out)
+    assert m, out
+    assert int(m.group(1)) >= 500

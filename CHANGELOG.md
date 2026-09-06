@@ -2,6 +2,36 @@
 
 Lean build log for Matt. SHAs are on `main` (`MQDIGITALRADIO/MQ_Grok_Build`).
 
+## Desk grind 2026-09-06 (0.1.2 · P1 Done + first-run empty harden)
+
+| SHA | Theme |
+|-----|--------|
+| *(this commit)* | Desktop **0.1.2**; P1 library/clocks/FILLER/ETM Done; On-Air empty/error harden; ~637MB package notes |
+
+**Version:** Desktop packaging **0.1.2** (`desktop/package.json`, `build_info.DESKTOP_VERSION`, titlebar badge, preload fallback). Release notes: Mac package **~637MB** substance class (bundled **ffmpeg** + **demo beds** + Master Control + engine — not junk; music library stays external).
+
+**P1 → Done (pytest + HTTP e2e, no Mac audio required):**
+- Categories / Library manager + FILLER pool toward ETM/HIT
+- Clocks + daypart packs (clone / daypart save / generate_hour map)
+- TO TIME / ETM hard fill stretch·compress·filler
+- Dual-deck engine crossfade proven without CoreAudio (Segue audition still Partial — Mac hear-through)
+
+**On-Air first-run Mac operators:** Welcome tip step list; empty Living Log / empty decks spell Import → Clocks → PLAY; engine offline points at `Open MQ Radio.command` (Gatekeeper); PLAY on empty log returns operator-clear message; `engine-msg` error/hint/ok classes.
+
+**Still not Done (do not fake):** Real AU host, live Liquidsoap Harbor, CoreAudio PCM multi-bus, notarization; AUTO/hotkey/VT/segue Mac hear-through; Segue audition.
+
+## Package size grind 2026-09-06 (500MB–1GB beds)
+
+| SHA | Theme |
+|-----|--------|
+| *(this commit)* | Grow demo beds + soft-warn ≥500MB; noise-textured PCM so ZIP/DMG hold size |
+
+**Why:** v0.1.2-preview ZIP/DMG landed ~301/351 MB — sine-heavy beds DEFLATE away. Matt treats &lt;500 MB (even toward 1 GB) as inadequate.
+
+**Change:** `MQ_DEMO_BED_MB` default/CI **850**; more/longer IDs, sweepers, liners, VT/news/overnight beds via `generate_demo_beds.py` (noise-dominant textures). Soft-warn staged beds, resources, ZIP, and DMG below **500 MB**. Listing checks for ffmpeg + beds unchanged. Music library stays external. No fake AU / live Liquidsoap / notarization.
+
+**Expected package:** ZIP ~650–750 MB · DMG ~670–800 MB (Electron+ffmpeg+engine + ~850 MB raw beds @ ~0.5 ZIP ratio).
+
 ## Desk harden 2026-09-06 (P0 Living Log Done + Partial depth)
 
 | SHA | Theme |
