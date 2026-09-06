@@ -42,6 +42,8 @@
           <span>TO TIME <strong id="to-time">--:--</strong></span>
           <span class="sep">|</span>
           <span>ETM <strong id="etm-readout">—</strong></span>
+          <span class="sep">|</span>
+          <span class="etm-kind" id="etm-kind" title="Next hard marker from Living Log">—</span>
         </div>
       </div>
 
@@ -188,6 +190,27 @@
             <button type="button" id="btn-render-vocloner" class="btn-chrome btn-ai" title="Copy selected/approved VT script and open Vocloner">Render in Vocloner</button>
           </div>
         </div>
+        <div class="log-filter-bar" id="log-filter-bar" title="Filter is presentation-only — Delete/Insert/Replace still use the selected row id">
+          <label class="log-filter-label">FILTER
+            <select id="log-filter-type" aria-label="Filter by type">
+              <option value="">ALL TYPES</option>
+              <option value="MUSIC">MUSIC</option>
+              <option value="ID">ID</option>
+              <option value="SWEEPER">SWEEPER</option>
+              <option value="PROMO">PROMO</option>
+              <option value="VOICE_TRACK">VT</option>
+              <option value="ETM">ETM</option>
+              <option value="BREAK">BREAK</option>
+              <option value="BED">BED</option>
+              <option value="FILLER">FILLER</option>
+            </select>
+          </label>
+          <input type="search" id="log-filter-artist" placeholder="Artist…" autocomplete="off" aria-label="Filter by artist" />
+          <input type="search" id="log-filter-title" placeholder="Title…" autocomplete="off" aria-label="Filter by title" />
+          <input type="search" id="log-filter-chain" placeholder="Chain…" autocomplete="off" aria-label="Filter by chain" />
+          <button type="button" id="log-filter-clear" class="btn-chrome btn-ai" title="Clear filters">Clear</button>
+          <span class="panel-hint" id="log-filter-count"></span>
+        </div>
         <div class="log-scroll">
           <table class="log-table">
             <thead>
@@ -236,12 +259,13 @@
   </div>
 
 
-  <!-- Live Assist: seconds until vocals (talk-up) -->
+  <!-- ASSIST / LIVE only: Maestro-style intro talk-up countdown (cart intro_ms) -->
   <div class="vocals-in-popup" id="vocals-in-popup" hidden aria-live="assertive">
     <div class="vocals-in-inner">
+      <div class="vocals-in-mode" id="vocals-in-mode">ASSIST</div>
       <div class="vocals-in-label">VOCALS IN</div>
-      <div class="vocals-in-count" id="vocals-in-count">0</div>
-      <div class="vocals-in-sub">TALK UP · INTRO</div>
+      <div class="vocals-in-count" id="vocals-in-count">0.0</div>
+      <div class="vocals-in-sub" id="vocals-in-sub">TALK UP · INTRO</div>
     </div>
   </div>
 

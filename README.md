@@ -213,7 +213,9 @@ The web On-Air surface (`mq_radio/web/static/`) targets a **mid-1990s broadcast 
 - Cart/player decks A·B·C (ON AIR / NEXT / READY)
 - Scrolling Living Log with monospace air times + type tags (MUSIC / ID / SWEEPER / PROMO / VT)
 - Hotkey grid, chunky AUTO / ASSIST / LIVE mode bank
-- Studio clock + TO TIME / ETM readout
+- Studio clock + TO TIME / ETM readout (Living Log hard markers)
+- Living Log **filter bar** (type / artist / title / chain) — presentation only; row select + Delete/Insert/Replace unchanged
+- ASSIST / LIVE **VOCALS IN** talk-up (cart `intro_ms`) — quiet in AUTO
 - Win95/CRT control-room palette (gray/beige panels, hard borders, high contrast)
 - Air-studio ELAPSED / REMAINING timers + ending type (COLD / SOFT / FADE)
 - End-of-cart colour ramp on the last 5 seconds
@@ -221,6 +223,19 @@ The web On-Air surface (`mq_radio/web/static/`) targets a **mid-1990s broadcast 
 
 No proprietary logos, trademarks, or pixel-perfect clones. Avoid modern SaaS / Spotify chrome (no glassmorphism, no huge whitespace).
 
+
+## ASSIST talk-up, Living Log filter, TO TIME / ETM
+
+**VOCALS IN (ASSIST / LIVE only):** When playout mode is **ASSIST** or **LIVE** and a MUSIC cart with `intro_ms > 0` is on air, the desk shows a Maestro-style **VOCALS IN** countdown driven by cart `intro_ms` (tenths). Mode chip shows ASSIST or LIVE. Quiet in **AUTO**. Brief **NOW** flash at intro end.
+
+**Living Log filter:** Filter bar under the log chrome — type select + artist / title / chain text. Filters the visible table only; does not change the committed log. Selected row id still drives Delete / Insert / Replace.
+
+**TO TIME / ETM (studio clock):**
+1. Prefer the next Living Log **ETM** (zero-duration HIT from the GENERAL hour clock, e.g. “ETM / stopset window”).
+2. If no future ETM, fall back to the next **HIT** / **HARD** timing event (top-of-hour ID, stopset, …).
+3. `scheduled_at` is naive local wall time matching the studio clock (no timezone suffix).
+4. 2s grace avoids flicker at the exact second; past targets show `LATE mm:ss`.
+5. Helpers: `mq_radio.living_log.next_hard_marker` / `to_time_payload` (see code comments in `living_log/service.py`).
 
 ## On-Air timers, endings & audio routing
 
@@ -265,7 +280,7 @@ API highlights: `POST /api/library/ingest`, `POST /api/library/segment`, `POST /
 Matt’s release bar: next DMG must meet **broadcast-ready specs**, not a thin stub ship.
 
 ### Production-desk in this build (real, usable)
-- Living Log edit (insert/replace/delete), sample hour, AUTO/ASSIST/LIVE modes
+- Living Log edit (insert/replace/delete), sample hour, filter by type/artist/title/chain, AUTO/ASSIST/LIVE modes + VOCALS IN talk-up + TO TIME/ETM
 - Cart decks A/B/C with full title/artist (no clipped ellipsis), timers, end-ramp
 - **PROGRAM VU** stereo LED meter fed from Web Audio **AnalyserNode** on the program bus when audio plays (synthetic fallback when idle)
 - **Drag-drop / Browse ingest** of `.wav` `.mp3` `.flac` `.mp4` → copies into `data/library/` + SQLite carts (ffmpeg for mp4/flac decode)

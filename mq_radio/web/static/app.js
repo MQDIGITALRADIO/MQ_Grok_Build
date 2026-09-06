@@ -85,6 +85,10 @@ let lastStatus = null;
 let lastEvents = null;
 let selectedEventId = null;
 let selectedPosition = null;
+/** Living Log presentation filter — does not mutate committed log */
+let logFilter = { type: "", artist: "", title: "", chain: "" };
+/** Brief "NOW" flash after intro countdown hits zero (ASSIST/LIVE only) */
+let vocalsHitUntil = 0;
 window.mqSelectedEventId = null;
 window.mqSelectedPosition = null;
 window.mqLastEvents = null;
@@ -244,59 +248,120 @@ function fillDeck(prefix, event, stateClass, stateText) {
   }
 }
 
-function pickNextEtm(events, upcoming) {
-  const now = Date.now();
-  const pool = []
-    .concat(upcoming || [])
-    .concat(events || [])
-    .filter((e) => e && e.event_type === "ETM");
-  const seen = new Set();
-  const unique = [];
-  for (const e of pool) {
-    if (seen.has(e.id)) continue;
-    seen.add(e.id);
-    unique.push(e);
-  }
-  const future = unique
-    .filter((e) => {
-      const t = Date.parse(e.scheduled_at);
-      return !Number.isNaN(t) && t >= now - 2000;
-    })
-    .sort((a, b) => Date.parse(a.scheduled_at) - Date.parse(b.scheduled_at));
-  if (future.length) return future[0];
-  return (
-    unique.sort(
-      (a, b) => Date.parse(a.scheduled_at) - Date.parse(b.scheduled_at)
-    )[0] || null
+/**
+ * Studio clock TO TIME / ETM — mirrors mq_radio.living_log.to_time_payload.
+ *
+ * Assumptions:
+ * - Prefer next Living Log ETM (zero-duration HIT from hour clock).
+ * - Else next future HIT/HARD timing_mode event (top-of-hour ID, stopset, …).
+ * - scheduled_at is naive local wall time matching the studio clock.
+ * - 2s grace keeps the marker stable across the exact second.
+ */
+function parseSchedMs(iso) {
+  if (!iso) return NaN;
+  let t = String(iso).trim();
+  if (t.endsWith("Z")) t = t.slice(0, -1);
+  // Treat as local wall time (no timezone) — matches generator / studio clock
+  const m = t.match(
+    /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})/
   );
+  if (m) {
+    return new Date(
+      Number(m[1]),
+      Number(m[2]) - 1,
+      Number(m[3]),
+      Number(m[4]),
+      Number(m[5]),
+      Number(m[6])
+    ).getTime();
+  }
+  return Date.parse(iso);
+}
+
+function pickNextHardMarker(events, upcoming, nowMs) {
+  const now = nowMs != null ? nowMs : Date.now();
+  const grace = 2000;
+  const pool = [];
+  const seen = new Set();
+  for (const e of [].concat(events || []).concat(upcoming || [])) {
+    if (!e) continue;
+    if (e.id != null && seen.has(e.id)) continue;
+    if (e.id != null) seen.add(e.id);
+    pool.push(e);
+  }
+  function collect(pred) {
+    return pool
+      .filter(pred)
+      .map((e) => ({ e, t: parseSchedMs(e.scheduled_at) }))
+      .filter((x) => !Number.isNaN(x.t) && x.t >= now - grace)
+      .sort((a, b) => a.t - b.t);
+  }
+  const etms = collect((e) => e.event_type === "ETM");
+  if (etms.length) return { marker: etms[0].e, at: etms[0].t, kind: "ETM" };
+  const hits = collect(
+    (e) =>
+      e.event_type !== "ETM" &&
+      (e.timing_mode === "HIT" || e.timing_mode === "HARD")
+  );
+  if (hits.length) {
+    const kind = hits[0].e.timing_mode || "HIT";
+    return { marker: hits[0].e, at: hits[0].t, kind };
+  }
+  return null;
+}
+
+function formatToTime(seconds) {
+  if (seconds == null || Number.isNaN(seconds)) return "--:--";
+  const late = seconds < 0;
+  const abs = Math.abs(seconds);
+  const h = Math.floor(abs / 3600);
+  const m = Math.floor((abs % 3600) / 60);
+  const s = abs % 60;
+  const body =
+    h > 0
+      ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+      : `${m}:${String(s).padStart(2, "0")}`;
+  return late ? `LATE ${body}` : body;
 }
 
 function updateETM(events, upcoming) {
-  const etm = pickNextEtm(events, upcoming);
   const etmEl = document.getElementById("etm-readout");
   const toEl = document.getElementById("to-time");
-  if (!etm) {
-    etmEl.textContent = "NONE";
-    toEl.textContent = "--:--";
+  const kindEl = document.getElementById("etm-kind");
+  const sub = document.querySelector(".clock-sub");
+  const picked = pickNextHardMarker(events, upcoming);
+  if (sub) {
+    sub.classList.remove("late", "hit-fallback");
+  }
+  if (!picked) {
+    if (etmEl) etmEl.textContent = "NONE";
+    if (toEl) toEl.textContent = "--:--";
+    if (kindEl) kindEl.textContent = "—";
     return;
   }
-  etmEl.textContent = fmtAirtime(etm.scheduled_at);
-  const target = new Date(etm.scheduled_at);
-  const now = new Date();
-  let diff = Math.floor((target - now) / 1000);
-  if (Number.isNaN(diff)) {
-    toEl.textContent = "--:--";
-    return;
+  const { marker, at, kind } = picked;
+  const now = Date.now();
+  const seconds = Math.floor((at - now) / 1000);
+  const air = fmtAirtime(marker.scheduled_at);
+  if (etmEl) {
+    etmEl.textContent = kind === "ETM" ? air : `${kind} ${air}`;
   }
-  const sign = diff < 0 ? "-" : "+";
-  diff = Math.abs(diff);
-  const h = Math.floor(diff / 3600);
-  const m = Math.floor((diff % 3600) / 60);
-  const s = diff % 60;
-  toEl.textContent =
-    h > 0
-      ? `${sign}${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
-      : `${sign}${m}:${String(s).padStart(2, "0")}`;
+  if (toEl) toEl.textContent = formatToTime(seconds);
+  if (kindEl) {
+    const label = marker.title || marker.notes || marker.event_type || kind;
+    kindEl.textContent = label;
+    kindEl.title = `${kind} @ ${air} — ${label}`;
+  }
+  if (sub) {
+    if (seconds < 0) sub.classList.add("late");
+    if (kind !== "ETM") sub.classList.add("hit-fallback");
+  }
+}
+
+/** @deprecated name kept for callers — delegates to hard-marker picker */
+function pickNextEtm(events, upcoming) {
+  const p = pickNextHardMarker(events, upcoming);
+  return p ? p.marker : null;
 }
 
 function buildHotkeys(upcoming) {
@@ -393,31 +458,67 @@ function liveTiming() {
 function updateVocalsInPopup(live) {
   const popup = document.getElementById("vocals-in-popup");
   const countEl = document.getElementById("vocals-in-count");
+  const modeEl = document.getElementById("vocals-in-mode");
+  const subEl = document.getElementById("vocals-in-sub");
   if (!popup || !countEl) return;
 
-  // Talk-up counter is for Live Assist / LIVE — quiet in AUTO
+  // Talk-up is ASSIST / LIVE only — never in AUTO (Maestro-style intro countdown)
   const assistLike = playoutMode === "ASSIST" || playoutMode === "LIVE";
   const introMs = Number(timingSnap.intro_ms || 0);
   const isMusic = (timingSnap.event_type || "") === "MUSIC";
-  const show =
+  const inIntro =
     assistLike &&
     timingSnap.playing &&
     isMusic &&
     introMs > 0 &&
     live.elapsed_ms < introMs;
 
-  if (!show) {
+  if (modeEl) {
+    modeEl.textContent = playoutMode === "LIVE" ? "LIVE" : "ASSIST";
+    modeEl.classList.toggle("mode-live", playoutMode === "LIVE");
+  }
+
+  // Just crossed intro → brief NOW flash (ASSIST/LIVE only)
+  if (
+    assistLike &&
+    timingSnap.playing &&
+    isMusic &&
+    introMs > 0 &&
+    live.elapsed_ms >= introMs &&
+    live.elapsed_ms < introMs + 400 &&
+    vocalsHitUntil < Date.now()
+  ) {
+    vocalsHitUntil = Date.now() + 900;
+  }
+
+  const hitNow = assistLike && Date.now() < vocalsHitUntil;
+  if (!inIntro && !hitNow) {
     popup.hidden = true;
+    popup.classList.remove("urgent", "critical", "hit-now");
+    return;
+  }
+
+  popup.hidden = false;
+  if (hitNow && !inIntro) {
+    countEl.textContent = "NOW";
     popup.classList.remove("urgent", "critical");
+    popup.classList.add("hit-now");
+    if (subEl) subEl.textContent = "VOCALS · INTRO END";
     return;
   }
 
   const leftMs = Math.max(0, introMs - live.elapsed_ms);
-  const secs = Math.ceil(leftMs / 1000);
-  countEl.textContent = String(secs);
-  popup.hidden = false;
-  popup.classList.toggle("urgent", secs <= 5 && secs > 2);
-  popup.classList.toggle("critical", secs <= 2);
+  // Maestro-style one-decimal countdown (tenths), never negative
+  const tenths = Math.max(0, leftMs / 1000);
+  countEl.textContent = tenths.toFixed(1);
+  const whole = Math.ceil(tenths);
+  popup.classList.remove("hit-now");
+  popup.classList.toggle("urgent", whole <= 5 && whole > 2);
+  popup.classList.toggle("critical", whole <= 2);
+  if (subEl) {
+    const introSec = (introMs / 1000).toFixed(1);
+    subEl.textContent = `TALK UP · INTRO ${introSec}s · cart intro_ms`;
+  }
 }
 
 
@@ -730,14 +831,65 @@ async function refresh() {
   if (typeof window.renderHotkeyBank === "function") window.renderHotkeyBank(up);
   else buildHotkeys(up);
 
-  const body = document.getElementById("log-body");
-  body.innerHTML = "";
-  const nextPos = up[0] ? up[0].position : null;
+  renderLivingLog(events, np, up);
+}
 
-  events.forEach((e) => {
+function eventMatchesLogFilter(e) {
+  const t = (logFilter.type || "").toUpperCase();
+  const artist = (logFilter.artist || "").trim().toLowerCase();
+  const title = (logFilter.title || "").trim().toLowerCase();
+  const chain = (logFilter.chain || "").trim().toLowerCase();
+  if (t) {
+    const et = String(e.event_type || "").toUpperCase();
+    if (t === "VT" || t === "VOICE_TRACK") {
+      if (et !== "VOICE_TRACK") return false;
+    } else if (et !== t) {
+      return false;
+    }
+  }
+  if (artist && !String(e.artist || "").toLowerCase().includes(artist)) return false;
+  if (title && !String(e.title || "").toLowerCase().includes(title)) return false;
+  if (chain && !String(e.chain_mode || "").toLowerCase().includes(chain)) return false;
+  return true;
+}
+
+function readLogFilterFromDom() {
+  const typeEl = document.getElementById("log-filter-type");
+  const artistEl = document.getElementById("log-filter-artist");
+  const titleEl = document.getElementById("log-filter-title");
+  const chainEl = document.getElementById("log-filter-chain");
+  logFilter = {
+    type: typeEl ? typeEl.value : "",
+    artist: artistEl ? artistEl.value : "",
+    title: titleEl ? titleEl.value : "",
+    chain: chainEl ? chainEl.value : "",
+  };
+}
+
+function renderLivingLog(events, np, up) {
+  const body = document.getElementById("log-body");
+  if (!body) return;
+  const all = events || lastEvents || [];
+  const filtered = all.filter(eventMatchesLogFilter);
+  const countEl = document.getElementById("log-filter-count");
+  if (countEl) {
+    const active =
+      logFilter.type || logFilter.artist || logFilter.title || logFilter.chain;
+    countEl.textContent = active
+      ? `showing ${filtered.length} / ${all.length}`
+      : "";
+  }
+  body.innerHTML = "";
+  const nextPos = up && up[0] ? up[0].position : null;
+  const nowPlaying = np || (lastStatus && lastStatus.now) || null;
+
+  filtered.forEach((e) => {
     const tr = document.createElement("tr");
     tr.className = "log-row";
-    if (e.status === "ON_AIR" || (np && e.id === np.id && e.status === "ON_AIR")) {
+    if (
+      e.status === "ON_AIR" ||
+      (nowPlaying && e.id === nowPlaying.id && e.status === "ON_AIR")
+    ) {
       tr.classList.add("on-air");
     } else if (nextPos != null && e.position === nextPos) {
       tr.classList.add("next-up");
@@ -768,7 +920,7 @@ async function refresh() {
     if (selectedEventId != null && String(e.id) === String(selectedEventId)) {
       tr.classList.add("selected");
     }
-    tr.addEventListener("click", (ev) => {
+    tr.addEventListener("click", () => {
       selectedEventId = e.id;
       selectedPosition = e.position;
       window.mqSelectedEventId = e.id;
@@ -776,15 +928,50 @@ async function refresh() {
       body.querySelectorAll("tr.selected").forEach((r) => r.classList.remove("selected"));
       tr.classList.add("selected");
       const msg = document.getElementById("engine-msg");
-      if (msg) msg.textContent = `Selected #${e.position} ${e.event_type || ""} ${e.title || ""}`;
+      if (msg)
+        msg.textContent = `Selected #${e.position} ${e.event_type || ""} ${e.title || ""}`;
     });
-    tr.addEventListener("dblclick", () => openVtStudio(e, events));
+    tr.addEventListener("dblclick", () => openVtStudio(e, all));
     body.appendChild(tr);
   });
 
   const onAirRow = body.querySelector("tr.on-air");
   if (onAirRow) {
     onAirRow.scrollIntoView({ block: "center", behavior: "smooth" });
+  }
+}
+
+function applyLogFilterFromDom() {
+  readLogFilterFromDom();
+  const up = (lastStatus && lastStatus.upcoming) || [];
+  const np = lastStatus && lastStatus.now;
+  renderLivingLog(lastEvents || [], np, up);
+}
+
+function initLogFilters() {
+  const typeEl = document.getElementById("log-filter-type");
+  const artistEl = document.getElementById("log-filter-artist");
+  const titleEl = document.getElementById("log-filter-title");
+  const chainEl = document.getElementById("log-filter-chain");
+  const clearEl = document.getElementById("log-filter-clear");
+  const onChange = () => applyLogFilterFromDom();
+  if (typeEl) typeEl.addEventListener("change", onChange);
+  [artistEl, titleEl, chainEl].forEach((el) => {
+    if (!el) return;
+    let timer = null;
+    el.addEventListener("input", () => {
+      clearTimeout(timer);
+      timer = setTimeout(onChange, 120);
+    });
+  });
+  if (clearEl) {
+    clearEl.addEventListener("click", () => {
+      if (typeEl) typeEl.value = "";
+      if (artistEl) artistEl.value = "";
+      if (titleEl) titleEl.value = "";
+      if (chainEl) chainEl.value = "";
+      applyLogFilterFromDom();
+    });
   }
 }
 
@@ -1283,6 +1470,7 @@ document.addEventListener("keydown", (ev) => {
 
 initSettings();
 initVtStudio();
+initLogFilters();
 window.mqRefresh = refresh;
 window.mqOpenVtStudio = openVtStudio;
 window.mqPostAction = postAction;

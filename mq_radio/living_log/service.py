@@ -611,3 +611,199 @@ def load_sample_hour(
         "cleared": clear_day,
         "manual": True,
     }
+
+
+# —— Living Log filter + studio-clock hard markers (TO TIME / ETM) ——
+#
+# Assumptions (documented for operators / UI):
+# 1. ETM events are zero-duration HIT markers from the hour clock (see seed GENERAL
+#    clock slot "ETM / stopset window"). scheduled_at is naive local wall time
+#    matching the studio clock (no timezone suffix).
+# 2. TO TIME counts down to the next hard marker: prefer event_type == ETM; else
+#    the next future event with timing_mode in {HIT, HARD}; else None.
+# 3. Past markers within a small grace (default 2s) still count as "current" so the
+#    desk does not flicker at the exact second. Markers older than grace are
+#    skipped in favour of the next future one.
+# 4. Living Log filter is a presentation helper — it does not change the committed
+#    log; Delete/Insert/Replace still use the selected event id from the full log.
+
+
+from datetime import datetime
+
+
+def _parse_scheduled_at(value) -> Optional[datetime]:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    # Accept "YYYY-MM-DDTHH:MM:SS" / "YYYY-MM-DD HH:MM:SS" / with optional Z
+    if text.endswith("Z"):
+        text = text[:-1]
+    text = text.replace(" ", "T", 1)
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError:
+        return None
+
+
+def filter_events(
+    events: list[dict],
+    *,
+    event_type: Optional[str] = None,
+    artist: Optional[str] = None,
+    title: Optional[str] = None,
+    chain: Optional[str] = None,
+    q: Optional[str] = None,
+) -> list[dict]:
+    """Filter Living Log rows by type / artist / title / chain (case-insensitive).
+
+    ``q`` is a free-text match against artist, title, type, and chain combined.
+    Empty / None criteria are ignored. Returns a new list (does not mutate).
+    """
+    et = (event_type or "").strip().upper()
+    if et in ("VT", "VOICE TRACK"):
+        et = "VOICE_TRACK"
+    artist_q = (artist or "").strip().lower()
+    title_q = (title or "").strip().lower()
+    chain_q = (chain or "").strip().lower()
+    free = (q or "").strip().lower()
+
+    out: list[dict] = []
+    for e in events or []:
+        e_type = str(e.get("event_type") or "").upper()
+        e_artist = str(e.get("artist") or "").lower()
+        e_title = str(e.get("title") or "").lower()
+        e_chain = str(e.get("chain_mode") or "").lower()
+        if et and e_type != et:
+            continue
+        if artist_q and artist_q not in e_artist:
+            continue
+        if title_q and title_q not in e_title:
+            continue
+        if chain_q and chain_q not in e_chain:
+            continue
+        if free:
+            blob = f"{e_type} {e_artist} {e_title} {e_chain}"
+            if free not in blob:
+                continue
+        out.append(e)
+    return out
+
+
+def next_hard_marker(
+    events: list[dict],
+    now: Optional[datetime] = None,
+    *,
+    grace_sec: float = 2.0,
+) -> Optional[dict]:
+    """Pick the next studio-clock hard marker from the Living Log.
+
+    Priority:
+      1. Future (or within grace) ETM events, soonest first
+      2. Else future HIT/HARD timing_mode events (top-of-hour IDs, stopsets, …)
+
+    Returns the event dict, or None if nothing qualifies.
+    """
+    now = now or datetime.now()
+    grace = float(grace_sec)
+
+    def candidates(pred) -> list[tuple[datetime, dict]]:
+        found: list[tuple[datetime, dict]] = []
+        seen: set = set()
+        for e in events or []:
+            if not pred(e):
+                continue
+            eid = e.get("id")
+            if eid is not None:
+                if eid in seen:
+                    continue
+                seen.add(eid)
+            when = _parse_scheduled_at(e.get("scheduled_at"))
+            if when is None:
+                continue
+            delta = (when - now).total_seconds()
+            if delta < -grace:
+                continue
+            found.append((when, e))
+        found.sort(key=lambda pair: pair[0])
+        return found
+
+    etms = candidates(lambda e: str(e.get("event_type") or "").upper() == "ETM")
+    if etms:
+        return etms[0][1]
+
+    hits = candidates(
+        lambda e: str(e.get("timing_mode") or "").upper() in ("HIT", "HARD")
+        and str(e.get("event_type") or "").upper() != "ETM"
+    )
+    if hits:
+        return hits[0][1]
+    return None
+
+
+def to_time_payload(
+    events: list[dict],
+    now: Optional[datetime] = None,
+    *,
+    grace_sec: float = 2.0,
+) -> dict:
+    """Studio-clock TO TIME / ETM readout payload for UI + tests.
+
+    Returns keys:
+      marker      — event dict or None
+      kind        — "ETM" | "HIT" | "HARD" | None
+      scheduled_at
+      label       — title / notes / type for the desk
+      airtime     — HH:MM:SS
+      seconds     — signed seconds to marker (negative = late)
+      to_time     — display string ("mm:ss", "h:mm:ss", or "LATE mm:ss")
+      etm_readout — airtime or "NONE"
+    """
+    now = now or datetime.now()
+    marker = next_hard_marker(events, now, grace_sec=grace_sec)
+    if not marker:
+        return {
+            "marker": None,
+            "kind": None,
+            "scheduled_at": None,
+            "label": None,
+            "airtime": None,
+            "seconds": None,
+            "to_time": "--:--",
+            "etm_readout": "NONE",
+        }
+
+    when = _parse_scheduled_at(marker.get("scheduled_at"))
+    assert when is not None
+    seconds = int((when - now).total_seconds())
+    kind = str(marker.get("event_type") or "").upper()
+    if kind != "ETM":
+        kind = str(marker.get("timing_mode") or "HIT").upper()
+    label = (
+        marker.get("title")
+        or marker.get("notes")
+        or marker.get("event_type")
+        or kind
+    )
+    airtime = when.strftime("%H:%M:%S")
+    late = seconds < 0
+    abs_s = abs(seconds)
+    h = abs_s // 3600
+    m = (abs_s % 3600) // 60
+    s = abs_s % 60
+    if h > 0:
+        body = f"{h}:{m:02d}:{s:02d}"
+    else:
+        body = f"{m}:{s:02d}"
+    to_disp = f"LATE {body}" if late else body
+    return {
+        "marker": marker,
+        "kind": kind,
+        "scheduled_at": marker.get("scheduled_at"),
+        "label": label,
+        "airtime": airtime,
+        "seconds": seconds,
+        "to_time": to_disp,
+        "etm_readout": airtime if str(marker.get("event_type") or "").upper() == "ETM" else f"{kind} {airtime}",
+    }

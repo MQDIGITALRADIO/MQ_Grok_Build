@@ -182,6 +182,21 @@ html, body {
 }
 .clock-sub .sep { color: #555; }
 .clock-sub strong { color: var(--crt-cyan); font-weight: 700; }
+.etm-kind {
+  color: #c8a060;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+  vertical-align: bottom;
+}
+.clock-sub.late #to-time { color: #ff4444; }
+.clock-sub.hit-fallback #etm-readout { color: #ffb000; }
+
 
 .transport-bank {
   display: flex;
@@ -801,50 +816,73 @@ input { border-radius: 0; }
 .deck { min-height: 148px; }
 
 
-/* —— Live Assist: VOCALS IN talk-up counter —— */
+/* —— ASSIST / LIVE: VOCALS IN talk-up (Maestro-style intro countdown) —— */
 .vocals-in-popup {
   position: fixed;
-  top: 72px;
-  right: 24px;
+  top: 68px;
+  right: 20px;
   z-index: 900;
   pointer-events: none;
 }
 .vocals-in-popup[hidden] { display: none !important; }
 .vocals-in-inner {
-  min-width: 160px;
-  padding: 10px 16px 12px;
-  background: #101810;
+  min-width: 188px;
+  padding: 8px 18px 12px;
+  background: #0c140c;
   border: 3px solid #33ff66;
-  box-shadow: 4px 4px 0 #000, inset 0 0 20px rgba(51,255,102,0.15);
+  box-shadow: 5px 5px 0 #000, inset 0 0 28px rgba(51,255,102,0.18);
   text-align: center;
   font-family: var(--mono);
 }
+.vocals-in-mode {
+  display: inline-block;
+  margin-bottom: 2px;
+  padding: 1px 8px;
+  background: #ddaa00;
+  color: #000;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  border: 1px solid #000;
+}
+.vocals-in-mode.mode-live {
+  background: #cc2222;
+  color: #fff;
+}
 .vocals-in-label {
   color: #33ff66;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.18em;
+  margin-top: 4px;
 }
 .vocals-in-count {
   color: #33ff66;
-  font-size: 64px;
+  font-size: 72px;
   font-weight: 700;
-  line-height: 1;
-  margin: 4px 0;
-  text-shadow: 0 0 12px rgba(51,255,102,0.45);
+  line-height: 0.95;
+  margin: 2px 0 4px;
+  text-shadow: 0 0 14px rgba(51,255,102,0.5);
+  font-variant-numeric: tabular-nums;
 }
 .vocals-in-popup.urgent .vocals-in-inner {
   border-color: #ffb000;
-  box-shadow: 4px 4px 0 #000, inset 0 0 24px rgba(255,176,0,0.2);
+  box-shadow: 5px 5px 0 #000, inset 0 0 28px rgba(255,176,0,0.22);
 }
 .vocals-in-popup.urgent .vocals-in-label,
-.vocals-in-popup.urgent .vocals-in-count { color: #ffb000; text-shadow: 0 0 12px rgba(255,176,0,0.5); }
+.vocals-in-popup.urgent .vocals-in-count { color: #ffb000; text-shadow: 0 0 12px rgba(255,176,0,0.55); }
 .vocals-in-popup.critical .vocals-in-inner {
   border-color: #ff2222;
-  animation: vocals-pulse 0.35s steps(2) infinite;
+  animation: vocals-pulse 0.32s steps(2) infinite;
 }
 .vocals-in-popup.critical .vocals-in-label,
-.vocals-in-popup.critical .vocals-in-count { color: #ff2222; text-shadow: 0 0 14px rgba(255,34,34,0.55); }
+.vocals-in-popup.critical .vocals-in-count { color: #ff2222; text-shadow: 0 0 14px rgba(255,34,34,0.6); }
+.vocals-in-popup.hit-now .vocals-in-inner {
+  border-color: #ffffff;
+  background: #201010;
+}
+.vocals-in-popup.hit-now .vocals-in-label,
+.vocals-in-popup.hit-now .vocals-in-count { color: #fff; text-shadow: none; }
 .vocals-in-sub {
   color: #a0c0a0;
   font-size: 10px;
@@ -852,13 +890,44 @@ input { border-radius: 0; }
 }
 @keyframes vocals-pulse {
   0% { transform: scale(1); }
-  50% { transform: scale(1.03); }
+  50% { transform: scale(1.04); }
   100% { transform: scale(1); }
 }
 
-
 /* —— M2 AI / Voice Track —— */
+.log-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: #d4d0c8;
+  border-bottom: 1px solid #808080;
+  font-size: 11px;
+}
+.log-filter-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #000080;
+}
+.log-filter-bar select,
+.log-filter-bar input[type="search"] {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 2px 6px;
+  border: 1px solid #808080;
+  background: #fff;
+  color: #000;
+  min-width: 0;
+}
+.log-filter-bar select { min-width: 110px; }
+.log-filter-bar input[type="search"] { width: 110px; }
+.log-filter-bar #log-filter-count { margin-left: 4px; color: #404040; }
 .log-actions {
+
   display: flex;
   gap: 6px;
   margin-left: auto;
