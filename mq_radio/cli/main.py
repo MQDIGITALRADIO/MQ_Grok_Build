@@ -23,6 +23,11 @@ from mq_radio.voice_tracker.placeholder_render import (
     run_pd_assist_operator_path,
 )
 from mq_radio.voice_tracker.service import approve_ai_breaks, list_vt
+from mq_radio.voice_tracker.vocloner_export import (
+    export_approved_for_date,
+    export_vt_script,
+    operator_desk_flow,
+)
 
 
 def cmd_init_db(args: argparse.Namespace) -> int:
@@ -129,7 +134,7 @@ def cmd_show_clocks(args: argparse.Namespace) -> int:
     if line:
         print("  " + "  ".join(line))
     print()
-    print("AI never picks MUSIC live. VT placeholders → generate-ai-breaks → approve → Vocloner or render-placeholder-vt / pd-assist.")
+    print("AI never picks MUSIC live. VT placeholders → generate-ai-breaks → approve → export-vocloner-script / Vocloner WAV import or render-placeholder-vt / pd-assist.")
     print("Clock Editor + Daypart Designer (On-Air CLOCKS) saves DB + data/clocks.json; ETM/HIT get fills.")
     return 0
 
@@ -243,6 +248,34 @@ def cmd_list_vt(args: argparse.Namespace) -> int:
 
 
 
+
+def cmd_export_vocloner_script(args: argparse.Namespace) -> int:
+    """Clipboard/script export for Vocloner paste — no public API."""
+    init_db(Path(args.db) if args.db else None)
+    db = Path(args.db) if args.db else None
+    if args.event_id is not None or args.vt_id is not None or args.script:
+        result = export_vt_script(
+            log_event_id=args.event_id,
+            vt_id=args.vt_id,
+            script_text=args.script,
+            db_path=db,
+            preferred_model=args.model or "",
+            require_approved=bool(args.require_approved),
+        )
+    else:
+        log_date = args.date or date.today().isoformat()
+        result = export_approved_for_date(
+            log_date,
+            db_path=db,
+            preferred_model=args.model or "",
+            limit=args.limit,
+        )
+    print(json.dumps(result, indent=2))
+    if args.show_flow:
+        print(json.dumps(operator_desk_flow(preferred_model=args.model or ""), indent=2))
+    return 0 if result.get("ok") else 1
+
+
 def cmd_render_placeholder(args: argparse.Namespace) -> int:
     init_db(Path(args.db) if args.db else None)
     db = Path(args.db) if args.db else None
@@ -346,6 +379,21 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--hour", type=int, default=12, help="Hour start 0-23 (default 12)")
     s.add_argument("--no-clear", action="store_true", help="Do not clear existing day events")
     s.set_defaults(func=cmd_load_sample_hour)
+
+
+    s = sub.add_parser(
+        "export-vocloner-script",
+        help="Export approved VT script(s) for Vocloner paste (clipboard/.txt — no public API)",
+    )
+    s.add_argument("--date", default=None, help="YYYY-MM-DD — export all approved for date")
+    s.add_argument("--event-id", type=int, default=None, help="Single log_event id")
+    s.add_argument("--vt-id", type=int, default=None, help="vt_scripts row id")
+    s.add_argument("--script", default=None, help="Raw script text (skips DB lookup)")
+    s.add_argument("--model", default="", help="Preferred Vocloner model/voice note")
+    s.add_argument("--limit", type=int, default=None)
+    s.add_argument("--require-approved", action="store_true")
+    s.add_argument("--show-flow", action="store_true", help="Also print desk operator steps")
+    s.set_defaults(func=cmd_export_vocloner_script)
 
     s = sub.add_parser(
         "render-placeholder-vt",

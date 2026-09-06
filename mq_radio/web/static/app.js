@@ -87,7 +87,7 @@ const DEFAULT_VOCLONER = {
   voice_renderer: "vocloner",
   preferred_model: "",
   notes:
-    "Matt Vocloner Basic Yearly (~1.2M chars/year). Default voice renderer — no public API; paste approved script in Vocloner, export WAV, drop into library/VT slot.",
+    "Matt Vocloner Basic Yearly (~1.2M chars/year). Default voice renderer — no public API; paste approved script in Vocloner → export WAV → Import VT folder / library.",
   url: VOCLONER_URL,
 };
 
@@ -1235,23 +1235,114 @@ async function copyTextToClipboard(text) {
   return ok;
 }
 
-async function renderInVocloner(scriptText) {
+function voclonerNextStepMsg(copied, { modelTip = "", exportedPath = "" } = {}) {
+  const exportHint = exportedPath
+    ? ` .txt saved: ${exportedPath}.`
+    : " If clipboard fails, use Export .txt.";
+  if (copied) {
+    return `Script copied → paste into Vocloner → export WAV → Import VT folder / drop onto Import audio.${modelTip}${exportHint}`;
+  }
+  return `Clipboard blocked — use Export .txt, then paste into Vocloner → export WAV → Import VT folder.${modelTip}${exportHint}`;
+}
+
+async function copyVoclonerScript(scriptText, { openUrl = false, exportTxt = false, meta = null } = {}) {
   const cfg = loadVoclonerSettings();
   const script = (scriptText || "").trim();
   if (!script) {
-    document.getElementById("engine-msg").textContent =
-      "No script to render — open a VT or generate/approve first";
-    return;
+    const el = document.getElementById("engine-msg");
+    if (el) el.textContent = "No script — open a VT or Generate/Approve first";
+    return { ok: false, error: "empty_script" };
+  }
+  let exportedPath = "";
+  if (exportTxt) {
+    try {
+      const body = {
+        script_text: script,
+        preferred_model: cfg.preferred_model || "",
+      };
+      if (meta && meta.log_event_id) body.event_id = meta.log_event_id;
+      if (meta && meta.vt_id) body.vt_id = meta.vt_id;
+      const r = await fetch("/api/vocloner/export-script", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await r.json();
+      if (data && data.ok && data.txt_path) exportedPath = data.txt_path;
+    } catch (_) {}
   }
   const copied = await copyTextToClipboard(script);
-  const url = cfg.url || VOCLONER_URL;
-  window.open(url, "_blank", "noopener,noreferrer");
+  if (openUrl) {
+    window.open(cfg.url || VOCLONER_URL, "_blank", "noopener,noreferrer");
+  }
   const modelTip = cfg.preferred_model
     ? ` Prefer model/voice: ${cfg.preferred_model}.`
     : "";
-  document.getElementById("engine-msg").textContent = copied
-    ? `Script copied → Vocloner opened.${modelTip} Paste → generate WAV → drop into library/VT slot.`
-    : `Vocloner opened (copy failed — paste manually).${modelTip}`;
+  const msg = openUrl
+    ? (copied
+        ? `Script copied → Vocloner opened.${modelTip} Paste → export WAV → Import VT folder.`
+        : `Vocloner opened (copy failed — Export .txt / paste manually).${modelTip}`)
+    : voclonerNextStepMsg(copied, { modelTip, exportedPath });
+  const el = document.getElementById("engine-msg");
+  if (el) el.textContent = msg;
+  return { ok: true, copied, exportedPath, public_api: false };
+}
+
+async function renderInVocloner(scriptText) {
+  return copyVoclonerScript(scriptText, { openUrl: true, exportTxt: false });
+}
+
+async function copyVtStudioScript() {
+  const script = (document.getElementById("vt-script")?.value || "").trim();
+  return copyVoclonerScript(script, { openUrl: false, exportTxt: false });
+}
+
+async function exportVtStudioTxt() {
+  const script = (document.getElementById("vt-script")?.value || "").trim();
+  const meta = window.__mqVtMeta || null;
+  return copyVoclonerScript(script, { openUrl: false, exportTxt: true, meta });
+}
+
+async function exportVoclonerTxtFromLog() {
+  const date = document.getElementById("log-date")?.value || todayISO();
+  const studio = document.getElementById("vt-script");
+  const cfg = loadVoclonerSettings();
+  document.getElementById("engine-msg").textContent = "Exporting Vocloner .txt…";
+  try {
+    let body;
+    if (studio && studio.value.trim()) {
+      body = {
+        script_text: studio.value.trim(),
+        preferred_model: cfg.preferred_model || "",
+      };
+    } else {
+      body = {
+        date,
+        preferred_model: cfg.preferred_model || "",
+        skip_silence: true,
+      };
+    }
+    const r = await fetch("/api/vocloner/export-script", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await r.json();
+    if (!data.ok) {
+      document.getElementById("engine-msg").textContent =
+        data.error || "Vocloner export failed";
+      return;
+    }
+    const n = data.exported != null ? data.exported : 1;
+    const pathHint = data.txt_path || data.export_dir || "";
+    const clip = data.clipboard_text || (data.items && data.items[0] && data.items[0].clipboard_text) || "";
+    if (clip) await copyTextToClipboard(clip);
+    document.getElementById("engine-msg").textContent =
+      `Exported ${n} script(s) for Vocloner paste${pathHint ? ` → ${pathHint}` : ""}. Next: paste into Vocloner → WAV → Import VT folder. No public API.`;
+  } catch (e) {
+    document.getElementById("engine-msg").textContent =
+      "Vocloner export failed — engine offline?";
+  }
 }
 
 /* —— Audio output settings —— */
@@ -1344,9 +1435,20 @@ async function loadMasterControlStatus() {
       return;
     }
     const bin = data.liquidsoap && data.liquidsoap.available ? "binary found" : "binary missing";
-    line.textContent = `Master Control: ${data.status || "operator_pack"} · ${bin} · live Harbor: no`;
+    const binMissing = !(data.liquidsoap && data.liquidsoap.available);
+    const statusStr = String(data.status || "operator_pack");
+    const packThin =
+      statusStr.includes("missing") ||
+      statusStr === "operator_pack" && binMissing;
+    line.textContent = `Master Control: ${statusStr} · ${bin} · live Harbor: no`;
+    const box = document.getElementById("mc-status-box");
+    if (box) box.dataset.empty = packThin ? "1" : "0";
     if (detail) {
-      detail.textContent = data.operator_message || "";
+      detail.textContent =
+        data.operator_message ||
+        (packThin
+          ? "Empty / first-run: Refresh templates → Dry-run validate. Start stays a stub — Harbor not wired."
+          : "Operator pack present — live Harbor still not wired.");
     }
   } catch (_) {
     line.textContent = "Master Control: status poll failed";
@@ -1445,11 +1547,24 @@ async function exportLiquidsoapHandoff() {
 
 function updateAuInsertBanner(slot, statusPayload) {
   const banner = document.getElementById("au-insert-banner");
-  if (!banner) return;
+  const nativeLine = document.getElementById("au-insert-native-status");
+  if (!banner && !nativeLine) return;
   const s = String(slot || "none");
   const wantsAu = s.startsWith("au:") || (s !== "none" && s !== "native_only" && s !== "");
   const titleEl = document.getElementById("au-insert-banner-title");
   const bodyEl = document.getElementById("au-insert-banner-body");
+  if (nativeLine) {
+    if (wantsAu) {
+      nativeLine.hidden = true;
+      nativeLine.setAttribute("hidden", "");
+    } else {
+      nativeLine.hidden = false;
+      nativeLine.removeAttribute("hidden");
+      nativeLine.innerHTML =
+        "Insert empty / <strong>Native only</strong> — MQ native chain is the Program path. Real AU host is <strong>not</strong> Done.";
+    }
+  }
+  if (!banner) return;
   if (wantsAu) {
     banner.hidden = false;
     banner.removeAttribute("hidden");
@@ -1685,6 +1800,16 @@ async function openSettings() {
     .then((data) => {
       const el = document.getElementById("vt-inbox-path");
       if (el && data && data.path) el.value = data.path;
+      const st = document.getElementById("vt-inbox-status");
+      if (st && data) {
+        st.textContent =
+          data.operator_message ||
+          data.empty_hint ||
+          (data.empty
+            ? "VT inbox empty — after Vocloner WAV, Import VT folder"
+            : `VT inbox: ${data.path}`);
+        st.dataset.empty = data.empty ? "1" : "0";
+      }
     })
     .catch(() => {});
   fetch("/api/settings/library-root")
@@ -1692,8 +1817,17 @@ async function openSettings() {
     .then((data) => {
       const el = document.getElementById("library-root-path");
       if (el && data && data.path) el.value = data.path;
+      const st = document.getElementById("library-root-status");
+      if (st && data) {
+        st.textContent =
+          data.operator_message ||
+          data.empty_hint ||
+          `Library root: ${data.path}`;
+        st.dataset.empty = data.empty ? "1" : "0";
+      }
     })
     .catch(() => {});
+  loadMasterControlStatus();
   const bd = document.getElementById("settings-backdrop");
   if (!bd) return;
   bd.classList.add("open");
@@ -2242,6 +2376,12 @@ function initVtStudio() {
   if (done) done.onclick = closeVtStudio;
   if (ai) ai.onclick = vtGenerateScript;
   if (phStudio) phStudio.onclick = renderPlaceholderFromLog;
+  const copyBtn = document.getElementById("btn-vt-copy-script");
+  const exportBtn = document.getElementById("btn-vt-export-txt");
+  const exportLog = document.getElementById("btn-export-vocloner-txt");
+  if (copyBtn) copyBtn.onclick = () => copyVtStudioScript();
+  if (exportBtn) exportBtn.onclick = () => exportVtStudioTxt();
+  if (exportLog) exportLog.onclick = () => exportVoclonerTxtFromLog();
   if (voc) {
     voc.onclick = () =>
       renderInVocloner(document.getElementById("vt-script").value || "");

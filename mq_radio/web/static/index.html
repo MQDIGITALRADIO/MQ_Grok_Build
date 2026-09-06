@@ -204,7 +204,8 @@
             <button type="button" id="btn-approve-ai" class="btn-chrome btn-ai" title="Approve draft VTs">Approve drafts</button>
             <button type="button" id="btn-render-placeholder" class="btn-chrome btn-ai" title="Attach PCM placeholder carts to approved VTs (not Vocloner voice)">Placeholder → Log</button>
             <button type="button" id="btn-pd-assist" class="btn-chrome btn-ai" title="PD assist: generate → approve → placeholder attach (AI upstairs only)">PD assist path</button>
-            <button type="button" id="btn-render-vocloner" class="btn-chrome btn-ai" title="Copy selected/approved VT script and open Vocloner">Render in Vocloner</button>
+            <button type="button" id="btn-export-vocloner-txt" class="btn-chrome btn-ai" title="Export approved VT script(s) to data/vocloner-export (.txt for paste)">Export Vocloner .txt</button>
+            <button type="button" id="btn-render-vocloner" class="btn-chrome btn-ai" title="Copy script → open Vocloner → paste → export WAV → Import VT folder">Render in Vocloner</button>
           </div>
         </div>
         <div class="log-filter-bar" id="log-filter-bar" title="Filter is presentation-only — Delete/Insert/Replace still use the selected row id">
@@ -328,11 +329,22 @@
         <div class="vt-actions">
           <button type="button" class="btn-dialog" id="btn-vt-ai">AI Generate Script</button>
           <button type="button" class="btn-dialog" id="btn-vt-placeholder" title="Attach PCM placeholder to this VT on Living Log">Placeholder → Log</button>
-          <button type="button" class="btn-dialog" id="btn-vt-vocloner" title="Copy script + open Vocloner">Render in Vocloner</button>
+          <button type="button" class="btn-dialog" id="btn-vt-copy-script" title="Copy paste-ready script to clipboard (no API)">Copy script</button>
+          <button type="button" class="btn-dialog" id="btn-vt-export-txt" title="Write .txt under data/vocloner-export for paste fallback">Export .txt</button>
+          <button type="button" class="btn-dialog" id="btn-vt-vocloner" title="Copy script → open Vocloner → paste → WAV → Import VT folder">Render in Vocloner</button>
           <button type="button" class="btn-dialog danger" id="btn-vt-record" title="Record mic into this VT">● Record</button>
           <button type="button" class="btn-dialog primary" id="btn-vt-done">Done</button>
         </div>
-        <p class="vt-hint" id="vt-vocloner-tip">AI upstairs only (no live song pick). Approve → <strong>Placeholder → Log</strong> for playable PCM, or <strong>Render in Vocloner</strong> (script copied) → export WAV → drop into library/VT slot / Import inbox. No Vocloner public API yet.</p>
+        <div class="vt-vocloner-flow" id="vt-vocloner-flow" role="status">
+          <div class="vt-vocloner-flow-title">Vocloner desk flow (no public API)</div>
+          <ol class="vt-vocloner-steps">
+            <li>Approve script</li>
+            <li><strong>Copy / Render in Vocloner</strong> (clipboard or Export .txt)</li>
+            <li><strong>Paste into Vocloner</strong> → generate → export <strong>WAV</strong></li>
+            <li><strong>Import VT folder</strong> / drop WAV onto Import audio (attach selected VT)</li>
+          </ol>
+        </div>
+        <p class="vt-hint" id="vt-vocloner-tip">AI upstairs only (no live song pick). Optional <strong>Placeholder → Log</strong> keeps AUTO playable until real Vocloner WAV lands. No Vocloner public API — clipboard/script export only.</p>
       </div>
     </div>
   </div>
@@ -367,8 +379,10 @@
           <textarea id="vocloner-notes" rows="3" placeholder="Plan notes, voice prefs…"></textarea>
         </div>
         <p class="settings-intro settings-vocloner-blurb">
-          Matt: Vocloner Basic Yearly (~1.2M chars/year). No public API — use
-          <strong>Render in Vocloner</strong> to copy the approved script and open Vocloner.
+          Matt: Vocloner Basic Yearly (~1.2M chars/year). <strong>No public API</strong> —
+          desk path: <strong>Copy / Render in Vocloner</strong> → <em>paste into Vocloner</em>
+          → export <strong>WAV</strong> → <strong>Import VT folder</strong> / drop onto Import audio.
+          Optional <strong>Export .txt</strong> writes <code>data/vocloner-export/</code> when clipboard is blocked.
         </p>
 
         <div class="settings-section-title">ON-AIR PROCESSING</div>
@@ -434,9 +448,9 @@
           Desk On-Air stays the live Program processor. <strong>Live Harbor is not wired</strong> —
           start/stop stubs fail clearly when the binary is missing or the graph is not implemented.
         </p>
-        <div class="mc-status-box" id="mc-status-box" role="status">
+        <div class="mc-status-box" id="mc-status-box" role="status" data-empty="1">
           <div class="mc-status-line" id="mc-status-line">Master Control: checking operator pack…</div>
-          <div class="mc-status-detail" id="mc-status-detail"></div>
+          <div class="mc-status-detail" id="mc-status-detail">Empty / first-run: use <strong>Refresh templates</strong> then <strong>Dry-run validate</strong>. Start stays a stub until Harbor ships.</div>
         </div>
         <div class="settings-actions proc-template-actions">
           <button type="button" class="btn-dialog" id="btn-mc-dry-run">Dry-run validate</button>
@@ -450,9 +464,11 @@
           <label for="vt-inbox-path">Import folder</label>
           <input type="text" id="vt-inbox-path" placeholder="data/vt-inbox or ~/Downloads" autocomplete="off" />
         </div>
+        <div class="settings-status-line" id="vt-inbox-status" role="status">VT inbox: checking…</div>
         <p class="settings-intro">
-          Mac: defaults to ~/Downloads when present. Linux/web demo: <code>data/vt-inbox</code>
-          (override with env <code>MQ_RADIO_VT_INBOX</code>). Import picks up .mp3/.wav/.flac/.mp4 VT renders.
+          After Vocloner exports WAV, save here (or ~/Downloads on Mac) then click
+          <strong>Import VT folder</strong> on the desk (select the Living Log VT row to attach).
+          Override with env <code>MQ_RADIO_VT_INBOX</code>. Accepts .mp3/.wav/.flac/.mp4.
         </p>
 
         <div class="settings-section-title">MQ DIGITAL LIBRARY ROOT</div>
@@ -460,9 +476,11 @@
           <label for="library-root-path">Library folder</label>
           <input type="text" id="library-root-path" placeholder="data/library or custom path" autocomplete="off" />
         </div>
+        <div class="settings-status-line" id="library-root-status" role="status">Library root: checking…</div>
         <p class="settings-intro">
-          Ingest / drop-audio destination. When set, carts land under this root
-          (env <code>MQ_RADIO_LIBRARY_ROOT</code> also honored). Default: <code>data/library</code>.
+          Ingest / drop-audio destination (Vocloner WAV imports land here or under <code>vt/</code>).
+          Env <code>MQ_RADIO_LIBRARY_ROOT</code> also honored. Default: <code>data/library</code>.
+          Empty root is normal on first run — Import audio or seed-demo.
         </p>
 
         <div class="settings-section-title">CATEGORY / LIBRARY</div>
@@ -501,6 +519,9 @@
         <div class="audio-route-row">
           <label for="prog-insert">Insert</label>
           <select id="prog-insert"></select>
+        </div>
+        <div class="settings-status-line" id="au-insert-native-status" role="status">
+          Insert empty / Native only — MQ native chain is the Program path. Real AU host is <strong>not</strong> Done.
         </div>
         <div id="au-insert-banner" class="au-insert-banner" hidden role="status" aria-live="polite">
           <div class="au-insert-banner-title" id="au-insert-banner-title">Native chain active — AU host not loaded</div>

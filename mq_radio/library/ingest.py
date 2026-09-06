@@ -725,10 +725,17 @@ def import_vt_inbox(
         if src.name.startswith("."):
             continue
         # Heuristic: prefer Vocloner / VT-ish names but accept all audio
+        name_l = src.name.lower()
+        stem_l = src.stem.lower()
+        looks_vocloner = any(
+            token in name_l or token in stem_l
+            for token in ("vocloner", "vt_render", "vt-render", "voice_track", "voicetrack")
+        )
+        vt_source = "VOCLONER" if looks_vocloner else "VT_INBOX"
         res = ingest_file(
             src,
             title=src.stem,
-            artist="Voice Track",
+            artist="Voice Track" if not looks_vocloner else "Vocloner",
             event_type="VOICE_TRACK",
             copy=True,
             db_path=db_path,
@@ -739,7 +746,7 @@ def import_vt_inbox(
             errors.append({"file": str(src), "error": res.get("error")})
             continue
         # Also ensure a copy path under vt/ is absolute in result
-        imported.append({**res, "source": str(src)})
+        imported.append({**res, "source": str(src), "vt_source": vt_source})
         if move:
             try:
                 src.unlink()
@@ -769,19 +776,21 @@ def import_vt_inbox(
                 rel = str(Path(audio_path).resolve().relative_to(root.resolve()))
             except Exception:
                 pass
+            # Prefer VOCLONER tag when the newest import looks like a Vocloner WAV
+            attach_source = (best.get("vt_source") or "VT_INBOX")
             if existing:
                 conn.execute(
                     """UPDATE vt_scripts SET audio_path=?, recorded_at=datetime('now'),
-                       status='APPROVED', source='VT_INBOX', updated_at=datetime('now')
+                       status='APPROVED', source=?, updated_at=datetime('now')
                        WHERE id=?""",
-                    (rel, existing["id"]),
+                    (rel, attach_source, existing["id"]),
                 )
             else:
                 conn.execute(
                     """INSERT INTO vt_scripts (
                         log_event_id, variation, script_text, status, source, audio_path, recorded_at
-                    ) VALUES (?, 'inbox', ?, 'APPROVED', 'VT_INBOX', ?, datetime('now'))""",
-                    (int(attach_event_id), ev["title"] or "Imported VT", rel),
+                    ) VALUES (?, 'inbox', ?, 'APPROVED', ?, ?, datetime('now'))""",
+                    (int(attach_event_id), ev["title"] or "Imported VT", attach_source, rel),
                 )
             notes = ev["notes"] or ""
             marker = f"[VT AUDIO {rel}]"
@@ -793,7 +802,12 @@ def import_vt_inbox(
             )
             conn.commit()
             conn.close()
-            attached = {"ok": True, "log_event_id": int(attach_event_id), "audio_path": rel}
+            attached = {
+                "ok": True,
+                "log_event_id": int(attach_event_id),
+                "audio_path": rel,
+                "source": attach_source,
+            }
 
     return {
         "ok": True,

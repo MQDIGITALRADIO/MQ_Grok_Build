@@ -70,6 +70,12 @@ from mq_radio.voice_tracker.service import (
     list_vt,
     script_for_transition,
 )
+from mq_radio.voice_tracker.vocloner_export import (
+    export_approved_for_date,
+    export_vt_script,
+    library_root_status,
+    operator_desk_flow,
+)
 from mq_radio.web.hotkeys_store import (
     clear_slot,
     load_hotkeys,
@@ -395,7 +401,30 @@ def make_handler(db_path: Path):
                 return
 
             if path == "/api/settings/vocloner":
-                _json_response(self, load_vocloner(DATA_DIR))
+                voc = load_vocloner(DATA_DIR)
+                flow = operator_desk_flow(
+                    preferred_model=str(voc.get("preferred_model") or "")
+                )
+                _json_response(
+                    self,
+                    {
+                        **voc,
+                        "public_api": False,
+                        "operator_flow": flow,
+                        "desk_flow": flow.get("desk_flow"),
+                        "steps": flow.get("steps"),
+                    },
+                )
+                return
+
+            if path == "/api/vocloner/operator-flow":
+                voc = load_vocloner(DATA_DIR)
+                _json_response(
+                    self,
+                    operator_desk_flow(
+                        preferred_model=str(voc.get("preferred_model") or "")
+                    ),
+                )
                 return
 
             if path == "/api/vt":
@@ -456,10 +485,30 @@ def make_handler(db_path: Path):
 
             if path == "/api/settings/vt-inbox":
                 inbox = vt_inbox_dir(DATA_DIR)
+                exists = inbox.is_dir()
+                n = 0
+                if exists:
+                    for pat in ("*.wav", "*.mp3", "*.flac", "*.m4a", "*.mp4", "*.ogg"):
+                        n += len(list(inbox.glob(pat)))
+                empty = (not exists) or n == 0
                 _json_response(self, {
                     "ok": True,
                     "path": str(inbox),
+                    "exists": exists,
+                    "audio_files": n,
+                    "empty": empty,
+                    "empty_hint": (
+                        "VT inbox empty — after Vocloner exports WAV, save here then Import VT folder"
+                        if empty
+                        else ""
+                    ),
+                    "operator_message": (
+                        "VT inbox empty — paste script in Vocloner → export WAV → Import VT folder"
+                        if empty
+                        else f"VT inbox ready ({n} file(s)) — Import VT folder attaches to selected VT"
+                    ),
                     "ffmpeg": ffmpeg_available(),
+                    "desk_flow": "paste into Vocloner → export WAV → Import VT folder",
                 })
                 return
 
@@ -506,8 +555,7 @@ def make_handler(db_path: Path):
                 return
 
             if path == "/api/settings/library-root":
-                lib = library_audio_dir(DATA_DIR)
-                _json_response(self, {"ok": True, "path": str(lib)})
+                _json_response(self, library_root_status(DATA_DIR))
                 return
 
             if path == "/api/settings/ramps":
@@ -1208,6 +1256,48 @@ def make_handler(db_path: Path):
                     max_per_hour=int(payload.get("max_per_hour") or 2),
                     stride=int(payload.get("stride") or 2),
                 )
+                status = 200 if result.get("ok") else 400
+                _json_response(self, result, status=status)
+                return
+
+            if path == "/api/vocloner/export-script" or path == "/api/vt/vocloner-export":
+                # Clipboard/script export for Vocloner paste — no public API
+                voc = load_vocloner(DATA_DIR)
+                preferred = (
+                    payload.get("preferred_model")
+                    or voc.get("preferred_model")
+                    or ""
+                )
+                require_approved = bool(payload.get("require_approved"))
+                if payload.get("date") and not (
+                    payload.get("event_id")
+                    or payload.get("log_event_id")
+                    or payload.get("vt_id")
+                    or payload.get("script")
+                    or payload.get("script_text")
+                ):
+                    d = payload.get("date") or log_date
+                    if d in ("today", "Today"):
+                        d = date.today().isoformat()
+                    result = export_approved_for_date(
+                        d,
+                        db_path=db_path,
+                        data_dir=DATA_DIR,
+                        preferred_model=str(preferred),
+                        limit=payload.get("limit"),
+                        skip_silence=payload.get("skip_silence", True) is not False,
+                    )
+                else:
+                    eid = payload.get("event_id") or payload.get("log_event_id")
+                    result = export_vt_script(
+                        log_event_id=int(eid) if eid is not None else None,
+                        vt_id=int(payload["vt_id"]) if payload.get("vt_id") is not None else None,
+                        script_text=payload.get("script_text") or payload.get("script"),
+                        db_path=db_path,
+                        data_dir=DATA_DIR,
+                        preferred_model=str(preferred),
+                        require_approved=require_approved,
+                    )
                 status = 200 if result.get("ok") else 400
                 _json_response(self, result, status=status)
                 return

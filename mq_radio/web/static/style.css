@@ -2583,3 +2583,44 @@ body:has(.desk-hybrid) .settings-dialog {
 .au-insert-banner.is-unavailable .au-insert-banner-title {
   color: #ffc978;
 }
+
+
+/* Vocloner desk flow + Settings empty-state clarity */
+.vt-vocloner-flow {
+  margin: 8px 0 10px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(120, 180, 140, 0.35);
+  background: rgba(28, 52, 40, 0.45);
+  color: #d5e8d8;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.vt-vocloner-flow-title {
+  font-weight: 600;
+  color: #e8f6ea;
+  margin-bottom: 6px;
+}
+.vt-vocloner-steps {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+.vt-vocloner-steps li {
+  margin: 2px 0;
+}
+.settings-status-line {
+  margin: 4px 0 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(120, 160, 220, 0.28);
+  background: rgba(30, 40, 56, 0.55);
+  color: #b8c8dc;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.settings-status-line[data-empty="1"],
+.mc-status-box[data-empty="1"] {
+  border-color: rgba(220, 180, 90, 0.45);
+  background: rgba(56, 44, 20, 0.4);
+  color: #f0e0c0;
+}

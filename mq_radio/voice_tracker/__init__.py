@@ -24,6 +24,14 @@ from mq_radio.voice_tracker.service import (
     list_vt,
     script_for_transition,
 )
+from mq_radio.voice_tracker.vocloner_export import (
+    OPERATOR_STEPS,
+    PUBLIC_API as VOCLONER_PUBLIC_API,
+    export_approved_for_date,
+    export_script_package,
+    export_vt_script,
+    operator_desk_flow,
+)
 
 STUB = False
 
@@ -42,5 +50,11 @@ __all__ = [
     "render_placeholders_for_date",
     "run_pd_assist_operator_path",
     "script_for_transition",
+    "OPERATOR_STEPS",
+    "VOCLONER_PUBLIC_API",
+    "export_approved_for_date",
+    "export_script_package",
+    "export_vt_script",
+    "operator_desk_flow",
     "write_placeholder_wav",
 ]

@@ -268,7 +268,7 @@ DEFAULT_VOCLONER = {
     "notes": (
         "Matt Vocloner Basic Yearly (~1.2M chars/year). "
         "Default voice renderer — no public API; paste approved script in Vocloner, "
-        "export WAV, drop into library/VT slot."
+        "export WAV, Import VT folder / drop into library."
     ),
     "url": "https://vocloner.com/",
 }

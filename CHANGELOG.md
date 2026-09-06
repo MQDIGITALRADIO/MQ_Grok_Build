@@ -2,6 +2,18 @@
 
 Lean build log for Matt. SHAs are on `main` (`MQDIGITALRADIO/MQ_Grok_Build`).
 
+## Desk grind 2026-09-06 (Vocloner operator path polish)
+
+| SHA | Theme |
+|-----|--------|
+| *(this commit)* | Vocloner clipboard/script export + paste→WAV→Import desk flow; Settings empty-state clarity |
+
+**Vocloner (still no public API):** `mq_radio.voice_tracker.vocloner_export` builds clipboard-ready paste bodies + optional `data/vocloner-export/*.txt` packages. Desk: **Copy script** / **Export .txt** / **Render in Vocloner** with numbered paste → WAV → **Import VT folder** flow. CLI `export-vocloner-script`. APIs: `GET /api/vocloner/operator-flow`, `POST /api/vocloner/export-script` (alias `/api/vt/vocloner-export`). VT inbox import tags `VOCLONER` when filenames look like Vocloner renders.
+
+**Settings clarity:** library root + VT inbox status lines (empty hints); Master Control empty/first-run copy; AU native-only status when insert empty. Never marks live Harbor / real AU Done.
+
+**Tests:** `tests/test_vocloner_operator_path.py`; full suite green.
+
 ## Overnight grind 2026-09-06 (AI/PD assist operator path + 24h coverage)
 
 | SHA | Theme |

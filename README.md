@@ -120,9 +120,9 @@ Matt’s locked vision: automated 24/7 playout he can jump into whenever inspire
 1. Generate AI breaks → review scripts on the Living Log / VT Studio.
 2. **Approve drafts** (CLI `approve-ai-breaks` or On-Air **Approve drafts**).
 3. **Placeholder → Log** (optional, overnight/PD assist): attaches honest PCM placeholder carts so AUTO can play VTs until real voice lands (`render-placeholder-vt` / `pd-assist` / desk buttons). Not Vocloner voice.
-4. **Render in Vocloner** (VT Studio or Living Log toolbar): copies the script to the clipboard and opens [vocloner.com](https://vocloner.com/). Prefer your saved model/voice name from Settings.
-5. In Vocloner: paste → generate → export **WAV** → drop into library/VT slot or Import VT inbox (replaces placeholder).
-5. Drop the WAV into the library / VT slot for that break.
+4. **Copy script** / **Export .txt** / **Render in Vocloner** (VT Studio or Living Log): clipboard (or `data/vocloner-export/*.txt`) + opens [vocloner.com](https://vocloner.com/). Prefer your saved model/voice name from Settings. CLI: `export-vocloner-script`.
+5. In Vocloner: **paste** → generate → export **WAV**.
+6. **Import VT folder** (select Living Log VT row to attach) or drop WAV onto Import audio / library slot (replaces placeholder).
 
 Settings ⚙ → **Voice renderer: Vocloner (default)** + notes / preferred model field. Persists to `localStorage` and `data/vocloner.json` (`voice_renderer: vocloner`) via `/api/settings/vocloner`. Audio bus routing stays in `data/audio_outputs.json`.
 
