@@ -71,6 +71,7 @@ from mq_radio.production.processing import (
     save_processing,
 )
 from mq_radio.production.liquidsoap_export import export_processing_handoff, handoff_payload
+from mq_radio.engine.audio_devices import list_audio_devices
 from mq_radio.web.settings_store import (
     load_audio_outputs,
     load_vocloner,
@@ -330,6 +331,11 @@ def make_handler(db_path: Path):
 
             if path == "/api/hotkeys":
                 _json_response(self, load_hotkeys(DATA_DIR))
+                return
+
+            if path == "/api/audio/devices":
+                # CoreAudio on macOS; mock catalogue on Linux/CI/web
+                _json_response(self, list_audio_devices(include_audio_units=True))
                 return
 
             if path == "/api/settings/audio":

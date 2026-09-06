@@ -7,6 +7,12 @@ from pathlib import Path
 from typing import Any
 
 from mq_radio.config import DATA_DIR
+from mq_radio.engine.audio_devices import (
+    MOCK_INPUT_DEVICES,
+    MOCK_OUTPUT_DEVICES,
+    NATIVE_INSERT_OPTIONS,
+    list_audio_devices,
+)
 
 SETTINGS_FILE = DATA_DIR / "audio_outputs.json"
 
@@ -36,31 +42,10 @@ DEFAULT_INSERT = {
     "label": "(none) — Native processing",
 }
 
-MOCK_DEVICES = [
-    {"id": "builtin", "label": "Built-in Output"},
-    {"id": "usb", "label": "USB Interface"},
-    {"id": "aggregate", "label": "Aggregate Device"},
-    {"id": "blackhole", "label": "BlackHole 2ch"},
-    {"id": "zoom_virtual", "label": "ZoomAudioDevice (mock)"},
-    {"id": "phone_hybrid", "label": "Phone Hybrid (mock)"},
-    {"id": "none", "label": "None"},
-    {"id": "same_as_program", "label": "Same as Program"},
-]
-
-MOCK_INPUTS = [
-    {"id": "none", "label": "None"},
-    {"id": "usb_in", "label": "USB Interface In"},
-    {"id": "builtin_in", "label": "Built-in Mic / Line"},
-    {"id": "zoom_return", "label": "Zoom Return (mock)"},
-    {"id": "phone_return", "label": "Phone Hybrid Return (mock)"},
-    {"id": "aggregate_in", "label": "Aggregate Input"},
-]
-
-INSERT_OPTIONS = [
-    {"id": "none", "label": "(none) — Native processing"},
-    {"id": "native_only", "label": "Native only (force MQ chain)"},
-    # Future Mac: {"id": "au:com.example.plugin", "label": "AU: Example"}
-]
+# Back-compat aliases used by tests / older callers
+MOCK_DEVICES = list(MOCK_OUTPUT_DEVICES)
+MOCK_INPUTS = list(MOCK_INPUT_DEVICES)
+INSERT_OPTIONS = list(NATIVE_INSERT_OPTIONS)
 
 
 def _path(db_dir: Path | None = None) -> Path:
@@ -79,73 +64,91 @@ def _clean_map(defaults: dict[str, str], incoming: dict | None) -> dict[str, str
     return cleaned
 
 
+def _device_catalogue() -> dict[str, Any]:
+    """Live CoreAudio or mock catalogue for Settings dropdowns."""
+    try:
+        return list_audio_devices(include_audio_units=True)
+    except Exception as exc:  # pragma: no cover — never break Settings load
+        return {
+            "source": "mock",
+            "platform": "unknown",
+            "devices": list(MOCK_DEVICES),
+            "input_devices": list(MOCK_INPUTS),
+            "audio_units": [],
+            "insert_options": list(INSERT_OPTIONS),
+            "note": f"Device enum failed ({exc}); using mock catalogue.",
+            "backend": "mock",
+        }
+
+
+def _envelope(
+    outputs: dict[str, str],
+    inputs: dict[str, str],
+    insert: dict[str, Any],
+    *,
+    source: str,
+) -> dict[str, Any]:
+    catalogue = _device_catalogue()
+    insert_options = catalogue.get("insert_options") or list(INSERT_OPTIONS)
+    # Sync label from slot against live options (includes discovered AUs on Mac)
+    for opt in insert_options:
+        if opt.get("id") == insert.get("slot"):
+            insert = {**insert, "label": opt.get("label") or insert.get("label")}
+            break
+    return {
+        "outputs": outputs,
+        "inputs": inputs,
+        "insert": insert,
+        "devices": catalogue.get("devices") or list(MOCK_DEVICES),
+        "input_devices": catalogue.get("input_devices") or list(MOCK_INPUTS),
+        "insert_options": insert_options,
+        "device_source": catalogue.get("source") or "mock",
+        "device_platform": catalogue.get("platform"),
+        "device_backend": catalogue.get("backend"),
+        "device_note": catalogue.get("note"),
+        "audio_units": catalogue.get("audio_units") or [],
+        "mix_minus": {
+            "output_role": "mix_minus",
+            "paired_input_role": "aux_in",
+            "paired_input_device": inputs.get("aux_in", "none"),
+            "output_device": outputs.get("mix_minus", "none"),
+            "description": (
+                "Mix-minus = Program (processed) minus Aux input return — "
+                "caller/Zoom hears the show without their own voice."
+            ),
+        },
+        "source": source,
+    }
+
+
 def load_audio_outputs(db_dir: Path | None = None) -> dict[str, Any]:
     path = _path(db_dir)
     if not path.exists():
-        return {
-            "outputs": dict(DEFAULT_OUTPUTS),
-            "inputs": dict(DEFAULT_INPUTS),
-            "insert": dict(DEFAULT_INSERT),
-            "devices": list(MOCK_DEVICES),
-            "input_devices": list(MOCK_INPUTS),
-            "insert_options": list(INSERT_OPTIONS),
-            "mix_minus": {
-                "output_role": "mix_minus",
-                "paired_input_role": "aux_in",
-                "description": (
-                    "Mix-minus = Program (processed) minus Aux input return — "
-                    "caller/Zoom hears the show without their own voice."
-                ),
-            },
-            "source": "defaults",
-        }
+        return _envelope(
+            dict(DEFAULT_OUTPUTS),
+            dict(DEFAULT_INPUTS),
+            dict(DEFAULT_INSERT),
+            source="defaults",
+        )
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         raw_out = data.get("outputs") or data
         # Ignore non-output keys if old flat format
         outputs = _clean_map(DEFAULT_OUTPUTS, raw_out if isinstance(raw_out, dict) else {})
-        inputs = _clean_map(DEFAULT_INPUTS, data.get("inputs") if isinstance(data.get("inputs"), dict) else {})
+        inputs = _clean_map(
+            DEFAULT_INPUTS,
+            data.get("inputs") if isinstance(data.get("inputs"), dict) else {},
+        )
         insert_in = data.get("insert") if isinstance(data.get("insert"), dict) else {}
         insert = {**DEFAULT_INSERT, **{k: insert_in[k] for k in DEFAULT_INSERT if k in insert_in}}
-        # Sync label from slot
-        for opt in INSERT_OPTIONS:
-            if opt["id"] == insert.get("slot"):
-                insert["label"] = opt["label"]
-                break
-        return {
-            "outputs": outputs,
-            "inputs": inputs,
-            "insert": insert,
-            "devices": list(MOCK_DEVICES),
-            "input_devices": list(MOCK_INPUTS),
-            "insert_options": list(INSERT_OPTIONS),
-            "mix_minus": {
-                "output_role": "mix_minus",
-                "paired_input_role": "aux_in",
-                "paired_input_device": inputs.get("aux_in", "none"),
-                "output_device": outputs.get("mix_minus", "none"),
-                "description": (
-                    "Mix-minus = Program (processed) minus Aux input return — "
-                    "caller/Zoom hears the show without their own voice."
-                ),
-            },
-            "source": str(path),
-        }
+        return _envelope(outputs, inputs, insert, source=str(path))
     except (OSError, json.JSONDecodeError):
-        return {
-            "outputs": dict(DEFAULT_OUTPUTS),
-            "inputs": dict(DEFAULT_INPUTS),
-            "insert": dict(DEFAULT_INSERT),
-            "devices": list(MOCK_DEVICES),
-            "input_devices": list(MOCK_INPUTS),
-            "insert_options": list(INSERT_OPTIONS),
-            "mix_minus": {
-                "output_role": "mix_minus",
-                "paired_input_role": "aux_in",
-                "description": "Mix-minus = Program minus Aux return",
-            },
-            "source": "defaults",
-        }
+        return _envelope(
+            dict(DEFAULT_OUTPUTS),
+            dict(DEFAULT_INPUTS),
+            dict(DEFAULT_INSERT),
+            source="defaults",
+        )
 
 
 def save_audio_outputs(payload: dict[str, Any], db_dir: Path | None = None) -> dict[str, Any]:
@@ -170,9 +173,12 @@ def save_audio_outputs(payload: dict[str, Any], db_dir: Path | None = None) -> d
         insert["slot"] = insert_in["slot"]
     if isinstance(insert_in.get("mode"), str):
         insert["mode"] = insert_in["mode"]
-    for opt in INSERT_OPTIONS:
-        if opt["id"] == insert["slot"]:
-            insert["label"] = opt["label"]
+
+    # Resolve label from live insert options (native + optional Mac AU list)
+    catalogue = _device_catalogue()
+    for opt in catalogue.get("insert_options") or INSERT_OPTIONS:
+        if opt.get("id") == insert["slot"]:
+            insert["label"] = opt.get("label") or insert["label"]
             break
 
     stored = {"outputs": outputs, "inputs": inputs, "insert": insert}

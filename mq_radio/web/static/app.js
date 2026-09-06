@@ -72,6 +72,15 @@ const DEFAULT_INSERT = {
   label: "(none) — Native processing",
 };
 
+/** Live device catalogue from /api/audio/devices (CoreAudio on Mac, mock elsewhere). */
+let liveAudioDevices = {
+  source: "mock",
+  devices: MOCK_AUDIO_DEVICES,
+  input_devices: MOCK_INPUT_DEVICES,
+  insert_options: INSERT_OPTIONS,
+  note: "",
+};
+
 const DEFAULT_VOCLONER = {
   voice_renderer: "vocloner",
   preferred_model: "",
@@ -1159,16 +1168,25 @@ function outSelectId(role) {
   return `out-${role}`;
 }
 
-function populateSettingsForm(bundle) {
+function populateSettingsForm(bundle, devicesPayload) {
   const routes = bundle.outputs || bundle;
   const inputs = bundle.inputs || DEFAULT_AUDIO_INPUTS;
   const insert = bundle.insert || DEFAULT_INSERT;
+  const cat = devicesPayload || liveAudioDevices || {};
+  const outDevices = cat.devices || MOCK_AUDIO_DEVICES;
+  const inDevices = cat.input_devices || MOCK_INPUT_DEVICES;
+  const insertOpts = cat.insert_options || INSERT_OPTIONS;
 
   AUDIO_ROLES.forEach((role) => {
     const sel = document.getElementById(outSelectId(role));
     if (!sel) return;
     const same = role === "stream" || role === "record";
-    sel.innerHTML = deviceOptionsHtml(same);
+    // stream/record already get Same as Program via deviceOptionsHtml flag;
+    // strip duplicate same_as_program from device list when flag adds it.
+    const list = same
+      ? outDevices.filter((d) => d.id !== "same_as_program")
+      : outDevices;
+    sel.innerHTML = deviceOptionsHtml(same, list);
     const val = routes[role] || DEFAULT_AUDIO_ROUTES[role];
     if ([...sel.options].some((o) => o.value === val)) sel.value = val;
     else sel.selectedIndex = 0;
@@ -1176,23 +1194,37 @@ function populateSettingsForm(bundle) {
 
   const inAux = document.getElementById("in-aux");
   if (inAux) {
-    inAux.innerHTML = deviceOptionsHtml(false, MOCK_INPUT_DEVICES);
+    inAux.innerHTML = deviceOptionsHtml(false, inDevices);
     const v = inputs.aux_in || "none";
     if ([...inAux.options].some((o) => o.value === v)) inAux.value = v;
   }
   const inMic = document.getElementById("in-mic");
   if (inMic) {
-    inMic.innerHTML = deviceOptionsHtml(false, MOCK_INPUT_DEVICES);
+    inMic.innerHTML = deviceOptionsHtml(false, inDevices);
     const v = inputs.mic || "none";
     if ([...inMic.options].some((o) => o.value === v)) inMic.value = v;
   }
 
   const ins = document.getElementById("prog-insert");
   if (ins) {
-    ins.innerHTML = INSERT_OPTIONS.map(
-      (o) => `<option value="${o.id}">${escapeHtml(o.label)}</option>`
-    ).join("");
-    ins.value = insert.slot || "none";
+    ins.innerHTML = insertOpts
+      .map((o) => `<option value="${o.id}">${escapeHtml(o.label)}</option>`)
+      .join("");
+    const slot = insert.slot || "none";
+    if ([...ins.options].some((o) => o.value === slot)) ins.value = slot;
+    else ins.value = "none";
+  }
+
+  const badge = document.getElementById("audio-device-source");
+  if (badge) {
+    const src = cat.source || "mock";
+    const backend = cat.backend ? ` · ${cat.backend}` : "";
+    badge.textContent =
+      src === "coreaudio"
+        ? `Devices: CoreAudio${backend}`
+        : `Devices: mock (Linux/CI/web)${backend}`;
+    badge.dataset.source = src;
+    badge.title = cat.note || "";
   }
 }
 
@@ -1207,10 +1239,11 @@ function readSettingsForm() {
     mic: document.getElementById("in-mic")?.value || "none",
   };
   const slot = document.getElementById("prog-insert")?.value || "none";
+  const insertOpts = (liveAudioDevices && liveAudioDevices.insert_options) || INSERT_OPTIONS;
   const insert = {
     slot,
-    mode: slot === "native_only" ? "force_native" : "native_when_empty",
-    label: INSERT_OPTIONS.find((o) => o.id === slot)?.label || slot,
+    mode: slot === "native_only" ? "force_native" : slot.startsWith("au:") ? "au_insert" : "native_when_empty",
+    label: insertOpts.find((o) => o.id === slot)?.label || slot,
   };
   return { outputs, inputs, insert };
 }
@@ -1303,8 +1336,29 @@ async function applyProcessingTemplate(name) {
   }
 }
 
-function openSettings() {
-  populateSettingsForm(loadAudioRoutes());
+async function fetchAudioDevices() {
+  try {
+    const data = await fetch("/api/audio/devices").then((r) => (r.ok ? r.json() : null));
+    if (data && Array.isArray(data.devices)) {
+      liveAudioDevices = {
+        source: data.source || "mock",
+        devices: data.devices,
+        input_devices: data.input_devices || MOCK_INPUT_DEVICES,
+        insert_options: data.insert_options || INSERT_OPTIONS,
+        note: data.note || "",
+        backend: data.backend || data.source || "",
+        platform: data.platform || "",
+      };
+    }
+  } catch (_) {
+    /* keep last / mock */
+  }
+  return liveAudioDevices;
+}
+
+async function openSettings() {
+  await fetchAudioDevices();
+  populateSettingsForm(loadAudioRoutes(), liveAudioDevices);
   populateVoclonerForm(loadVoclonerSettings());
   loadProcessingSettings();
   fetch("/api/settings/vt-inbox")
@@ -1382,11 +1436,26 @@ function initSettings() {
   document.getElementById("settings-backdrop").addEventListener("click", (ev) => {
     if (ev.target.id === "settings-backdrop") closeSettings();
   });
-  // Prefetch server settings (merge over local if present)
+  // Prefetch device catalogue + server settings (merge over local if present)
+  fetchAudioDevices().catch(() => {});
   fetch("/api/settings/audio")
     .then((r) => (r.ok ? r.json() : null))
     .then((data) => {
-      if (data && data.outputs) {
+      if (!data) return;
+      if (Array.isArray(data.devices)) {
+        liveAudioDevices = {
+          source: data.device_source || data.source_devices || liveAudioDevices.source,
+          devices: data.devices,
+          input_devices: data.input_devices || liveAudioDevices.input_devices,
+          insert_options: data.insert_options || liveAudioDevices.insert_options,
+          note: data.device_note || liveAudioDevices.note || "",
+          backend: data.device_backend || "",
+          platform: data.device_platform || "",
+        };
+        // Prefer dedicated device_source field from settings envelope
+        if (data.device_source) liveAudioDevices.source = data.device_source;
+      }
+      if (data.outputs) {
         const cur = loadAudioRoutes();
         const merged = {
           outputs: { ...cur.outputs, ...data.outputs },

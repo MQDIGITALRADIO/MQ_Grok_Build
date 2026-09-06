@@ -2,6 +2,19 @@
 
 Lean build log for Matt. SHAs are on `main` (`MQDIGITALRADIO/MQ_Grok_Build`).
 
+## Away session 2026-09-06 (continued)
+
+| SHA | Theme |
+|-----|--------|
+| *(this commit)* | Real Mac CoreAudio device enum bridge + Settings wire-up |
+
+**CoreAudio device enumeration:** Python engine lists real input/output names on macOS via `system_profiler SPAudioDataType` (optional `sounddevice` if installed). Linux/CI/web keep mock catalogue. API: `GET /api/audio/devices` → `{source: "coreaudio"|"mock", devices, input_devices, insert_options, …}`; Settings routing dropdowns populate from it. AU insert stays stub (`none` = native); on Mac, `auval -a` may append read-only AU names — hosting still deferred.
+
+### Still deferred (not DMG-bar met)
+- **AU/AAX hosting** (insert slot + optional name list only)
+- Transmission-path **DSP** beyond Web Audio approx + Liquidsoap handoff stub
+- Opening CoreAudio streams to selected devices (enum ≠ route)
+
 ## Away session 2026-09-06
 
 Wave from On-Air desk depth through daypart weekday packs (HEAD was `35c686c` before this polish commit).
@@ -23,8 +36,8 @@ Wave from On-Air desk depth through daypart weekday packs (HEAD was `35c686c` be
 **This polish:** Electron preload `webUtils.getPathForFile` for hotkey absolute-path drops (Mac app); web still pastes path. Hotkey drop targets slot under cursor. Default hotkey slots always include `path` + `inject_mode`.
 
 ### Still deferred (not DMG-bar met)
-- Real **CoreAudio** device enumeration
-- **AU/AAX** hosting (insert slot stub only)
+- **AU/AAX hosting** (insert slot + optional `auval` name list only)
 - Transmission-path **DSP** beyond Web Audio approx + Liquidsoap handoff stub
+- Opening CoreAudio **streams** to selected devices (enumeration ≠ routing)
 
-Do **not** treat the unsigned/ad-hoc Mac DMG as broadcast-ready until CoreAudio/AU/DSP bar is closed.
+Do **not** treat the unsigned/ad-hoc Mac DMG as broadcast-ready until AU host + transmission DSP bar is closed.

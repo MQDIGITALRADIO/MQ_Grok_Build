@@ -329,9 +329,11 @@
       </div>
       <div class="settings-body">
         <p class="settings-intro">
-          Broadcast-style output routing. Web demo lists mock devices for UX;
-          Mac engine will enumerate real CoreAudio devices.
+          Broadcast-style output routing. Device lists come from
+          <code>/api/audio/devices</code> — real <strong>CoreAudio</strong> names on macOS,
+          mock studio names on Linux/CI/web.
         </p>
+        <p class="settings-intro" id="audio-device-source" data-source="mock">Devices: …</p>
         <div class="settings-section-title">VOICE RENDERER</div>
         <div class="audio-route-row">
           <label>Default renderer</label>
@@ -446,8 +448,9 @@
           Optional insert on the Program / On-Air path. When the slot is
           <strong>(none)</strong> or <strong>Native only</strong>, the MQ native
           chain (AGC→EQ→Multiband→Exciter→Limiter) is the main output.
-          Real AU/AAX hosting is a later Mac production-bus feature — this slot
-          persists the choice so the desk is ready.
+          On macOS, installed Audio Units may appear as read-only names (via
+          <code>auval</code>) — <strong>hosting</strong> them on the Program bus
+          is still Mac-later / production-bus work. This slot persists the choice.
         </p>
         <div class="audio-route-row">
           <label for="prog-insert">Insert</label>
@@ -458,7 +461,7 @@
         <p class="settings-intro">
           Program is always the <em>processed</em> on-air bus. Mix-minus is paired
           with Aux input so Zoom/caller hears program <strong>minus</strong> their return.
-          Device names are mock on the web demo; CoreAudio enumeration comes with the Mac engine.
+          Dropdowns use the live device catalogue (CoreAudio on Mac / mock elsewhere).
         </p>
         <div class="audio-route-row">
           <label for="out-program">Program / On-Air (processed)</label>
