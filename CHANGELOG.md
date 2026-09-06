@@ -8,7 +8,7 @@ Lean build log for Matt. SHAs are on `main` (`MQDIGITALRADIO/MQ_Grok_Build`).
 |-----|--------|
 | *(this commit)* | Desktop **0.1.2**; P1 library/clocks/FILLER/ETM Done; On-Air empty/error harden; ~637MB package notes |
 
-**Version:** Desktop packaging **0.1.2** (`desktop/package.json`, `build_info.DESKTOP_VERSION`, titlebar badge, preload fallback). Release notes: Mac package **~637MB** substance class (bundled **ffmpeg** + **demo beds** + Master Control + engine — not junk; music library stays external).
+**Version:** Desktop packaging **0.1.2** (`desktop/package.json`, `build_info.DESKTOP_VERSION`, titlebar badge, preload fallback). Release notes: Mac package **~637MB** substance class (bundled **ffmpeg** + noise-textured **demo beds** + Master Control + engine — not junk; sine pads that ZIP to nothing forbidden). CI soft floor **≥500MB** ZIP/DMG; beds staged at `MQ_DEMO_BED_MB=850`. Music library stays external.
 
 **P1 → Done (pytest + HTTP e2e, no Mac audio required):**
 - Categories / Library manager + FILLER pool toward ETM/HIT

@@ -10,9 +10,9 @@ contextBridge.exposeInMainWorld('mqDesktop', {
   /** Packaging version string (Electron package.json). */
   appVersion: (() => {
     try {
-      return require('./package.json').version || '0.1.1';
+      return require('./package.json').version || '0.1.2';
     } catch (_) {
-      return '0.1.1';
+      return '0.1.2';
     }
   })(),
   /**

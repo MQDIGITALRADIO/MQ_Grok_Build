@@ -313,7 +313,9 @@ class MockEngine(PlayoutEngine):
         did = self._daily_log_id(conn)
         if not did:
             conn.close()
-            self._state.message = "no log"
+            self._state.message = (
+                "No log for this date — open Clocks → Generate hour, then PLAY"
+            )
             return self._state
 
         on_air = self._on_air_event(conn, did)
@@ -340,7 +342,10 @@ class MockEngine(PlayoutEngine):
         ev = self._next_event(conn, did)
         if not ev:
             conn.close()
-            self._state.message = "log empty"
+            self._state.message = (
+                "Living Log empty — open Clocks → Generate hour "
+                "(or Sample hour), or Import audio then Insert"
+            )
             return self._state
         st = self._start_event(conn, ev)
         conn.close()
@@ -371,7 +376,9 @@ class MockEngine(PlayoutEngine):
         did = self._daily_log_id(conn)
         if not did:
             conn.close()
-            self._state.message = "no log"
+            self._state.message = (
+                "No log for this date — open Clocks → Generate hour, then PLAY"
+            )
             return self._state
         self._complete_current(conn, outcome="SKIPPED")
         with SESSION.lock:
@@ -405,7 +412,7 @@ class MockEngine(PlayoutEngine):
             if force:
                 with SESSION.lock:
                     SESSION.assist_go_ready = False
-            self._state.message = f"no daily log for {self.log_date} — generate-log / sample-hour first"
+            self._state.message = f"No log for {self.log_date} — open Clocks → Generate hour (or Sample hour)"
             return self._state
 
         with SESSION.lock:
@@ -448,7 +455,7 @@ class MockEngine(PlayoutEngine):
                 SESSION.clear_overlap()
             conn.close()
             self._state.running = False
-            self._state.message = "log empty"
+            self._state.message = ("Living Log empty — open Clocks → Generate hour (or Sample hour), or Import audio then Insert")
             return self._state
 
         # Resolve Segue Editor markers / defaults

@@ -48,7 +48,7 @@ const AUDIO_ROLES = [
 const AUDIO_INPUT_ROLES = ["aux_in", "mic"];
 const SETTINGS_LS_KEY = "mq_radio_audio_outputs_v2";
 const WELCOME_LS_KEY = "mq_radio_welcome_dismissed_v1";
-const DESKTOP_VERSION_FALLBACK = "0.1.1";
+const DESKTOP_VERSION_FALLBACK = "0.1.2";
 const VOCLONER_LS_KEY = "mq_radio_vocloner_v1";
 const VOCLONER_URL = "https://vocloner.com/";
 
@@ -226,8 +226,11 @@ function fillDeck(prefix, event, stateClass, stateText) {
 
   if (!event) {
     if (typeEl) { typeEl.textContent = "—"; typeEl.className = "deck-type"; }
-    if (titleEl) titleEl.textContent = "(empty)";
-    if (artistEl) artistEl.textContent = "—";
+    if (titleEl) {
+      titleEl.textContent = prefix === "deck-a" ? "No cart cued" : "No next cart";
+      titleEl.title = "Import audio + Clocks → Generate hour to fill decks";
+    }
+    if (artistEl) artistEl.textContent = "Import audio · Clocks → Generate";
     if (chainEl) chainEl.textContent = "—";
     if (durEl) durEl.textContent = "0:00";
     if (meterEl) meterEl.className = "meter-bar idle";
@@ -738,12 +741,12 @@ async function refresh() {
     st = await r.json();
   } catch (err) {
     const msg = document.getElementById("engine-msg");
-    if (msg) msg.textContent = "status poll failed — engine offline?";
+    if (msg) setEngineMsgOperator("status poll failed — engine offline?", { kind: "error" });
     return;
   }
   if (!st || typeof st !== "object") {
     const msg = document.getElementById("engine-msg");
-    if (msg) msg.textContent = "status incomplete";
+    if (msg) setEngineMsgOperator("status incomplete", { kind: "error" });
     return;
   }
 
@@ -907,9 +910,18 @@ async function refresh() {
     }
     const engMsg = document.getElementById("engine-msg");
     if (st.running && onAir && engMsg) {
-      // Don't clobber media-missing notice; only fill empty idle text
+      // Don't clobber media-missing / operator hints; only fill idle text
       const cur = (engMsg.textContent || "").trim();
-      if (!cur || cur === "Engine idle") engMsg.textContent = "playing";
+      if (!cur || cur === "Engine idle" || cur.startsWith("Engine idle")) {
+        setEngineMsgOperator("playing", { kind: "ok" });
+      }
+    } else if (!st.running && engMsg) {
+      const cur = (engMsg.textContent || "").trim();
+      // First-run: if idle with no carts, nudge once without clobbering richer hints
+      const noCart = !(st.now) && !(Array.isArray(st.upcoming) && st.upcoming.length);
+      if (noCart && (!cur || cur === "Engine idle" || cur === "ON AIR — playing" || cur === "playing")) {
+        setEngineMsgOperator("Engine idle", { kind: "hint" });
+      }
     }
 
     let events = [];
@@ -932,7 +944,7 @@ async function refresh() {
   } catch (err) {
     console.warn("status poll apply failed", err);
     const msg = document.getElementById("engine-msg");
-    if (msg) msg.textContent = "status partial — desk kept alive";
+    if (msg) setEngineMsgOperator("status partial — desk kept alive", { kind: "error" });
   }
 }
 
@@ -989,7 +1001,7 @@ function renderLivingLog(events, np, up) {
   if (!all.length) {
     const tr = document.createElement("tr");
     tr.className = "log-row log-empty-hint";
-    tr.innerHTML = `<td colspan="10" class="log-empty">Living Log is empty — open <strong>CLOCKS</strong> → Generate hour, or drop audio then build the hour. New stations: Settings ⚙ first for audio route.</td>`;
+    tr.innerHTML = `<td colspan="10" class="log-empty">Living Log is empty (normal on first run) — <strong>Import audio</strong>, open <strong>Clocks</strong> → Generate hour (or Sample hour), then <strong>PLAY</strong>. Mac ZIP: if the desk never loads, run <code>Open MQ Radio.command</code> once (Gatekeeper). Settings → audio route before going live.</td>`;
     body.appendChild(tr);
     return;
   }
@@ -1102,14 +1114,17 @@ async function postAction(path) {
     const r = await fetch(`${path}?date=${date}`, { method: "POST" });
     res = await r.json().catch(() => ({}));
   } catch (err) {
-    const msg = document.getElementById("engine-msg");
-    if (msg) msg.textContent = "action failed";
+    setEngineMsgOperator("action failed", { kind: "error" });
     return;
   }
   const msgEl = document.getElementById("engine-msg");
   if (msgEl) {
-    // Clear stale text when server returns empty; keep play flowing
-    msgEl.textContent = res.message != null ? String(res.message) : "";
+    // Map terse engine codes; clear stale when empty so play can flow
+    if (res.message != null && String(res.message).trim()) {
+      setEngineMsgOperator(res.message);
+    } else {
+      setEngineMsgOperator("");
+    }
   }
   try {
     await refresh();
@@ -1673,9 +1688,49 @@ function initSettings() {
 }
 
 
-function setEngineMsg(text) {
+
+/** Map terse engine codes to first-run operator English (Mac + web). */
+function operatorEngineMessage(raw) {
+  const t = raw == null ? "" : String(raw).trim();
+  if (!t) return "";
+  const key = t.toLowerCase();
+  const map = {
+    "log empty": "Living Log empty — open Clocks → Generate hour (or Sample hour), or Import audio then Insert",
+    "no log": "No log for this date — open Clocks → Generate hour, then PLAY",
+    "mock idle": "Engine idle — Import audio, then Clocks → Generate hour",
+    "engine idle": "Engine idle — Import audio, then Clocks → Generate hour",
+    "stopped": "Stopped — READY for next PLAY",
+    "playing": "ON AIR — playing",
+    "action failed": "Action failed — is the engine running? Mac ZIP: try Open MQ Radio.command, then Refresh",
+    "status incomplete": "Status incomplete — Refresh; if Mac ZIP just opened, wait for engine then Refresh",
+    "status poll failed — engine offline?": "Engine offline — Mac ZIP: run Open MQ Radio.command (Gatekeeper), reopen app, then Refresh",
+    "status partial — desk kept alive": "Status partial — desk kept alive; Refresh if transport looks stuck",
+  };
+  if (map[key]) return map[key];
+  if (map[t]) return map[t];
+  // Preserve already-friendly sentences
+  if (t.length > 28 || t.includes("—") || t.includes("Import") || t.includes("Clocks")) return t;
+  return t;
+}
+
+function setEngineMsgOperator(raw, opts) {
   const el = document.getElementById("engine-msg");
-  if (el) el.textContent = text == null ? "" : String(text);
+  if (!el) return;
+  const text = operatorEngineMessage(raw);
+  el.textContent = text;
+  el.classList.remove("is-error", "is-hint", "is-ok");
+  const kind = (opts && opts.kind) || "";
+  if (kind === "error" || /offline|failed|empty|no log|no audio|missing/i.test(text)) {
+    el.classList.add("is-error");
+  } else if (kind === "hint" || /Import|Clocks|Generate|Gatekeeper|first/i.test(text)) {
+    el.classList.add("is-hint");
+  } else if (kind === "ok" || /ON AIR|playing|Stopped|playing/i.test(text)) {
+    el.classList.add("is-ok");
+  }
+}
+
+function setEngineMsg(text) {
+  setEngineMsgOperator(text);
 }
 
 function initWelcomeTip() {
@@ -1729,9 +1784,9 @@ document.getElementById("btn-play").onclick = async () => {
     const url = st && (st.playable_url || (st.now && st.now.playable_url));
     const msg = document.getElementById("engine-msg");
     if (onAir && !url && msg) {
-      msg.textContent = "Playing log row — no audio file on this cart (import audio / Replace)";
+      setEngineMsgOperator("Playing log row — no audio file on this cart (Import audio / Replace)", { kind: "error" });
     } else if (onAir && url && msg && !(msg.textContent || "").trim()) {
-      msg.textContent = "playing";
+      setEngineMsgOperator("playing", { kind: "ok" });
     }
   } catch (_) {}
 };
@@ -1794,6 +1849,7 @@ initWelcomeTip();
 initVersionBadge();
 window.mqRefresh = refresh;
 window.mqSetEngineMsg = setEngineMsg;
+window.mqOperatorEngineMessage = operatorEngineMessage;
 window.mqOpenVtStudio = openVtStudio;
 window.mqPostAction = postAction;
 setInterval(tickClock, 250);

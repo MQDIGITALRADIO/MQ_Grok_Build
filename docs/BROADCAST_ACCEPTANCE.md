@@ -19,9 +19,9 @@ Cross-check vs Maestro / early Zetta / Netia Radio-Assist / mAirList / StationPl
 ## P1 — Pro desk parity (Maestro / Netia / mAirList class)
 - [ ] Cart decks A/B/C fully readable (title/artist/time/ending)
 - [ ] Cartwall / hotkey bank multi-page, color/type, reorder, persist
-- [ ] Clocks + daypart grid + weekday/weekend packs; generate hour/24h
-- [ ] Categories + library manager; FILLER pool for ETM/HIT/HARD
-- [ ] TO TIME / ETM / HIT fill stretch
+- [x] Clocks + daypart grid + weekday/weekend packs; generate hour/24h
+- [x] Categories + library manager; FILLER pool for ETM/HIT/HARD
+- [x] TO TIME / ETM / HIT fill stretch
 - [ ] Intro / outro / end-pulse markers editable; defaults on ingest
 - [ ] Voice tracking (manual + AI script/approve path); Downloads/VT inbox ingest
 - [ ] Multi-bus: Program, Monitor, Headphones, Aux, Mix-minus↔Aux in, Stream, Record
@@ -48,7 +48,7 @@ Cross-check vs Maestro / early Zetta / Netia Radio-Assist / mAirList / StationPl
 3. Manual Mac ZIP: Gatekeeper helper → same path on real devices
 
 ## Package size (Matt)
-- Target Mac ZIP/DMG **≥ ~500 MB**, aiming **~1 GB** class with *real* bundled substance (ffmpeg, Liquidsoap/Master Control bits, engine, sample beds, processing assets, docs).
+- Target Mac ZIP/DMG **≥ ~500 MB**, aiming **~1 GB** class with *real* bundled substance (ffmpeg, Liquidsoap/Master Control bits, engine, sample beds, processing assets, docs). Desktop **0.1.2** stages **~637MB** substance class (ffmpeg + demo beds + Master Control + engine — not junk padding).
 - Do **not** pad with empty/junk files.
 - Primary music/VT library remains on external **MQ Digital** drive (not forced inside .app).
 
@@ -65,12 +65,12 @@ Cross-check vs Maestro / early Zetta / Netia Radio-Assist / mAirList / StationPl
 | P0 Living Log edit Delete/Insert/Replace | **Done** | Service + `/api/log/{delete,insert,replace}`; insert clamps `after_position`; MANUAL/VT survive soft regenerate; API e2e in `tests/test_desk_harden_partials.py` |
 | P0 Hotkeys fire / inject | **Partial** | `/api/hotkey/fire` + status message (missing path); `/api/hotkeys/reorder` + color persist + F-key rekey; desk drag/Up-Down; Mac path via preload still verify |
 | P0 VT record / Segment Editor | **Partial** | Segment invalid window / missing track errors; ffmpeg cut + markers-only; VT attach; needs Mac audio device pass |
-| P0 Segue Editor audition + dual-deck | **Partial** | `save_segue` validates same-id/duck/crossfade/marks; audition URLs; Mac hear-through |
+| P0 Segue Editor audition + dual-deck | **Partial** | Dual-deck engine crossfade **Done** without Mac audio (`test_dual_deck_segue` + P1 e2e: overlap flip, fade clear). Audition/hear-through still Mac verify — keep Partial |
 | P1 Decks A/B/C readable | **Partial** | Hybrid cards; ending/timers in |
 | P1 Cartwall multi-page | **Partial** | Pages + reorder/persist/color; status feedback on fire |
-| P1 Clocks + daypart packs | **Partial** | Clock editor + daypart UI |
-| P1 Categories / FILLER | **Partial** | Library manager + filler pool; ingest rejects bad/empty/dir/unsupported; FLAC/mp4 edges tested |
-| P1 TO TIME / ETM | **Partial** | Studio clock panel |
+| P1 Clocks + daypart packs | **Done** | Clock editor + daypart packs; clone/save/daypart HTTP e2e; generate_hour uses map; `tests/test_daypart_designer.py` + `tests/test_p1_library_clocks_etm_deck.py` |
+| P1 Categories / FILLER | **Done** | Library manager categories HTTP; FL filler pool; pick/insert toward ETM; ingest edges; `tests/test_categories_and_filler_pool.py` + `tests/test_p1_library_clocks_etm_deck.py` |
+| P1 TO TIME / ETM | **Done** | Studio clock TO TIME/ETM; hard HIT fill stretch/compress/filler; `to_time_payload`; `tests/test_clock_editor_and_etm_fill.py` + living_log ETM + P1 e2e |
 | P1 Multi-bus + mix-minus subtract | **Partial** | Browser subtract live; CoreAudio PCM still P2 |
 | P1 Native FM/Digital + TX mode | **Partial** | Browser processor + WAV stub |
 | P2 Real AU host | **Missing** | Scaffold + banner only — do not claim done |

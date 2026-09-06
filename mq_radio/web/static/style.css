@@ -306,6 +306,34 @@ html, body {
   text-overflow: ellipsis;
 }
 
+.engine-msg.is-error {
+  color: #ff8a80;
+  font-weight: 600;
+}
+.engine-msg.is-hint {
+  color: #90caf9;
+}
+.engine-msg.is-ok {
+  color: #a5d6a7;
+}
+.desk.desk-hybrid .engine-msg.is-error { color: #ffab91; }
+.desk.desk-hybrid .engine-msg.is-hint { color: #93c5fd; }
+.desk.desk-hybrid .engine-msg.is-ok { color: #86efac; }
+.desk.desk-hybrid .deck-title[title*="Import"] {
+  color: #94a3b8;
+  font-style: italic;
+  font-weight: 500;
+}
+.desk.desk-hybrid .log-empty code {
+  font-family: var(--mono);
+  font-size: 11px;
+  background: #0f172a;
+  color: #93c5fd;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+
 /* —— Cart / player decks A B C —— */
 .decks-row {
   display: grid;

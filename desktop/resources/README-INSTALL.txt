@@ -34,9 +34,12 @@ First launch
 ------------
 - MQ Radio starts the On-Air engine at http://127.0.0.1:8080
 - Station data: ~/Library/Application Support/MQ Radio/
-- Drop .wav / .mp3 / .flac / .mp4 onto the desk to build a library
-- Settings ⚙ → audio routes + FM/Digital processing
-- Clocks / Library buttons build the Living Log
+- Empty Living Log / empty decks are normal until you import + generate
+- Drop .wav / .mp3 / .flac / .mp4 (or Import audio) to build a library
+- Clocks → Generate hour (or Sample hour) fills the Living Log
+- PLAY starts the cued cart; Settings → audio routes before going live
+- If the desk says engine offline: run Open MQ Radio.command, reopen, Refresh
+- Package substance (~637MB class): bundled ffmpeg + demo beds + engine (music library stays external)
 
 Not yet broadcast-bar
 ---------------------

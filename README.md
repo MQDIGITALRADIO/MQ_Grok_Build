@@ -438,7 +438,7 @@ Matt return brief — major SHAs this wave (see `CHANGELOG.md` for the table):
 - **Gatekeeper helper** — `639b2b4`
 - **Electron hotkey absolute-path drop** — preload `webUtils` (this polish); web still pastes path
 
-**Still deferred — do not claim DMG bar met (market preview):** real **AU/AAX hosting** (interface + Settings banner + `au_insert_inactive` — plugins are not loaded; see `desktop/au_insert/README.md`), Mac/Liquidsoap **full** Master Control graph (browser TX mode + WAV stub + handoff **v3** + operator `brew install liquidsoap` docs are in — not a live operator graph), CoreAudio **PCM** mix-minus subtract (browser Web Audio subtract is in). Desktop package **0.1.1** ships Gatekeeper helper + README-INSTALL in ZIP/DMG staging. Multi-bus CoreAudio *stream open* (Program primary + best-effort secondaries) and device enumeration are in.
+**Still deferred — do not claim DMG bar met (market preview):** real **AU/AAX hosting** (interface + Settings banner + `au_insert_inactive` — plugins are not loaded; see `desktop/au_insert/README.md`), Mac/Liquidsoap **full** Master Control graph (browser TX mode + WAV stub + handoff **v3** + operator `brew install liquidsoap` docs are in — not a live operator graph), CoreAudio **PCM** mix-minus subtract (browser Web Audio subtract is in). Desktop package **0.1.2** ships Gatekeeper helper + README-INSTALL in ZIP/DMG staging. Multi-bus CoreAudio *stream open* (Program primary + best-effort secondaries) and device enumeration are in.
 
 ## Mac install (DMG)
 
