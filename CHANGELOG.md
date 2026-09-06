@@ -6,7 +6,7 @@ Lean build log for Matt. SHAs are on `main` (`MQDIGITALRADIO/MQ_Grok_Build`).
 
 | SHA | Theme |
 |-----|--------|
-| *(this commit)* | Idle Deck A meter empty; VU live/idle/STOP; Import Send-to Library\|Living Log\|Hotkey\|Deck A; Electron browse; broadcast scenario e2e |
+| `f7816c1` | Idle Deck A meter empty; VU live/idle/STOP; Import Send-to Library\|Living Log\|Hotkey\|Deck A; Electron browse; broadcast scenario e2e |
 
 **Meters (P0 visual):** Historic `.meter-bar { width: 62% }` default painted a stuck ~60% green bar when idle / false ON AIR. Default + `.idle` now **width 0 / dark**. JS `setMeterIdle` / `setMeterProgress` set inline width. ON AIR lamp/label only when `running`/`timing.playing` (`deckOnAir`). STOP clears meters + VU immediately.
 
