@@ -1,14 +1,24 @@
-/* MQ Category Clock Editor — Maestro-dense slot grid for GENERAL / OVERNIGHT */
+/* MQ Category Clock Editor + Daypart Designer — Maestro-dense */
 (function () {
   const EVENT_TYPES = [
     "MUSIC", "ID", "SWEEPER", "PROMO", "VOICE_TRACK", "ETM", "BREAK", "FILLER", "BED",
   ];
   const TIMINGS = ["FLOAT", "HIT", "HARD", "SOFT"];
   const CHAINS = ["AUTO", "MIX", "SEQ", "CUT", "HOLD", "MANUAL"];
+  const CANONICAL = new Set(["GENERAL", "OVERNIGHT"]);
+  const DEFAULT_HOUR_CLOCK = {
+    0: "OVERNIGHT", 1: "OVERNIGHT", 2: "OVERNIGHT", 3: "OVERNIGHT", 4: "OVERNIGHT",
+    5: "GENERAL", 6: "GENERAL", 7: "GENERAL", 8: "GENERAL", 9: "GENERAL",
+    10: "GENERAL", 11: "GENERAL", 12: "GENERAL", 13: "GENERAL", 14: "GENERAL",
+    15: "GENERAL", 16: "GENERAL", 17: "GENERAL", 18: "GENERAL",
+    19: "GENERAL", 20: "GENERAL", 21: "GENERAL", 22: "GENERAL",
+    23: "OVERNIGHT",
+  };
 
   let bundle = null;
   let activeCode = "GENERAL";
   let dirty = false;
+  let daypartDirty = false;
 
   function $(id) {
     return document.getElementById(id);
@@ -34,6 +44,10 @@
     bd.setAttribute("aria-hidden", "true");
   }
 
+  function clockCodes() {
+    return (bundle && bundle.clocks ? bundle.clocks : []).map((c) => c.code);
+  }
+
   function activeClock() {
     if (!bundle || !bundle.clocks) return null;
     return bundle.clocks.find((c) => c.code === activeCode) || bundle.clocks[0] || null;
@@ -43,6 +57,130 @@
     return values
       .map((v) => `<option value="${v}"${v === selected ? " selected" : ""}>${v}</option>`)
       .join("");
+  }
+
+  function escapeAttr(s) {
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/"/g, "&quot;")
+      .replace(/</g, "&lt;");
+  }
+
+  function daypartName(hour) {
+    const h = Number(hour);
+    if ([23, 0, 1, 2, 3, 4].includes(h)) return "overnight";
+    if (h >= 5 && h <= 9) return "morning";
+    if (h >= 10 && h <= 14) return "day";
+    if (h >= 15 && h <= 18) return "afternoon";
+    return "evening";
+  }
+
+  function renderDaypartGrid() {
+    const grid = $("daypart-grid");
+    const legend = $("daypart-legend");
+    if (!grid || !bundle) return;
+    const codes = clockCodes();
+    const map = bundle.hour_clock || {};
+    const cells = [];
+    for (let h = 0; h < 24; h++) {
+      const code = map[String(h)] || map[h] || DEFAULT_HOUR_CLOCK[h] || "GENERAL";
+      const dp = daypartName(h);
+      cells.push(`<div class="daypart-cell daypart-${dp}" data-hour="${h}" title="${dp}">
+        <span class="daypart-hour">${String(h).padStart(2, "0")}</span>
+        <select class="daypart-select" data-hour="${h}" aria-label="Clock for hour ${h}">
+          ${selectOpts(codes.length ? codes : ["GENERAL", "OVERNIGHT"], code)}
+        </select>
+      </div>`);
+    }
+    grid.innerHTML = cells.join("");
+    grid.querySelectorAll(".daypart-select").forEach((sel) => {
+      sel.addEventListener("change", () => {
+        const hour = sel.getAttribute("data-hour");
+        if (!bundle.hour_clock) bundle.hour_clock = {};
+        bundle.hour_clock[String(hour)] = sel.value;
+        daypartDirty = true;
+        setStatus(`hour ${hour} → ${sel.value}`);
+        renderDaypartLegend();
+      });
+    });
+    renderDaypartLegend();
+  }
+
+  function renderDaypartLegend() {
+    const legend = $("daypart-legend");
+    if (!legend || !bundle) return;
+    const map = bundle.hour_clock || {};
+    const counts = {};
+    for (let h = 0; h < 24; h++) {
+      const code = map[String(h)] || DEFAULT_HOUR_CLOCK[h] || "GENERAL";
+      counts[code] = (counts[code] || 0) + 1;
+    }
+    legend.innerHTML = Object.keys(counts)
+      .sort()
+      .map((c) => `<span class="daypart-chip"><strong>${escapeAttr(c)}</strong> ×${counts[c]}</span>`)
+      .join(" ");
+  }
+
+  function readDaypartFromGrid() {
+    if (!bundle) return {};
+    const map = {};
+    document.querySelectorAll(".daypart-select").forEach((sel) => {
+      map[String(sel.getAttribute("data-hour"))] = sel.value;
+    });
+    if (Object.keys(map).length) {
+      bundle.hour_clock = map;
+    }
+    return bundle.hour_clock || {};
+  }
+
+  function syncTabs() {
+    const tabs = $("clock-tabs");
+    if (!tabs || !bundle) return;
+    const codes = clockCodes();
+    if (!codes.includes(activeCode) && codes.length) {
+      activeCode = codes[0];
+    }
+    tabs.innerHTML = codes
+      .map(
+        (code) =>
+          `<button type="button" class="clock-tab${code === activeCode ? " active" : ""}" data-clock="${escapeAttr(code)}">${escapeAttr(code)}</button>`
+      )
+      .join("");
+    tabs.querySelectorAll(".clock-tab").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const next = btn.getAttribute("data-clock") || "GENERAL";
+        if (next === activeCode) return;
+        if (dirty) {
+          readSlotsIntoClock();
+          setStatus("modified (switch — save when ready)");
+        }
+        activeCode = next;
+        syncTabs();
+        renderSlots();
+        updateResetButton();
+        if (!dirty) setStatus(activeCode);
+      });
+    });
+    updateResetButton();
+    syncCloneSource();
+  }
+
+  function updateResetButton() {
+    const reset = $("btn-clock-reset");
+    if (!reset) return;
+    const can = CANONICAL.has(activeCode);
+    reset.disabled = !can;
+    reset.title = can
+      ? "Restore factory slots for this canonical clock"
+      : "Reset only available for GENERAL / OVERNIGHT";
+  }
+
+  function syncCloneSource() {
+    const sel = $("clock-clone-source");
+    if (!sel) return;
+    const codes = clockCodes();
+    const prefer = codes.includes(activeCode) ? activeCode : codes[0] || "GENERAL";
+    sel.innerHTML = selectOpts(codes.length ? codes : ["GENERAL", "OVERNIGHT"], prefer);
   }
 
   function renderSlots() {
@@ -110,13 +248,6 @@
     });
   }
 
-  function escapeAttr(s) {
-    return String(s)
-      .replace(/&/g, "&amp;")
-      .replace(/"/g, "&quot;")
-      .replace(/</g, "&lt;");
-  }
-
   function readSlotsIntoClock() {
     const clock = activeClock();
     if (!clock) return;
@@ -147,23 +278,26 @@
       if (data.chain_modes && data.chain_modes.length) {
         CHAINS.splice(0, CHAINS.length, ...data.chain_modes);
       }
+      if (!data.hour_clock || !Object.keys(data.hour_clock).length) {
+        bundle.hour_clock = {};
+        for (let h = 0; h < 24; h++) {
+          bundle.hour_clock[String(h)] = DEFAULT_HOUR_CLOCK[h];
+        }
+      }
       syncTabs();
+      renderDaypartGrid();
       renderSlots();
       dirty = false;
+      daypartDirty = false;
       setStatus(`${(data.clocks || []).length} clocks`);
     } catch (e) {
       setStatus("load failed");
     }
   }
 
-  function syncTabs() {
-    document.querySelectorAll(".clock-tab").forEach((btn) => {
-      btn.classList.toggle("active", btn.getAttribute("data-clock") === activeCode);
-    });
-  }
-
   async function saveClocks() {
     readSlotsIntoClock();
+    readDaypartFromGrid();
     const clock = activeClock();
     if (!clock) return;
     setStatus("saving…");
@@ -188,6 +322,9 @@
       if (idx >= 0) bundle.clocks[idx] = res.clock;
     }
     dirty = false;
+    daypartDirty = false;
+    syncTabs();
+    renderDaypartGrid();
     renderSlots();
     setStatus(`saved → ${res.json_path || "DB"}`);
     if (document.getElementById("engine-msg")) {
@@ -196,7 +333,42 @@
     }
   }
 
+  async function saveDaypartOnly() {
+    readDaypartFromGrid();
+    setStatus("saving daypart…");
+    const res = await fetch("/api/clocks/daypart", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hour_clock: bundle.hour_clock }),
+    }).then((r) => r.json());
+    if (!res.ok) {
+      setStatus(res.error || "daypart save failed");
+      return;
+    }
+    if (res.bundle) bundle = res.bundle;
+    else if (res.hour_clock) bundle.hour_clock = res.hour_clock;
+    daypartDirty = false;
+    renderDaypartGrid();
+    setStatus(`daypart saved → ${res.json_path || "DB"}`);
+  }
+
+  function applyDaypartDefaults() {
+    if (!bundle) return;
+    if (!confirm("Restore hour→clock defaults (OVERNIGHT 23–04, GENERAL elsewhere)?")) return;
+    bundle.hour_clock = {};
+    for (let h = 0; h < 24; h++) {
+      bundle.hour_clock[String(h)] = DEFAULT_HOUR_CLOCK[h];
+    }
+    daypartDirty = true;
+    renderDaypartGrid();
+    setStatus("defaults applied (save daypart to persist)");
+  }
+
   async function resetCanonical() {
+    if (!CANONICAL.has(activeCode)) {
+      setStatus("reset only for GENERAL / OVERNIGHT");
+      return;
+    }
     if (!confirm(`Reset ${activeCode} to canonical factory slots?`)) return;
     const res = await fetch("/api/clocks/reset", {
       method: "POST",
@@ -209,8 +381,43 @@
     }
     if (res.bundle) bundle = res.bundle;
     dirty = false;
+    syncTabs();
+    renderDaypartGrid();
     renderSlots();
     setStatus("reset to canonical");
+  }
+
+  async function cloneActiveClock() {
+    const sourceEl = $("clock-clone-source");
+    const codeEl = $("clock-clone-code");
+    const nameEl = $("clock-clone-name");
+    const source = sourceEl ? sourceEl.value : activeCode;
+    const code = codeEl ? codeEl.value.trim() : "";
+    const name = nameEl ? nameEl.value.trim() : "";
+    if (!code) {
+      setStatus("enter new clock code");
+      if (codeEl) codeEl.focus();
+      return;
+    }
+    setStatus("cloning…");
+    const res = await fetch("/api/clocks/clone", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source, code, name: name || undefined }),
+    }).then((r) => r.json());
+    if (!res.ok) {
+      setStatus(res.error || "clone failed");
+      return;
+    }
+    if (res.bundle) bundle = res.bundle;
+    activeCode = (res.clock && res.clock.code) || code.toUpperCase();
+    dirty = false;
+    syncTabs();
+    renderDaypartGrid();
+    renderSlots();
+    if (codeEl) codeEl.value = "";
+    if (nameEl) nameEl.value = "";
+    setStatus(`cloned ${source} → ${activeCode}`);
   }
 
   function addSlot() {
@@ -234,7 +441,7 @@
   }
 
   async function regenHour() {
-    if (dirty) {
+    if (dirty || daypartDirty) {
       await saveClocks();
     }
     const hourEl = $("clock-regen-hour");
@@ -252,8 +459,12 @@
       return;
     }
     const fill = res.etm_fill || {};
+    const mapped =
+      bundle && bundle.hour_clock
+        ? bundle.hour_clock[String(hour)] || "?"
+        : "?";
     setStatus(
-      `hour ${hour}: ${res.events || "?"} events` +
+      `hour ${hour} [${mapped}]: ${res.events || "?"} events` +
         (fill.filler_inserted || fill.stretched_ms
           ? ` · ETM fill +${fill.filler_inserted || 0} filler / stretch ${fill.stretched_ms || 0}ms`
           : "")
@@ -285,21 +496,6 @@
         if (ev.target === bd) closeClockEditor();
       });
     }
-    document.querySelectorAll(".clock-tab").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const next = btn.getAttribute("data-clock") || "GENERAL";
-        if (next === activeCode) return;
-        if (dirty) {
-          readSlotsIntoClock();
-          // Keep edits in memory for the clock we leave; Save still required for DB
-          setStatus("modified (switch — save when ready)");
-        }
-        activeCode = next;
-        syncTabs();
-        renderSlots();
-        if (!dirty) setStatus(activeCode);
-      });
-    });
     const save = $("btn-clock-save");
     if (save) save.onclick = () => saveClocks();
     const reset = $("btn-clock-reset");
@@ -308,6 +504,12 @@
     if (add) add.onclick = () => addSlot();
     const regen = $("btn-clock-regen");
     if (regen) regen.onclick = () => regenHour();
+    const cloneBtn = $("btn-clock-clone");
+    if (cloneBtn) cloneBtn.onclick = () => cloneActiveClock();
+    const dpSave = $("btn-daypart-save");
+    if (dpSave) dpSave.onclick = () => saveDaypartOnly();
+    const dpDef = $("btn-daypart-defaults");
+    if (dpDef) dpDef.onclick = () => applyDaypartDefaults();
   }
 
   window.MQClockEditor = {

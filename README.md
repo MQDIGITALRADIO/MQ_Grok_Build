@@ -89,7 +89,7 @@ python -m mq_radio serve --host 127.0.0.1 --port 8080
 | `scan [--path DIR]` | Index audio into library |
 | `seed-demo` | Categories, GENERAL clock, MQ DIGITAL rules, synthetic WAV fixtures |
 | `generate-log [--date] [--force] [--hour N\|--hours …\|--overnight]` | Build Living Log (24h or hour subset); preserves MANUAL unless `--force` |
-| `show-clocks [--json]` | Print GENERAL / OVERNIGHT clocks from DB (editor source of truth) + hour→clock grid |
+| `show-clocks [--json]` | Print named clocks from DB (editor source of truth) + hour→clock daypart grid |
 | `show-log [--date] [--limit N]` | Print log |
 | `engine-step [--action step\|play\|stop\|skip]` | MockEngine advance |
 | `serve [--port 8080]` | On-Air prototype |
@@ -160,16 +160,21 @@ Living Log rows come from **category clocks** — hour templates of event type +
 |-------|-----------------|-------|
 | **GENERAL** | 05–22 | 2 VT placeholders, A/B/C mix, promo + ETM/break |
 | **OVERNIGHT** | 23–04 | **4 VT placeholders** for AI DJ breaks, softer B/C lean, sparse A |
+| **Clones** | any (Daypart Designer) | Clone GENERAL/OVERNIGHT (or any clock) → named clock editable in Clock Editor |
 
-### Clock Editor (On-Air)
+Default hour→clock map lives in SQLite `daypart_clocks` (mirrored in `data/clocks.json`). Unset hours fall back to GENERAL / OVERNIGHT 23–04.
 
-Titlebar **CLOCKS** (or Settings → Category Clocks) opens a Maestro-dense slot grid:
+### Clock Editor + Daypart Designer (On-Air)
 
-- View / edit **GENERAL** + **OVERNIGHT** slots (type, category, timing, chain, label, offset)
-- Edit category / AU / **VT stub** rows; add/remove slots
-- **Save** → SQLite `clock_slots` + mirror `data/clocks.json`
-- **Generate hour** expands the *edited* clock (ETM/HIT fills applied)
-- **Reset canonical** restores factory GENERAL/OVERNIGHT definitions
+Titlebar **CLOCKS** (or Settings → Category Clocks) opens a Maestro-dense editor:
+
+- **Daypart Designer** — 0–23 hour grid; assign which clock runs each hour; **Save daypart** / **Defaults**
+- Dynamic tabs for every named clock (GENERAL, OVERNIGHT, clones)
+- **Clone clock** — copy GENERAL/OVERNIGHT (or any) as a starting point; edit slots independently
+- Edit slots (type, category, timing, chain, label, offset); add/remove
+- **Save clock** → SQLite `clock_slots` + daypart map + mirror `data/clocks.json`
+- **Generate hour** expands the clock mapped for that hour (ETM/HIT fills applied)
+- **Reset canonical** restores factory GENERAL/OVERNIGHT only (clones keep their own slots)
 - `ensure_canonical_clocks` / seed **preserve** operator edits unless reset
 
 ### Hard ETM / HIT fills
@@ -209,7 +214,7 @@ python -m mq_radio generate-log --date 2026-09-06 --music-categories B,C --enfor
 | Area | M1 (this zip) | Later |
 |------|---------------|--------|
 | Library / scanner | WAV + sidecar JSON, demo fixtures | Full tagging, APRA/PPCA workflows |
-| Scheduler | GENERAL + OVERNIGHT clocks, **Clock Editor UI**, **Category/Library Manager**, hour/24h generate, constraints, MANUAL preserve, **ETM/HIT fills** + **FILLER cart pool** | Multi-clock daypart designer, richer daypart grid UI |
+| Scheduler | GENERAL + OVERNIGHT + **cloned clocks**, **Clock Editor** + **Daypart Designer** (0–23 hour→clock), **Category/Library Manager**, hour/24h generate, constraints, MANUAL preserve, **ETM/HIT fills** + **FILLER cart pool** | Per-weekday day masks, richer rule packs |
 | Engine | MockEngine + Liquidsoap stub | Real Liquidsoap / stream chain |
 | UI | On-Air Living Log prototype | Full HOME + STUDIO surfaces |
 | Voice / production / remote | AI VT scripts + Vocloner render path (clipboard) | Vocloner automation/API if available, production cart, remotes |

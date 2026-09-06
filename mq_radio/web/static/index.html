@@ -431,9 +431,10 @@
 
         <div class="settings-section-title">CATEGORY CLOCKS</div>
         <p class="settings-intro">
-          GENERAL + OVERNIGHT hour templates drive Living Log expansion.
-          Edit category / AU / VT stub slots in the Clock Editor; save writes
-          SQLite + <code>data/clocks.json</code>. Regenerate hour uses the edited clock.
+          Named hour templates (GENERAL, OVERNIGHT, clones) drive Living Log expansion.
+          <strong>Daypart Designer</strong> assigns which clock runs each hour 0–23.
+          Edit slots in the Clock Editor; save writes SQLite + <code>data/clocks.json</code>.
+          Generate hour / generate-log expands the daypart→clock map (fallback GENERAL/OVERNIGHT).
           ETM / HIT / HARD markers get fill/stretch toward the hit.
         </p>
         <div class="settings-actions" style="justify-content:flex-start;margin-bottom:10px">
@@ -515,17 +516,30 @@
   <div class="settings-backdrop" id="clock-backdrop" aria-hidden="true">
     <div class="settings-dialog clock-dialog" role="dialog" aria-labelledby="clock-title">
       <div class="settings-titlebar">
-        <span id="clock-title">MQ Radio — Category Clocks</span>
+        <span id="clock-title">MQ Radio — Clocks / Daypart</span>
         <button type="button" class="settings-close" id="btn-clock-close" title="Close">×</button>
       </div>
       <div class="settings-body clock-body">
         <p class="settings-intro">
           Hour templates for deterministic Living Log expansion. AI never picks MUSIC live.
+          <strong>Daypart Designer</strong> = which clock runs each hour 0–23.
           <strong>ETM / HIT / HARD</strong> = hard markers (fill/stretch toward hit).
           <strong>VOICE_TRACK</strong> = VT stubs for AI / Vocloner path.
         </p>
+
+        <div class="daypart-section" id="daypart-section">
+          <div class="daypart-head">
+            <strong>DAYPART DESIGNER</strong>
+            <span class="daypart-sub">Hour → clock (persisted to daypart_clocks)</span>
+            <button type="button" class="btn-dialog" id="btn-daypart-defaults" title="Restore GENERAL/OVERNIGHT defaults">Defaults</button>
+            <button type="button" class="btn-dialog primary" id="btn-daypart-save">Save daypart</button>
+          </div>
+          <div class="daypart-grid" id="daypart-grid" role="group" aria-label="Hour clock assignments"></div>
+          <div class="daypart-legend" id="daypart-legend"></div>
+        </div>
+
         <div class="clock-toolbar">
-          <div class="clock-tabs" role="tablist">
+          <div class="clock-tabs" id="clock-tabs" role="tablist">
             <button type="button" class="clock-tab active" data-clock="GENERAL">GENERAL</button>
             <button type="button" class="clock-tab" data-clock="OVERNIGHT">OVERNIGHT</button>
           </div>
@@ -536,8 +550,20 @@
             <button type="button" class="btn-dialog" id="btn-clock-regen">Generate hour</button>
             <button type="button" class="btn-dialog" id="btn-clock-add-slot">+ Slot</button>
             <button type="button" class="btn-dialog" id="btn-clock-reset">Reset canonical</button>
-            <button type="button" class="btn-dialog primary" id="btn-clock-save">Save</button>
+            <button type="button" class="btn-dialog primary" id="btn-clock-save">Save clock</button>
           </div>
+        </div>
+        <div class="clock-clone-row">
+          <label>Clone from
+            <select id="clock-clone-source" title="Source clock"></select>
+          </label>
+          <label>New code
+            <input type="text" id="clock-clone-code" maxlength="32" placeholder="DRIVE" autocomplete="off" />
+          </label>
+          <label>Name
+            <input type="text" id="clock-clone-name" placeholder="Drive Hour" autocomplete="off" />
+          </label>
+          <button type="button" class="btn-dialog" id="btn-clock-clone">Clone clock</button>
         </div>
         <div class="clock-meta-row">
           <label>Name <input type="text" id="clock-name" autocomplete="off" /></label>
@@ -562,7 +588,7 @@
           </table>
         </div>
         <p class="clock-hint" id="clock-hint">
-          Save → DB + data/clocks.json. Generate hour expands the active clock with ETM fills.
+          Save clock / Save daypart → DB + data/clocks.json. Generate uses the hour→clock map (fallback GENERAL / OVERNIGHT 23–04).
         </p>
       </div>
     </div>

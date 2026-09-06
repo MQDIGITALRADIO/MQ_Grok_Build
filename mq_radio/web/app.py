@@ -44,6 +44,7 @@ from mq_radio.library.categories import (
 )
 from mq_radio.db.connection import get_connection
 from mq_radio.scheduler.clocks import (
+    clone_clock,
     clocks_bundle,
     export_clocks_json,
     reset_clock_to_canonical,
@@ -683,7 +684,75 @@ def make_handler(db_path: Path):
                     conn.close()
                 return
 
-            if path == "/api/categories/save":
+            
+            if path == "/api/clocks/clone":
+                source = str(payload.get("source") or payload.get("source_code") or "").strip()
+                new_code = str(payload.get("code") or payload.get("new_code") or "").strip()
+                if not source or not new_code:
+                    _json_response(
+                        self,
+                        {"ok": False, "error": "source and code required"},
+                        status=400,
+                    )
+                    return
+                conn = get_connection(db_path)
+                try:
+                    created = clone_clock(
+                        conn,
+                        source,
+                        new_code,
+                        name=payload.get("name"),
+                        description=payload.get("description"),
+                    )
+                    conn.commit()
+                    json_path = export_clocks_json(conn, DATA_DIR / "clocks.json")
+                    bundle = clocks_bundle(conn)
+                    _json_response(
+                        self,
+                        {
+                            "ok": True,
+                            "clock": created,
+                            "json_path": str(json_path),
+                            "bundle": bundle,
+                        },
+                    )
+                except KeyError as exc:
+                    _json_response(self, {"ok": False, "error": str(exc)}, status=404)
+                except ValueError as exc:
+                    _json_response(self, {"ok": False, "error": str(exc)}, status=400)
+                finally:
+                    conn.close()
+                return
+
+            if path == "/api/clocks/daypart":
+                hour_clock = payload.get("hour_clock")
+                if not isinstance(hour_clock, dict):
+                    _json_response(
+                        self,
+                        {"ok": False, "error": "hour_clock dict required"},
+                        status=400,
+                    )
+                    return
+                conn = get_connection(db_path)
+                try:
+                    saved_grid = save_daypart_grid(conn, hour_clock)
+                    conn.commit()
+                    json_path = export_clocks_json(conn, DATA_DIR / "clocks.json")
+                    bundle = clocks_bundle(conn)
+                    _json_response(
+                        self,
+                        {
+                            "ok": True,
+                            "hour_clock": saved_grid,
+                            "json_path": str(json_path),
+                            "bundle": bundle,
+                        },
+                    )
+                finally:
+                    conn.close()
+                return
+
+if path == "/api/categories/save":
                 code = str(payload.get("code") or "").strip().upper()
                 if not code:
                     _json_response(self, {"ok": False, "error": "code required"}, status=400)

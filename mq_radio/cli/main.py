@@ -125,7 +125,7 @@ def cmd_show_clocks(args: argparse.Namespace) -> int:
         print("  " + "  ".join(line))
     print()
     print("AI never picks MUSIC live. VT placeholders → generate-ai-breaks → approve.")
-    print("Clock Editor (On-Air CLOCKS) saves DB + data/clocks.json; ETM/HIT get fills.")
+    print("Clock Editor + Daypart Designer (On-Air CLOCKS) saves DB + data/clocks.json; ETM/HIT get fills.")
     return 0
 
 

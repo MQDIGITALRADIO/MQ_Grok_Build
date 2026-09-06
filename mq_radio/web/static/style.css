@@ -1599,8 +1599,8 @@ input { border-radius: 0; }
 
 /* —— Category Clock Editor (Maestro-dense) —— */
 .clock-dialog {
-  width: min(980px, 98vw);
-  max-height: 92vh;
+  width: min(1100px, 98vw);
+  max-height: 94vh;
 }
 .clock-body {
   display: flex;
@@ -1762,6 +1762,118 @@ input { border-radius: 0; }
 #btn-clocks {
   letter-spacing: 0.06em;
   font-weight: 700;
+}
+
+
+/* —— Daypart Designer (0–23 hour → clock) —— */
+.daypart-section {
+  border: 1px solid #3a3a3a;
+  background: #14141c;
+  padding: 6px 8px 8px;
+}
+.daypart-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font: 600 11px/1.2 "Segoe UI", system-ui, sans-serif;
+  letter-spacing: 0.05em;
+  color: #c8d0e0;
+}
+.daypart-sub {
+  font-weight: 400;
+  letter-spacing: 0;
+  color: #888;
+  font-size: 10px;
+  flex: 1;
+}
+.daypart-grid {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 4px;
+}
+@media (max-width: 900px) {
+  .daypart-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+.daypart-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid #333;
+  background: #0e0e14;
+  padding: 3px 4px;
+  min-width: 0;
+}
+.daypart-cell.daypart-overnight { box-shadow: inset 0 0 0 1px #3a2a55; }
+.daypart-cell.daypart-morning { box-shadow: inset 0 0 0 1px #2a3a55; }
+.daypart-cell.daypart-day { box-shadow: inset 0 0 0 1px #2a4530; }
+.daypart-cell.daypart-afternoon { box-shadow: inset 0 0 0 1px #453a20; }
+.daypart-cell.daypart-evening { box-shadow: inset 0 0 0 1px #452a35; }
+.daypart-hour {
+  font: 700 10px/1 ui-monospace, monospace;
+  color: #7ec8ff;
+}
+.daypart-select {
+  width: 100%;
+  background: #12121a;
+  border: 1px solid #3a3a48;
+  color: #e8e8f0;
+  font: 10px ui-monospace, monospace;
+  padding: 2px 1px;
+  box-sizing: border-box;
+}
+.daypart-legend {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font: 10px/1.2 ui-monospace, monospace;
+  color: #9ab;
+}
+.daypart-chip {
+  border: 1px solid #444;
+  background: #1a1a24;
+  padding: 2px 6px;
+}
+.daypart-chip strong { color: #cde; }
+.clock-clone-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font: 11px/1.2 "Segoe UI", system-ui, sans-serif;
+  color: #bbb;
+  border: 1px dashed #3a3a48;
+  background: #12121a;
+  padding: 5px 8px;
+}
+.clock-clone-row label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.clock-clone-row select,
+.clock-clone-row input[type="text"] {
+  background: #0e0e14;
+  border: 1px solid #555;
+  color: #eee;
+  padding: 3px 6px;
+  font: 11px ui-monospace, monospace;
+  min-width: 90px;
+}
+.clock-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: 55%;
+}
+.clock-tab:disabled {
+  opacity: 0.45;
+}
+#btn-clock-reset:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 /* —— Category / Library Manager —— */

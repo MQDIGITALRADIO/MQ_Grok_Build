@@ -3,12 +3,13 @@
 Clocks are hour templates: ordered slots of event_type + category + timing/chain.
 The scheduler expands clocks into the Living Log — AI never picks live music.
 
-Daypart → clock mapping (default):
+Daypart → clock mapping (default, overridable in Daypart Designer):
   overnight  23–04  → OVERNIGHT (extra VT placeholders, softer mix)
   morning    05–09  → GENERAL
   day        10–14  → GENERAL
   afternoon  15–18  → GENERAL
   evening    19–22  → GENERAL
+Operator may assign any named clock (incl. clones) per hour 0–23.
 """
 
 from __future__ import annotations
@@ -326,17 +327,31 @@ def ensure_canonical_clocks(conn, *, reset: bool = False) -> dict[str, int]:
 
 
 def load_hour_clock_map(conn) -> dict[int, int]:
-    """hour → clock_id from daypart_clocks (falls back to GENERAL / id 1)."""
+    """hour → clock_id from daypart_clocks.
+
+    Missing hours (or empty table) fall back to DEFAULT_HOUR_CLOCK
+    (OVERNIGHT 23–04, GENERAL elsewhere) resolved to clock ids.
+    """
+    code_ids: dict[str, int] = {}
+    for row in conn.execute("SELECT id, code FROM clocks").fetchall():
+        code_ids[str(row["code"])] = int(row["id"])
+    general_id = code_ids.get("GENERAL")
+    overnight_id = code_ids.get("OVERNIGHT", general_id)
+    if general_id is None:
+        general_id = overnight_id or 1
+
     hour_clocks: dict[int, int] = {}
     for row in conn.execute("SELECT hour, clock_id FROM daypart_clocks").fetchall():
         hour_clocks[int(row["hour"])] = int(row["clock_id"])
-    if not hour_clocks:
-        row = conn.execute(
-            "SELECT id FROM clocks WHERE code='GENERAL' ORDER BY id LIMIT 1"
-        ).fetchone()
-        default_id = int(row["id"]) if row else 1
-        for h in range(24):
-            hour_clocks[h] = default_id
+
+    for h in range(24):
+        if h in hour_clocks:
+            continue
+        code = DEFAULT_HOUR_CLOCK.get(h, "GENERAL")
+        if code == "OVERNIGHT" and overnight_id is not None:
+            hour_clocks[h] = overnight_id
+        else:
+            hour_clocks[h] = code_ids.get(code, general_id)
     return hour_clocks
 
 
@@ -435,7 +450,9 @@ def clocks_bundle(conn) -> dict[str, Any]:
         "chain_modes": list(CHAIN_MODES),
         "notes": [
             "Edits save to SQLite clock_slots; mirrored to data/clocks.json.",
-            "generate-log / generate-hour expands the saved clock — AI never picks live.",
+            "Daypart Designer: hour 0–23 → clock_id via daypart_clocks (fallback GENERAL/OVERNIGHT).",
+            "Clone GENERAL/OVERNIGHT (or any clock) to create named clocks for the grid.",
+            "generate-log / generate-hour expands daypart map → clock_slots — AI never picks live.",
             "ETM / HIT / HARD slots are hard markers; FLOAT content fills toward them.",
             "MANUAL Living Log rows survive regenerate unless --force.",
         ],
@@ -561,6 +578,87 @@ def save_daypart_grid(conn, hour_clock: dict) -> dict[str, str]:
             (h, clock_id),
         )
     return load_daypart_grid_from_db(conn)
+
+
+def normalize_clock_code(code: str) -> str:
+    """Uppercase alphanumeric + underscore clock code (1–32 chars)."""
+    raw = str(code or "").strip().upper().replace("-", "_").replace(" ", "_")
+    cleaned = "".join(ch for ch in raw if ch.isalnum() or ch == "_")
+    if not cleaned or not cleaned[0].isalpha():
+        raise ValueError("clock code must start with a letter (A–Z)")
+    if len(cleaned) > 32:
+        raise ValueError("clock code max 32 characters")
+    return cleaned
+
+
+def clone_clock(
+    conn,
+    source_code: str,
+    new_code: str,
+    *,
+    name: Optional[str] = None,
+    description: Optional[str] = None,
+) -> dict[str, Any]:
+    """Clone an existing clock (slots + meta) under a new unique code.
+
+    Typical starting points: GENERAL or OVERNIGHT. Returns the new clock dict.
+    """
+    src = str(source_code or "").strip().upper()
+    code = normalize_clock_code(new_code)
+    if code in ("GENERAL", "OVERNIGHT") and src != code:
+        # Allow cloning *onto* a missing canonical only via ensure; block overwrite
+        existing = conn.execute("SELECT id FROM clocks WHERE code=?", (code,)).fetchone()
+        if existing:
+            raise ValueError(f"cannot overwrite canonical clock {code} via clone")
+    row = conn.execute("SELECT * FROM clocks WHERE code = ?", (src,)).fetchone()
+    if not row:
+        raise KeyError(f"Unknown source clock: {src}")
+    taken = conn.execute("SELECT id FROM clocks WHERE code = ?", (code,)).fetchone()
+    if taken:
+        raise ValueError(f"clock code already exists: {code}")
+
+    src_id = int(row["id"])
+    new_name = (str(name).strip() if name else "") or f"{row['name']} (copy)"
+    new_desc = (
+        str(description).strip()
+        if description is not None
+        else (row["description"] or f"Cloned from {src}")
+    )
+    duration = int(row["duration_sec"] or 3600)
+    cur = conn.execute(
+        """INSERT INTO clocks (code, name, description, duration_sec)
+           VALUES (?,?,?,?)""",
+        (code, new_name, new_desc, duration),
+    )
+    new_id = int(cur.lastrowid)
+    slots = conn.execute(
+        """SELECT position, event_type, category_code, timing_mode, chain_mode,
+                  label, offset_sec, duration_sec
+           FROM clock_slots WHERE clock_id=? ORDER BY position""",
+        (src_id,),
+    ).fetchall()
+    for s in slots:
+        conn.execute(
+            """INSERT INTO clock_slots
+               (clock_id, position, event_type, category_code, timing_mode,
+                chain_mode, label, offset_sec, duration_sec)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
+            (
+                new_id,
+                int(s["position"]),
+                s["event_type"],
+                s["category_code"],
+                s["timing_mode"] or "FLOAT",
+                s["chain_mode"] or "AUTO",
+                s["label"] or "",
+                s["offset_sec"],
+                s["duration_sec"],
+            ),
+        )
+    for c in load_clocks_from_db(conn):
+        if c["code"] == code:
+            return c
+    raise RuntimeError("clone_clock: clock missing after insert")
 
 
 def export_clocks_json(conn, path: Optional[Any] = None) -> Any:
