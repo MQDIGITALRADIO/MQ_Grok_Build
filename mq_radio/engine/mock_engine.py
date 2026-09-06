@@ -256,6 +256,7 @@ class MockEngine(PlayoutEngine):
             SESSION.running = False
             event_id = SESSION.event_id
             SESSION.clear()
+            SESSION.oneshot = None
             SESSION.running = False
             SESSION.active_deck = "A"
         if event_id:
@@ -436,6 +437,140 @@ class MockEngine(PlayoutEngine):
         self._complete_current(conn, outcome="PLAYED")
         conn.close()
         return True
+
+    def inject_oneshot(
+        self,
+        *,
+        label: str,
+        path: Optional[str] = None,
+        track_id: Optional[int] = None,
+        event_type: str = "SWEEPER",
+        duration_ms: int = 0,
+        mode: str = "over_program",
+        log_date: Optional[str] = None,
+    ) -> dict:
+        """Inject a hotkey cart into the play path without breaking Living Log AUTO.
+
+        mode:
+          - over_program: transient one-shot layered over current program (default)
+          - queue_next: insert a MANUAL log event after the ON AIR cart (AUTO still owns chain)
+        """
+        mode = (mode or "over_program").strip().lower().replace("-", "_")
+        if mode in ("over", "oneshot", "fire"):
+            mode = "over_program"
+        if mode in ("queue", "next", "insert"):
+            mode = "queue_next"
+        if mode not in ("over_program", "queue_next"):
+            mode = "over_program"
+
+        label = (label or "Hotkey").strip() or "Hotkey"
+        etype = (event_type or "SWEEPER").upper()
+        if etype in ("VT", "VOICE TRACK"):
+            etype = "VOICE_TRACK"
+        file_path = str(path) if path else ""
+        dur = max(0, int(duration_ms or 0))
+        if track_id is not None and (not file_path or dur <= 0):
+            conn = get_connection(self.db_path)
+            row = conn.execute(
+                "SELECT file_path, duration_ms, event_type, title FROM tracks WHERE id=?",
+                (int(track_id),),
+            ).fetchone()
+            conn.close()
+            if row:
+                file_path = file_path or (row["file_path"] or "")
+                if dur <= 0:
+                    dur = int(row["duration_ms"] or 0)
+                if not event_type or event_type == "SWEEPER":
+                    etype = (row["event_type"] or etype).upper()
+                if label == "Hotkey" and row["title"]:
+                    label = row["title"]
+        if dur <= 0:
+            dur = 8000  # desk-visible default for unknown one-shots
+
+        if mode == "queue_next":
+            from mq_radio.living_log.service import insert_event
+
+            day = log_date or self.log_date
+            conn = get_connection(self.db_path)
+            did = self._daily_log_id(conn)
+            after_pos = -1
+            on_air = self._on_air_event(conn, did) if did else None
+            if on_air:
+                after_pos = int(on_air["position"])
+            else:
+                with SESSION.lock:
+                    eid = SESSION.event_id
+                if eid:
+                    row = conn.execute(
+                        "SELECT position FROM log_events WHERE id=?", (eid,)
+                    ).fetchone()
+                    if row:
+                        after_pos = int(row["position"])
+            conn.close()
+            inserted = insert_event(
+                day,
+                after_pos,
+                {
+                    "track_id": track_id,
+                    "event_type": etype,
+                    "title": label,
+                    "artist": "Hotkey",
+                    "duration_ms": dur,
+                    "notes": f"[HOTKEY INJECT queue_next] {file_path}".strip(),
+                },
+                db_path=self.db_path,
+            )
+            if not inserted.get("ok"):
+                return {
+                    "ok": False,
+                    "mode": mode,
+                    "error": inserted.get("error") or "queue_next insert failed",
+                }
+            msg = (
+                f"HOTKEY QUEUED NEXT: {label} "
+                f"(after pos {after_pos} → event {inserted.get('event_id')}) — AUTO intact"
+            )
+            self._state.message = msg
+            return {
+                "ok": True,
+                "mode": mode,
+                "injected": True,
+                "label": label,
+                "path": file_path or None,
+                "track_id": track_id,
+                "event_type": etype,
+                "duration_ms": dur,
+                "log_event_id": inserted.get("event_id"),
+                "after_position": after_pos,
+                "message": msg,
+            }
+
+        # over_program — transient session oneshot; Living Log untouched
+        shot = {
+            "label": label,
+            "path": file_path or None,
+            "track_id": track_id,
+            "event_type": etype,
+            "duration_ms": dur,
+            "mode": "over_program",
+            "started_at": time.time(),
+        }
+        with SESSION.lock:
+            SESSION.oneshot = shot
+        msg = f"HOTKEY OVER PROGRAM: {label}" + (f" · {file_path}" if file_path else "")
+        self._state.message = msg
+        return {
+            "ok": True,
+            "mode": "over_program",
+            "injected": True,
+            "label": label,
+            "path": file_path or None,
+            "track_id": track_id,
+            "event_type": etype,
+            "duration_ms": dur,
+            "message": msg,
+            "oneshot": dict(shot),
+        }
 
     def status(self) -> EngineState:
         self._clear_fade_if_due()

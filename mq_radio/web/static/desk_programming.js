@@ -335,11 +335,12 @@
     if (res.ok) {
       lastVtTakeTrackId = res.track_id || null;
       lastVtTakeEventId = eventId;
-      const cleaned = res.cleaned ? " · cleaned cut" : "";
+      const mode = res.trim_mode || (res.cleaned ? "cut" : "raw");
+      const cleaned = mode === "cut" ? " · cleaned cut (ffmpeg)" : mode === "markers_only" ? " · markers-only (no ffmpeg cut)" : "";
       const cart = res.track_id ? ` · cart #${res.track_id}` : "";
-      msg(`Saved VT take → ${res.audio_path}${cleaned}${cart}`);
+      msg(res.message || `Saved VT take → ${res.audio_path}${cleaned}${cart}`);
       document.getElementById("vt-record-status").textContent =
-        `Saved${cleaned || ""} — ready for Segment Editor`;
+        `Saved (${mode})${cleaned || ""} — ready for Segment Editor`;
       await refresh();
     } else {
       msg(res.error || "Save failed");
@@ -556,6 +557,8 @@
           type: item.type,
           target: item.target,
           path: item.path || null,
+          inject_mode: item.inject_mode || "over_program",
+          inject: true,
         }),
       }).then((r) => r.json());
       let played = false;
@@ -581,6 +584,13 @@
           setTimeout(() => btn.classList.remove("fired"), 220);
         }
       }
+      const injectMode = (res && res.inject_mode) || item.inject_mode || "over_program";
+      const injectTag =
+        res && res.injected
+          ? injectMode === "queue_next"
+            ? " · ENGINE QUEUE NEXT"
+            : " · ENGINE OVER PROGRAM"
+          : "";
       const note = played
         ? " · PLAYING"
         : res && res.exists === false
@@ -588,7 +598,14 @@
           : url
             ? " · url unresolved"
             : " · no audio path";
-      msg(res.message || `HOTKEY ${keyLab}: ${item.label}${note}`);
+      msg(res.message || `HOTKEY ${keyLab}: ${item.label}${note}${injectTag}`);
+      if (res && res.injected) {
+        const panel = document.getElementById("hotkey-panel");
+        if (panel) {
+          panel.classList.add("hk-firing");
+          setTimeout(() => panel.classList.remove("hk-firing"), 700);
+        }
+      }
     } catch (e) {
       if (btn) setTimeout(() => btn.classList.remove("fired"), 220);
       msg(`HOTKEY ${keyLab}: ${item.label} [${item.type}] — ${e && e.message ? e.message : e}`);
@@ -634,6 +651,8 @@
     const pathEl = document.getElementById("hk-edit-path");
     if (pathEl) pathEl.value = item.path || "";
     document.getElementById("hk-edit-macro").value = item.macro || "";
+    const inj = document.getElementById("hk-edit-inject");
+    if (inj) inj.value = item.inject_mode || "over_program";
     const bd = document.getElementById("hk-edit-backdrop");
     bd.classList.add("open");
     bd.setAttribute("aria-hidden", "false");
@@ -653,6 +672,7 @@
     const target = document.getElementById("hk-edit-target").value.trim() || null;
     const pathRef = document.getElementById("hk-edit-path")?.value.trim() || null;
     const macro = document.getElementById("hk-edit-macro").value.trim() || null;
+    const injectMode = document.getElementById("hk-edit-inject")?.value || "over_program";
     const empty = !label && !type && !target && !pathRef && !macro;
     const key = hkEditSlot < 12 ? `F${hkEditSlot + 1}` : "";
     hotkeysState.hotkeys[hkEditSlot] = {
@@ -663,6 +683,7 @@
       target,
       path: pathRef, // one-shot absolute path — no library ingest
       macro,
+      inject_mode: injectMode,
       empty,
     };
     closeHkEdit();
@@ -677,6 +698,8 @@
     const hp = document.getElementById("hk-edit-path");
     if (hp) hp.value = "";
     document.getElementById("hk-edit-macro").value = "";
+    const inj = document.getElementById("hk-edit-inject");
+    if (inj) inj.value = "over_program";
   }
 
   function moveHk(dir) {
@@ -888,7 +911,7 @@
     const outMs = Number(document.getElementById("seg-out-ms").value || 0);
     const title = document.getElementById("seg-title").value.trim();
     const artist = document.getElementById("seg-artist").value.trim();
-    document.getElementById("seg-msg").textContent = "Cutting segment (ffmpeg)…";
+    document.getElementById("seg-msg").textContent = "Saving segment (ffmpeg cut or markers-only)…";
     const res = await fetch("/api/library/segment", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -926,8 +949,9 @@
           attachMsg = "";
         }
       }
+      const trimTag = res.trim_mode === "markers_only" ? " · markers-only" : res.trim_mode === "cut" ? " · ffmpeg cut" : "";
       document.getElementById("seg-msg").textContent =
-        `Saved cart #${res.track_id}: ${res.artist} — ${res.title} (${fmtDur(res.duration_ms)})${attachMsg}`;
+        `Saved cart #${res.track_id}: ${res.artist} — ${res.title} (${fmtDur(res.duration_ms)})${trimTag}${attachMsg}`;
       ingestStatus(`Segment cart #${res.track_id} saved${attachMsg}`);
       await refresh();
     } else {

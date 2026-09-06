@@ -1,0 +1,67 @@
+{
+  "enabled": true,
+  "insert_policy": "native_when_empty",
+  "template": "FM",
+  "notes": "Native MQ processing \u2014 AGC\u2192EQ\u2192Multiband\u2192Exciter\u2192Limiter. FM = classic dense on-air; Digital = cleaner streaming/DAB path. Not an Optimod clone; AU plugins are production-bus only (later).",
+  "stages": {
+    "agc": {
+      "enabled": true,
+      "target_db": -15.0,
+      "drive_db": 7.0,
+      "attack_ms": 50.0,
+      "release_ms": 900.0,
+      "gate_db": -42.0
+    },
+    "eq": {
+      "enabled": true,
+      "low_shelf_hz": 120.0,
+      "low_shelf_db": 1.5,
+      "presence_hz": 3200.0,
+      "presence_db": 1.5,
+      "air_hz": 10000.0,
+      "air_db": 0.75,
+      "high_cut_hz": 15000.0
+    },
+    "multiband": {
+      "enabled": true,
+      "bands": 4,
+      "crossovers_hz": [
+        200.0,
+        800.0,
+        3200.0
+      ],
+      "drive_db": [
+        3.5,
+        4.5,
+        4.0,
+        3.0
+      ],
+      "release_ms": [
+        400.0,
+        250.0,
+        180.0,
+        120.0
+      ],
+      "couple": true
+    },
+    "exciter": {
+      "enabled": true,
+      "amount": 0.3,
+      "harmonics": 0.35,
+      "mix": 0.22
+    },
+    "limiter": {
+      "enabled": true,
+      "ceiling_dbfs": -1.0,
+      "release_ms": 35.0,
+      "lookahead_ms": 3.0,
+      "isr": false
+    }
+  },
+  "output": {
+    "path": "FM",
+    "preemphasis": true,
+    "preemphasis_us": 50,
+    "stereo_enhance": 0.15
+  }
+}

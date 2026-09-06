@@ -51,6 +51,7 @@ from mq_radio.production.processing import (
     processing_summary,
     save_processing,
 )
+from mq_radio.production.liquidsoap_export import export_processing_handoff, handoff_payload
 from mq_radio.web.settings_store import (
     load_audio_outputs,
     load_vocloner,
@@ -217,6 +218,7 @@ def make_handler(db_path: Path):
                     active_deck = SESSION.active_deck
                     overlap = SESSION.overlap_active
                     assist_go = SESSION.assist_go_ready
+                    oneshot = SESSION.oneshot_snapshot()
                 # Enrich deck playable URLs
                 def _enrich_deck(slot):
                     if not slot:
@@ -250,6 +252,7 @@ def make_handler(db_path: Path):
                     "active_deck": active_deck,
                     "overlap_active": overlap,
                     "assist_go_ready": assist_go,
+                    "oneshot": oneshot,
                     "decks": decks,
                     "segue": segue,
                     "ramps": {
@@ -365,6 +368,15 @@ def make_handler(db_path: Path):
                 _json_response(self, load_processing(DATA_DIR))
                 return
 
+            if path == "/api/settings/processing/export":
+                # Documented handoff JSON (does not write files — use POST to export)
+                _json_response(self, {
+                    "ok": True,
+                    **handoff_payload(),
+                    "hint": "POST this path to write packaging/liquidsoap + data/processing stubs",
+                })
+                return
+
             if path == "/api/settings/library-root":
                 lib = library_audio_dir(DATA_DIR)
                 _json_response(self, {"ok": True, "path": str(lib)})
@@ -435,13 +447,22 @@ def make_handler(db_path: Path):
                 return
 
             if path == "/api/hotkey/fire":
-                # One-shot / hotkey: play from absolute path or track id — NEVER force library copy
+                # One-shot / hotkey: play from absolute path or track id — NEVER force library copy.
+                # Optionally inject into MockEngine (over_program | queue_next) without breaking AUTO.
                 from pathlib import Path as _P
                 target = payload.get("target")
                 file_path = payload.get("path") or payload.get("file_path")
                 label = payload.get("label") or "Hotkey"
+                etype = (payload.get("type") or payload.get("event_type") or "SWEEPER")
+                inject_mode = str(
+                    payload.get("inject_mode") or payload.get("inject") or "over_program"
+                ).strip().lower().replace("-", "_")
+                do_inject = payload.get("inject", True)
+                if isinstance(do_inject, str):
+                    do_inject = do_inject.strip().lower() not in ("0", "false", "no", "off")
                 resolved = None
                 kind = None
+                duration_ms = int(payload.get("duration_ms") or 0)
                 if file_path:
                     p = _P(str(file_path)).expanduser()
                     resolved = str(p)
@@ -453,6 +474,10 @@ def make_handler(db_path: Path):
                         resolved = row.get("file_path") or ""
                         kind = "track"
                         exists = bool(resolved and _P(resolved).is_file())
+                        if duration_ms <= 0:
+                            duration_ms = int(row.get("duration_ms") or 0)
+                        if not payload.get("type") and row.get("event_type"):
+                            etype = row.get("event_type")
                     else:
                         exists = False
                 elif target and ("/" in str(target) or str(target).startswith("~")):
@@ -472,6 +497,30 @@ def make_handler(db_path: Path):
                     url = playable_url(resolved, track_id)
                 elif track_id is not None:
                     url = playable_url(None, track_id)
+
+                inject_result = None
+                if do_inject:
+                    engine = MockEngine(log_date, db_path=db_path)
+                    inject_result = engine.inject_oneshot(
+                        label=label,
+                        path=resolved if exists else (resolved or None),
+                        track_id=track_id,
+                        event_type=str(etype or "SWEEPER"),
+                        duration_ms=duration_ms,
+                        mode=inject_mode,
+                        log_date=log_date,
+                    )
+
+                mode_used = (inject_result or {}).get("mode") or inject_mode
+                desk_msg = (inject_result or {}).get("message") or (
+                    f"ONE-SHOT {label}: {resolved or '(no path)'}"
+                    + (" [missing file]" if resolved and not exists else "")
+                )
+                if url and exists and mode_used == "over_program":
+                    desk_msg = desk_msg + " · desk audio"
+                elif not exists and resolved:
+                    desk_msg = desk_msg + " · missing file (path ref only)"
+
                 _json_response(self, {
                     "ok": True,
                     "fired": True,
@@ -482,11 +531,10 @@ def make_handler(db_path: Path):
                     "playable_url": url,
                     "track_id": track_id,
                     "copied_to_library": False,
-                    "message": (
-                        f"ONE-SHOT {label}: {resolved or '(no path)'}"
-                        + (" [missing file]" if resolved and not exists else "")
-                        + (" · playing" if url and exists else " — path reference only, not ingested")
-                    ),
+                    "inject_mode": mode_used,
+                    "injected": bool(inject_result and inject_result.get("ok")),
+                    "inject": inject_result,
+                    "message": desk_msg,
                 })
                 return
 
@@ -614,6 +662,15 @@ def make_handler(db_path: Path):
 
             if path == "/api/settings/processing":
                 _json_response(self, save_processing(payload, DATA_DIR))
+                return
+
+            if path == "/api/settings/processing/export":
+                # Liquidsoap / Mac handoff stub (JSON + .liq under packaging/ + data/processing/)
+                result = export_processing_handoff(
+                    data_dir=DATA_DIR,
+                    chain=payload if payload.get("template") or payload.get("stages") else None,
+                )
+                _json_response(self, result)
                 return
 
             if path == "/api/settings/vt-inbox":

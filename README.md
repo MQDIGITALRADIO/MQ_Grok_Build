@@ -257,7 +257,7 @@ No proprietary logos, trademarks, or pixel-perfect clones. Avoid modern SaaS / S
 
 **On-air processing (native):** Settings → **ON-AIR PROCESSING**. Topology is public broadcast practice — **AGC → EQ → Multiband → Exciter → Peak Limiter** — with **FM** (dense on-air, pre-emphasis) and **Digital** (stream/DAB, ISR-aware) templates. This is **not** an Orban Optimod schematic clone and **not** AU/AAX hosting (optional AU hosting remains a later Mac *production-bus* feature only). Params persist to `data/processing.json`; the On-Air page applies an audible Web Audio approximation on the program bus (template audition on Load FM/Digital). Transmission-path DSP remains Liquidsoap/Mac later.
 
-API highlights: `POST /api/library/ingest`, `POST /api/library/segment`, `POST /api/vt/import-inbox`, `GET|POST /api/settings/processing`, `vu` + `processing` on `/api/status`.
+API highlights: `POST /api/library/ingest`, `POST /api/library/segment`, `POST /api/vt/import-inbox`, `POST /api/hotkey/fire` (inject), `GET|POST /api/settings/processing`, `GET|POST /api/settings/processing/export`, `vu` + `processing` + `oneshot` on `/api/status`.
 
 
 ## Broadcast-ready bar (production-desk vs mock)
@@ -280,6 +280,9 @@ Matt’s release bar: next DMG must meet **broadcast-ready specs**, not a thin s
 - **Overlapping dual-deck segue**: AUTO end-pulse starts the next Living Log cart on the **other** deck while the current fades (classic overlap). Web Audio: dual MediaElementSources (deck A/B) with crossfade gains into the program processing chain (equal-power + optional duck). Segue Editor markers (`from_outro_mark_ms` / `to_intro_mark_ms` / `vt_*` / `duck_db` / `crossfade_ms`) drive the overlap when present; otherwise defaults from end-pulse/outro. `/api/status` exposes `decks` A/B, `active_deck`, `overlap_active`, `segue`. ASSIST/LIVE arm **GO** on pulse (Space or STEP fires overlapping advance).
 - **AI DJ / overnight volume ramps**: fade in/out profiles applied on the program play path (`data/ramps.json`)
 - **Hotkey one-shot audio**: resolved path/track plays through the On-Air program bus with fire/end pulse flash
+- **Hotkey → engine inject**: fire optionally injects into MockEngine as **over program** (transient oneshot, Living Log AUTO untouched) or **queue next** (MANUAL insert after ON AIR); desk shows clear feedback; `/api/status` exposes `oneshot`
+- **VT / Segment server-side trim**: ffmpeg cuts/re-encodes IN/OUT when available (`trim_mode=cut`); **markers-only** fallback when ffmpeg missing (VT Save take + Segment Editor)
+- **Liquidsoap processing handoff stub**: `packaging/liquidsoap/` (+ `data/processing/`) JSON + `.liq` snippet for FM/Digital templates — not a full Optimod clone (`POST /api/settings/processing/export`)
 - **MQ Digital library root** + VT inbox paths in Settings (ingest lands under configured root)
 - **Studio routing matrix**: Program (processed), Monitor, Headphones, Aux 1/2, **Mix-minus ↔ Aux input** (caller/Zoom), Stream, Record — persisted
 - **Program AU insert slot** stub: `(none) / Native only` persisted; empty slot → native chain is main output
@@ -287,7 +290,8 @@ Matt’s release bar: next DMG must meet **broadcast-ready specs**, not a thin s
 ### Still mock / deferred (called out, not fake-ready)
 - **Device enumeration**: mock device names in web demo; real CoreAudio on Mac engine later
 - **AU/AAX hosting**: insert slot + config only — **not** hosting plugins on-air; optional AU remains later Mac *production-bus* feature
-- **True multiband DSP / hardware chain**: browser On-Air graph approximates AGC/EQ/multiband/exciter/limiter so FM vs Digital is audible; Liquidsoap/Mac engine still owns transmission-path processing
+- **True multiband DSP / hardware chain**: browser On-Air graph approximates AGC/EQ/multiband/exciter/limiter so FM vs Digital is audible; Liquidsoap/Mac engine still owns transmission-path processing (handoff stub exported under `packaging/liquidsoap/`)
+- **Hotkey engine inject on real Liquidsoap**: MockEngine inject works now; Liquidsoap telnet/harbor inject remains later
 - **Hotkey path on pure web**: browsers hide absolute paths — Electron/desktop provides `File.path`; web UI asks operator to paste path
 
 

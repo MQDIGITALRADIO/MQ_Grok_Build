@@ -611,6 +611,12 @@
         </div>
         <div class="audio-route-row"><label for="hk-edit-target">Track id (library)</label><input type="text" id="hk-edit-target" placeholder="optional library track id" /></div>
         <div class="audio-route-row"><label for="hk-edit-path">File path (one-shot)</label><input type="text" id="hk-edit-path" placeholder="/absolute/path/to/cart.wav — plays in place, no library copy" /></div>
+        <div class="audio-route-row"><label for="hk-edit-inject">Engine inject</label>
+          <select id="hk-edit-inject" title="How firing hits the playout engine">
+            <option value="over_program">Over program (one-shot)</option>
+            <option value="queue_next">Queue next (Living Log insert)</option>
+          </select>
+        </div>
         <p class="settings-intro">
           Hotkeys play <strong>in place</strong> (no library copy). 
           <strong>Electron / Mac app:</strong> drop a file on the hotkey grid — <code>File.path</code> is stored automatically.

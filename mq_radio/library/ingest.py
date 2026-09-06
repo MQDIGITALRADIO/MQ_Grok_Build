@@ -504,8 +504,15 @@ def save_segment_as_cart(
     event_type: str = "MUSIC",
     db_path: Optional[Path] = None,
     data_dir: Optional[Path] = None,
+    allow_markers_only: bool = True,
 ) -> dict:
-    """Mark in/out on a library track and save the cut as a new cart."""
+    """Cut IN/OUT via ffmpeg into a new cart; fall back to markers-only if no ffmpeg.
+
+    When ffmpeg is available: re-encode a WAV under data/segments/ (real trim).
+    When missing (or cut fails) and allow_markers_only: create a cart that
+    references the source file with duration=(out-in) and album markers notes —
+    no re-encode. Desk still gets a usable Living Log duration.
+    """
     conn = get_connection(db_path)
     row = conn.execute("SELECT * FROM tracks WHERE id = ?", (track_id,)).fetchone()
     conn.close()
@@ -525,26 +532,60 @@ def save_segment_as_cart(
     if out_ms <= in_ms:
         return {"ok": False, "error": "out must be after in"}
 
-    seg_root = segments_dir(data_dir)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
     base_title = title or f"{row['title']} [{in_ms}-{out_ms}]"
-    safe = _safe_stem(base_title)
-    dest = seg_root / f"{safe}_{stamp}.wav"
-
-    cut = cut_segment(src, dest, in_ms=in_ms, out_ms=out_ms)
-    if not cut.get("ok"):
-        return cut
-
+    artist_out = artist if artist is not None else (row["artist"] or "Segment")
+    etype = event_type or (row["event_type"] or "MUSIC")
     dur = out_ms - in_ms
-    return upsert_track(
-        dest,
+
+    if ffmpeg_available():
+        seg_root = segments_dir(data_dir)
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+        safe = _safe_stem(base_title)
+        dest = seg_root / f"{safe}_{stamp}.wav"
+        cut = cut_segment(src, dest, in_ms=in_ms, out_ms=out_ms)
+        if cut.get("ok"):
+            res = upsert_track(
+                dest,
+                title=base_title,
+                artist=artist_out,
+                event_type=etype,
+                duration_ms=dur,
+                rotation_category="Segment",
+                notes_album=f"segment of track {track_id} cut [{in_ms}-{out_ms}]",
+                db_path=db_path,
+            )
+            if res.get("ok"):
+                res["trim_mode"] = "cut"
+                res["trim_in_ms"] = in_ms
+                res["trim_out_ms"] = out_ms
+                res["source_track_id"] = int(track_id)
+                res["ffmpeg"] = True
+                res["cut"] = True
+            return res
+        # Cut failed — fall through to markers-only when allowed
+        cut_err = cut.get("error") or "ffmpeg cut failed"
+        if not allow_markers_only:
+            return cut
+    else:
+        cut_err = "ffmpeg not on PATH"
+
+    if not allow_markers_only:
+        return {
+            "ok": False,
+            "error": f"ffmpeg required to cut segments — {cut_err}",
+            "trim_mode": None,
+            "ffmpeg": False,
+        }
+
+    return markers_only_segment_cart(
+        track_id,
+        in_ms=in_ms,
+        out_ms=out_ms,
         title=base_title,
-        artist=artist if artist is not None else (row["artist"] or "Segment"),
-        event_type=event_type or (row["event_type"] or "MUSIC"),
-        duration_ms=dur,
-        rotation_category="Segment",
-        notes_album=f"segment of track {track_id}",
+        artist=artist_out,
+        event_type=etype,
         db_path=db_path,
+        cut_error=cut_err,
     )
 
 
@@ -728,3 +769,100 @@ def get_track(track_id: int, db_path: Optional[Path] = None) -> Optional[dict]:
     row = conn.execute("SELECT * FROM tracks WHERE id = ?", (track_id,)).fetchone()
     conn.close()
     return dict(row) if row else None
+
+def markers_only_segment_cart(
+    track_id: int,
+    *,
+    in_ms: int,
+    out_ms: int,
+    title: Optional[str] = None,
+    artist: Optional[str] = None,
+    event_type: str = "MUSIC",
+    db_path: Optional[Path] = None,
+    cut_error: Optional[str] = None,
+) -> dict:
+    """Create a segment cart referencing the source file with IN/OUT markers.
+
+    No re-encode — used when ffmpeg is missing. Living Log duration uses (out-in);
+    album notes carry [SEGMENT MARKERS …] for a later cut pass.
+    """
+    conn = get_connection(db_path)
+    row = conn.execute("SELECT * FROM tracks WHERE id = ?", (track_id,)).fetchone()
+    if not row:
+        conn.close()
+        return {"ok": False, "error": f"track {track_id} not found"}
+    src = Path(row["file_path"] or "")
+    if not src.is_file():
+        conn.close()
+        return {"ok": False, "error": f"source file missing: {src}"}
+
+    in_ms = max(0, int(in_ms))
+    out_ms = int(out_ms)
+    src_dur = int(row["duration_ms"] or 0) or probe_duration_ms(src)
+    if out_ms <= 0:
+        out_ms = src_dur
+    if src_dur and out_ms > src_dur:
+        out_ms = src_dur
+    if out_ms <= in_ms:
+        conn.close()
+        return {"ok": False, "error": "out must be after in"}
+
+    dur = out_ms - in_ms
+    base_title = title or f"{row['title']} [{in_ms}-{out_ms}]"
+    artist_out = artist if artist is not None else (row["artist"] or "Segment")
+    etype = event_type or (row["event_type"] or "MUSIC")
+    reason = cut_error or "ffmpeg not available"
+    notes = (
+        f"[SEGMENT MARKERS in={in_ms} out={out_ms} of track {track_id}] "
+        f"markers-only ({reason}) — install ffmpeg to cut a real WAV segment"
+    )
+    cat = _category_id(conn, "A")
+    intro_ms, outro_ms = default_markers_for(etype, dur)
+    cur = conn.execute(
+        """INSERT INTO tracks (
+            title, artist, album, duration_ms, intro_ms, outro_ms,
+            category_id, rotation_category, event_type, file_path, active
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,1)""",
+        (
+            base_title,
+            artist_out,
+            notes,
+            dur,
+            intro_ms,
+            outro_ms,
+            cat,
+            "Segment",
+            etype,
+            str(src.resolve()),
+        ),
+    )
+    new_id = int(cur.lastrowid)
+    # Also stamp source cart with the same window notes (non-destructive)
+    src_album = (row["album"] or "") if "album" in row.keys() else ""
+    marker = f"[SEGMENT MARKERS in={in_ms} out={out_ms}]"
+    if marker not in src_album:
+        src_album = (src_album + " " + marker).strip() if src_album else marker
+        conn.execute(
+            "UPDATE tracks SET album=?, updated_at=datetime('now') WHERE id=?",
+            (src_album, int(track_id)),
+        )
+    conn.commit()
+    conn.close()
+    return {
+        "ok": True,
+        "track_id": new_id,
+        "title": base_title,
+        "artist": artist_out,
+        "event_type": etype,
+        "file_path": str(src.resolve()),
+        "duration_ms": dur,
+        "intro_ms": intro_ms,
+        "outro_ms": outro_ms,
+        "trim_mode": "markers_only",
+        "trim_in_ms": in_ms,
+        "trim_out_ms": out_ms,
+        "source_track_id": int(track_id),
+        "ffmpeg": False,
+        "cut": False,
+        "message": f"markers-only segment (no ffmpeg cut): {reason}",
+    }

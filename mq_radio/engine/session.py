@@ -92,6 +92,8 @@ class PlayoutSession:
     segue: dict = field(default_factory=dict)
     # ASSIST: pulse armed next — operator GO starts overlapping advance
     assist_go_ready: bool = False
+    # Hotkey one-shot inject (over program) — does NOT alter Living Log AUTO chain
+    oneshot: Optional[dict] = None
 
     def clear(self) -> None:
         self.running = False
@@ -110,6 +112,7 @@ class PlayoutSession:
         self.fading = None
         self.segue = {}
         self.assist_go_ready = False
+        # oneshot is intentionally NOT cleared on cart advance — it lives over program
         # keep active_deck so A/B flip persists across carts
 
     def clear_overlap(self) -> None:
@@ -210,6 +213,25 @@ class PlayoutSession:
             "other_deck": other,
             "segue": dict(self.segue or {}),
         }
+
+    def oneshot_snapshot(self) -> Optional[dict]:
+        """Active hotkey one-shot over program, or None if idle/expired."""
+        shot = self.oneshot
+        if not shot:
+            return None
+        started = shot.get("started_at")
+        dur = int(shot.get("duration_ms") or 0)
+        if started is None:
+            return dict(shot)
+        elapsed = int(max(0, (time.time() - float(started)) * 1000))
+        if dur > 0 and elapsed >= dur:
+            self.oneshot = None
+            return None
+        out = dict(shot)
+        out["elapsed_ms"] = elapsed
+        out["remaining_ms"] = max(0, dur - elapsed) if dur else None
+        out["active"] = True
+        return out
 
     def fade_due(self) -> bool:
         """True when overlapping fade window has elapsed."""

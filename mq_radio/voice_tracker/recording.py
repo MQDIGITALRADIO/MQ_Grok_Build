@@ -66,23 +66,38 @@ def save_vt_recording(
     out_path = out_dir / fname
     out_path.write_bytes(blob)
 
-    # If trim marks present and ffmpeg available, cut a cleaned WAV take
-    # (manual announcer path: Record → mark in/out → Save cleaned VT cart)
+    # Server-side trim: cut/re-encode when ffmpeg + IN/OUT; else markers-only
+    # (manual announcer path: Record → mark in/out → Save take)
     tin = int(trim_in_ms or 0)
     tout = int(trim_out_ms) if trim_out_ms is not None else None
     cleaned_path = None
+    trim_mode = "raw"
+    trim_note = None
+    has_trim = tout is not None and tout > tin
     try:
-        from mq_radio.library.ingest import cut_segment, ffmpeg_available, upsert_track
+        from mq_radio.library.ingest import cut_segment, ffmpeg_available
 
-        if ffmpeg_available() and tout is not None and tout > tin:
+        if has_trim and ffmpeg_available():
             clean = out_dir / f"vt_{log_event_id}_{stamp}_clean.wav"
             cut = cut_segment(out_path, clean, in_ms=tin, out_ms=tout)
             if cut.get("ok"):
                 cleaned_path = clean
                 out_path = clean
                 ext = "wav"
-    except Exception:
+                trim_mode = "cut"
+            else:
+                trim_mode = "markers_only"
+                trim_note = cut.get("error") or "ffmpeg cut failed"
+        elif has_trim:
+            trim_mode = "markers_only"
+            trim_note = "ffmpeg not on PATH — trim stored as markers only"
+        else:
+            trim_mode = "raw"
+    except Exception as exc:
         cleaned_path = None
+        if has_trim:
+            trim_mode = "markers_only"
+            trim_note = f"trim cut error: {exc}"
 
     rel = str(out_path)
     try:
@@ -173,7 +188,15 @@ def save_vt_recording(
         "bytes": len(blob),
         "mime": mime if not cleaned_path else "audio/wav",
         "cleaned": bool(cleaned_path),
+        "cut": bool(cleaned_path),
+        "trim_mode": trim_mode,
+        "trim_note": trim_note,
+        "ffmpeg": trim_mode == "cut",
         "track_id": track_id,
+        "message": (
+            f"VT take saved ({trim_mode})"
+            + (f" — {trim_note}" if trim_note else "")
+        ),
     }
 
 

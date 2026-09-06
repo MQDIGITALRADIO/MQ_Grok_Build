@@ -42,6 +42,7 @@ def _empty_slot(slot: int) -> dict[str, Any]:
         "target": None,
         "path": None,
         "macro": None,
+        "inject_mode": "over_program",  # over_program | queue_next
         "empty": True,
     }
 
@@ -62,6 +63,13 @@ def _normalize(items: list[dict]) -> list[dict]:
         path_ref = it.get("path") or it.get("file_path") or None
         if path_ref is not None:
             path_ref = str(path_ref).strip() or None
+        inject = str(it.get("inject_mode") or it.get("inject") or "over_program").strip().lower().replace("-", "_")
+        if inject in ("over", "oneshot", "fire"):
+            inject = "over_program"
+        if inject in ("queue", "next", "insert"):
+            inject = "queue_next"
+        if inject not in ("over_program", "queue_next"):
+            inject = "over_program"
         empty = not label and not typ and not it.get("target") and not path_ref and not it.get("macro")
         row = {
             "slot": s,
@@ -71,6 +79,7 @@ def _normalize(items: list[dict]) -> list[dict]:
             "target": it.get("target"),
             "path": path_ref,  # absolute path for one-shot — plays in place, no library copy
             "macro": it.get("macro"),
+            "inject_mode": inject,
             "empty": empty,
         }
         by_slot[s] = row

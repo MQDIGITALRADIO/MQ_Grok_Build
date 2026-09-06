@@ -8,6 +8,11 @@ from mq_radio.production.processing import (
     processing_summary,
     save_processing,
 )
+from mq_radio.production.liquidsoap_export import (
+    export_processing_handoff,
+    handoff_payload,
+    render_liq_snippet,
+)
 
 __all__ = [
     "STAGE_LABELS",
@@ -18,4 +23,7 @@ __all__ = [
     "load_processing",
     "processing_summary",
     "save_processing",
+    "export_processing_handoff",
+    "handoff_payload",
+    "render_liq_snippet",
 ]
