@@ -35,6 +35,13 @@ from mq_radio.living_log.service import (
     now_and_upcoming,
     replace_event,
 )
+from mq_radio.library.categories import (
+    add_category,
+    categories_bundle,
+    list_tracks_for_category,
+    rename_category,
+    update_category,
+)
 from mq_radio.db.connection import get_connection
 from mq_radio.scheduler.clocks import (
     clocks_bundle,
@@ -297,6 +304,19 @@ def make_handler(db_path: Path):
                 finally:
                     conn.close()
                 _json_response(self, bundle)
+                return
+
+            if path == "/api/categories":
+                _json_response(self, categories_bundle(db_path=db_path))
+                return
+
+            if path == "/api/categories/tracks":
+                code = (qs.get("code") or [""])[0]
+                q = (qs.get("q") or [""])[0]
+                tracks = list_tracks_for_category(
+                    code or None, q=q or None, db_path=db_path
+                )
+                _json_response(self, {"tracks": tracks, "code": code, "q": q})
                 return
 
             if path == "/api/library":
@@ -661,6 +681,49 @@ def make_handler(db_path: Path):
                     _json_response(self, {"ok": False, "error": str(exc)}, status=404)
                 finally:
                     conn.close()
+                return
+
+            if path == "/api/categories/save":
+                code = str(payload.get("code") or "").strip().upper()
+                if not code:
+                    _json_response(self, {"ok": False, "error": "code required"}, status=400)
+                    return
+                result = update_category(
+                    code,
+                    name=payload.get("name"),
+                    description=payload.get("description"),
+                    priority=payload.get("priority"),
+                    is_music=payload.get("is_music"),
+                    db_path=db_path,
+                )
+                if result.get("ok"):
+                    result["bundle"] = categories_bundle(db_path=db_path)
+                _json_response(self, result, status=200 if result.get("ok") else 400)
+                return
+
+            if path == "/api/categories/add":
+                result = add_category(
+                    str(payload.get("code") or ""),
+                    str(payload.get("name") or ""),
+                    description=payload.get("description"),
+                    priority=int(payload.get("priority") or 50),
+                    is_music=bool(payload.get("is_music")),
+                    db_path=db_path,
+                )
+                if result.get("ok"):
+                    result["bundle"] = categories_bundle(db_path=db_path)
+                _json_response(self, result, status=200 if result.get("ok") else 400)
+                return
+
+            if path == "/api/categories/rename":
+                result = rename_category(
+                    str(payload.get("old_code") or payload.get("code") or ""),
+                    str(payload.get("new_code") or ""),
+                    db_path=db_path,
+                )
+                if result.get("ok"):
+                    result["bundle"] = categories_bundle(db_path=db_path)
+                _json_response(self, result, status=200 if result.get("ok") else 400)
                 return
 
             if path == "/api/log/generate-hour":

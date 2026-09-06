@@ -294,6 +294,7 @@ CATEGORIES = [
     ("PR", "Promo", "Promos", 7, 0),
     ("BED", "Bed", "Beds / underlays", 8, 0),
     ("VT", "Voice Track", "Voice tracks", 9, 0),
+    ("FL", "Filler", "Short FILLER/ID/SWEEPER carts for ETM under-fills", 4, 0),
 ]
 
 
@@ -366,6 +367,7 @@ def _assign_categories_by_rotation(conn) -> None:
         "SWEEPER": "SW",
         "PROMO": "PR",
         "BED": "BED",
+        "FILLER": "FL",
     }
     for rot, code in mapping.items():
         cat = conn.execute("SELECT id FROM categories WHERE code = ?", (code,)).fetchone()
@@ -375,6 +377,86 @@ def _assign_categories_by_rotation(conn) -> None:
             "UPDATE tracks SET category_id = ? WHERE rotation_category = ?",
             (cat["id"], rot),
         )
+
+
+
+def ensure_filler_pool(db_path: Optional[Path] = None, data_dir: Optional[Path] = None) -> dict:
+    """Generate short FILLER / extra ID / SWEEPER beds under data/filler/ and register tracks.
+
+    Used by ETM hard-timing fills so under-fills prefer real carts over stubs.
+    Files are gitignored (like demo_beds) to keep the installer lean.
+    """
+    root = Path(data_dir) if data_dir else _cfg.DATA_DIR
+    out_dir = root / "filler"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # (filename, meta, duration_sec, freq)
+    carts = [
+        ("MQ_FILLER_08s.wav", {
+            "artist": "MQ DIGITAL", "title": "Filler Bed 8s", "event_type": "FILLER",
+            "rotation_category": "FILLER", "energy": 4, "australian": True,
+        }, 8.0, 196.0),
+        ("MQ_FILLER_15s.wav", {
+            "artist": "MQ DIGITAL", "title": "Filler Bed 15s", "event_type": "FILLER",
+            "rotation_category": "FILLER", "energy": 4, "australian": True,
+        }, 15.0, 220.0),
+        ("MQ_FILLER_20s.wav", {
+            "artist": "MQ DIGITAL", "title": "Filler Bed 20s", "event_type": "FILLER",
+            "rotation_category": "FILLER", "energy": 5, "australian": True,
+        }, 20.0, 247.0),
+        ("MQ_FILLER_30s.wav", {
+            "artist": "MQ DIGITAL", "title": "Filler Bed 30s", "event_type": "FILLER",
+            "rotation_category": "FILLER", "energy": 5, "australian": True,
+        }, 30.0, 262.0),
+        ("MQ_ID_Legal_Short.wav", {
+            "artist": "MQ DIGITAL", "title": "MQ ID Legal Short", "event_type": "ID",
+            "rotation_category": "ID", "energy": 7, "australian": True,
+        }, 5.0, 880.0),
+        ("MQ_SWEEPER_HitFill.wav", {
+            "artist": "MQ DIGITAL", "title": "Sweeper Hit Fill", "event_type": "SWEEPER",
+            "rotation_category": "SWEEPER", "energy": 7, "australian": True,
+        }, 4.0, 990.0),
+    ]
+
+    written = 0
+    for filename, meta, dur, freq in carts:
+        wav_path = out_dir / filename
+        if not (wav_path.is_file() and wav_path.stat().st_size > 1000):
+            _write_tone_wav(wav_path, dur, freq, 0.16)
+            written += 1
+        side = wav_path.with_suffix(".json")
+        meta = dict(meta)
+        meta["duration_ms"] = int(dur * 1000)
+        side.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+
+    conn = get_connection(db_path)
+    _seed_categories(conn)
+    conn.commit()
+    conn.close()
+
+    scanned = scan_directory(out_dir, db_path=db_path, category_code="FL")
+    conn = get_connection(db_path)
+    _assign_categories_by_rotation(conn)
+    # Force FILLER event_type carts onto FL even if scanner defaulted differently
+    fl = conn.execute("SELECT id FROM categories WHERE code = 'FL'").fetchone()
+    if fl:
+        conn.execute(
+            """UPDATE tracks SET category_id = ?, rotation_category = 'FILLER'
+               WHERE event_type = 'FILLER'""",
+            (fl["id"],),
+        )
+    conn.commit()
+    pool_count = conn.execute(
+        """SELECT COUNT(*) AS c FROM tracks
+           WHERE active = 1 AND event_type IN ('FILLER','ID','SWEEPER','BED')"""
+    ).fetchone()["c"]
+    conn.close()
+    return {
+        "dir": str(out_dir),
+        "written": written,
+        "scanned": scanned,
+        "pool_tracks": pool_count,
+    }
 
 
 def seed_demo(db_path: Optional[Path] = None) -> dict:
@@ -392,6 +474,11 @@ def seed_demo(db_path: Optional[Path] = None) -> dict:
     conn = get_connection(db_path)
     _assign_categories_by_rotation(conn)
     conn.commit()
+    conn.close()
+
+    filler = ensure_filler_pool(db_path=db_path)
+
+    conn = get_connection(db_path)
     track_count = conn.execute("SELECT COUNT(*) AS c FROM tracks").fetchone()["c"]
     conn.close()
 
@@ -405,4 +492,5 @@ def seed_demo(db_path: Optional[Path] = None) -> dict:
         "scanned": scanned,
         "tracks": track_count,
         "fixtures_dir": str(_cfg.FIXTURES_DIR),
+        "filler_pool": filler,
     }

@@ -368,7 +368,7 @@ EVENT_TYPES_EDITABLE = (
     "SHOW",
 )
 TIMING_MODES = ("FLOAT", "HIT", "HARD", "SOFT")
-CHAIN_MODES = ("AUTO", "MIX", "SEQ", "HOLD", "MANUAL")
+CHAIN_MODES = ("AUTO", "MIX", "SEQ", "CUT", "HOLD", "MANUAL")
 
 
 def load_clocks_from_db(conn) -> list[dict[str, Any]]:
@@ -452,6 +452,7 @@ def _normalize_slot_payload(raw: dict, position: int) -> dict[str, Any]:
     if timing not in TIMING_MODES:
         timing = "FLOAT"
     chain = str(raw.get("chain_mode") or "AUTO").strip().upper()
+    # Enum uses CUT; editor historically offered SEQ — accept both
     if chain not in CHAIN_MODES:
         chain = "AUTO"
     cat = raw.get("category_code")

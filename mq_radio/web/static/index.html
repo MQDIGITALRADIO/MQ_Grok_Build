@@ -23,6 +23,7 @@
         <label class="date-label">LOG DATE
           <input type="date" id="log-date" />
         </label>
+        <button type="button" id="btn-library" class="btn-chrome" title="Categories / library">LIBRARY</button>
         <button type="button" id="btn-clocks" class="btn-chrome" title="Category clocks">CLOCKS</button>
         <button type="button" id="btn-settings" class="btn-chrome" title="Settings">⚙</button>
         <button type="button" id="btn-refresh" class="btn-chrome" title="Refresh log">↻</button>
@@ -418,6 +419,16 @@
           (env <code>MQ_RADIO_LIBRARY_ROOT</code> also honored). Default: <code>data/library</code>.
         </p>
 
+        <div class="settings-section-title">CATEGORY / LIBRARY</div>
+        <p class="settings-intro">
+          View and edit rotation categories (name + rules summary), browse carts by category,
+          add or rename codes. Wired to SQLite <code>categories</code> / <code>tracks</code>.
+          FILLER (<code>FL</code>) carts under <code>data/filler/</code> feed ETM under-fills.
+        </p>
+        <div class="settings-actions">
+          <button type="button" class="btn-dialog primary" id="btn-open-category-manager">Open Category Manager…</button>
+        </div>
+
         <div class="settings-section-title">CATEGORY CLOCKS</div>
         <p class="settings-intro">
           GENERAL + OVERNIGHT hour templates drive Living Log expansion.
@@ -553,6 +564,61 @@
         <p class="clock-hint" id="clock-hint">
           Save → DB + data/clocks.json. Generate hour expands the active clock with ETM fills.
         </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Category / Library Manager (Maestro-dense) -->
+  <div class="settings-backdrop" id="cat-backdrop" aria-hidden="true">
+    <div class="settings-dialog cat-dialog" role="dialog" aria-labelledby="cat-title">
+      <div class="settings-titlebar">
+        <span id="cat-title">MQ Radio — Categories / Library</span>
+        <button type="button" class="settings-close" id="btn-cat-close" title="Close">×</button>
+      </div>
+      <div class="settings-body cat-body">
+        <p class="settings-intro">
+          Categories drive clock slots and scored music selection.
+          <strong>Rules summary</strong> is editable operator text (stored as description).
+          Browse carts by category — FILLER/FL pool prefers real short carts on ETM under-fill.
+        </p>
+        <div class="cat-layout">
+          <aside class="cat-sidebar">
+            <div class="cat-sidebar-head">
+              <span>Categories</span>
+              <button type="button" class="btn-dialog" id="btn-cat-add" title="Add category">+ Add</button>
+            </div>
+            <div class="cat-list" id="cat-list"></div>
+          </aside>
+          <div class="cat-main">
+            <div class="cat-toolbar">
+              <span class="clock-status" id="cat-status">—</span>
+              <button type="button" class="btn-dialog" id="btn-cat-refresh">Refresh</button>
+              <button type="button" class="btn-dialog primary" id="btn-cat-save">Save</button>
+            </div>
+            <div class="cat-edit-grid">
+              <label>Code <input type="text" id="cat-edit-code" maxlength="12" autocomplete="off" /></label>
+              <label>Name <input type="text" id="cat-edit-name" autocomplete="off" /></label>
+              <label>Priority <input type="number" id="cat-edit-priority" min="0" max="999" /></label>
+              <label class="cat-check"><input type="checkbox" id="cat-edit-music" /> Music category</label>
+            </div>
+            <label class="cat-rules-label">Rules summary
+              <textarea id="cat-edit-rules" rows="2" placeholder="Operator-facing rotation / imaging rules…"></textarea>
+            </label>
+            <p class="cat-rules-preview" id="cat-rules-preview">—</p>
+            <div class="cat-tracks-head">
+              <strong>Library carts</strong>
+              <input type="search" id="cat-track-search" placeholder="Filter artist / title…" autocomplete="off" />
+            </div>
+            <div class="cat-table-wrap">
+              <table class="clock-table cat-tracks-table">
+                <thead>
+                  <tr><th>Id</th><th>Artist</th><th>Title</th><th>Type</th><th>Dur</th></tr>
+                </thead>
+                <tbody id="cat-tracks-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -729,6 +795,7 @@
   </div>
   <script src="/static/program_audio.js"></script>
   <script src="/static/clock_editor.js"></script>
+  <script src="/static/category_manager.js"></script>
   <script src="/static/app.js"></script>
   <script src="/static/desk_programming.js"></script>
 </body>

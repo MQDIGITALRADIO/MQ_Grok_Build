@@ -14,7 +14,7 @@ from typing import Iterable, Optional
 
 from mq_radio.db.connection import get_connection
 from mq_radio.scheduler.clocks import load_hour_clock_map, normalize_hours
-from mq_radio.scheduler.etm_fill import apply_hard_timing_fills
+from mq_radio.scheduler.etm_fill import apply_hard_timing_fills, load_filler_pool
 from mq_radio.scheduler.rules import HistoryWindow, Ruleset, score_track
 
 ASSET_EVENT_TYPES = {"SWEEPER", "ID", "PROMO", "VOICE_TRACK", "BED", "FILLER"}
@@ -270,9 +270,38 @@ def _build_slot_event(
     if constraints.notes_prefix:
         notes = f"{constraints.notes_prefix}{notes or ''}"
 
-    if et in ("ETM", "BREAK", "COMMAND", "LIVE", "SHOW", "FILLER"):
+    if et in ("ETM", "BREAK", "COMMAND", "LIVE", "SHOW"):
         duration_ms = 0 if et == "ETM" else (30_000 if et == "BREAK" else 0)
         title = slot.get("label") or et
+    elif et == "FILLER":
+        # Prefer short FILLER/FL pool carts when the clock places an explicit FILLER slot
+        pick_cat = cat or "FL"
+        candidates = _tracks_for_category(conn, pick_cat, "FILLER")
+        if not candidates:
+            candidates = _tracks_for_category(conn, "FL", "FILLER")
+        track, score = _pick_best(
+            candidates,
+            when,
+            history,
+            rules,
+            pick_cat,
+            used_ids,
+            constraints=constraints,
+            hour_category_counts=hour_category_counts,
+            hour_music_total=hour_music_total,
+            hour_au_count=hour_au_count,
+        )
+        if track:
+            track_id = track["id"]
+            title = track["title"]
+            artist = track["artist"]
+            duration_ms = int(track["duration_ms"] or 0) or 15_000
+            used_ids.add(int(track_id))
+            cat = track.get("category_code") or pick_cat
+        else:
+            title = slot.get("label") or "FILLER"
+            artist = "MQ Digital"
+            duration_ms = 15_000
     elif et == "VOICE_TRACK":
         duration_ms = 8_000
         title = slot.get("label") or "VOICE_TRACK"
@@ -520,6 +549,7 @@ def generate_log(
     built: list[dict] = []
     generated = 0
     preserved = 0
+    filler_pool = load_filler_pool(conn)
     fill_totals = {
         "windows": 0,
         "stretched_ms": 0,
@@ -571,7 +601,7 @@ def generate_log(
             preserved += sum(1 for e in hour_events if e.get("manual_flag") == "MANUAL")
         # Hard ETM / HIT / HARD fills: stretch FLOAT or insert FILLER toward markers
         hour_events, fill_stats = apply_hard_timing_fills(
-            hour_events, hour_start=hour_start
+            hour_events, hour_start=hour_start, filler_pool=filler_pool
         )
         fs = fill_stats.as_dict()
         for k in fill_totals:

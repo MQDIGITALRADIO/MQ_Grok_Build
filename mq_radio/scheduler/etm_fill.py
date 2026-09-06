@@ -20,8 +20,10 @@ Between consecutive hard markers (and from hour start → first marker):
 2. Compare to the wall window length (marker_at − window_start).
 3. **Under** (content short of the hit):
    - Prefer stretching the last stretchable MUSIC (up to ``MAX_STRETCH_MS``).
-   - If still short, insert a ``FILLER`` stub (or grow an existing FILLER) so the
-     cumulative duration lands on the marker.
+   - If still short, insert a ``FILLER`` from the short-cart pool
+     (FILLER / ID / SWEEPER / BED under ``data/filler/`` + seed fixtures),
+     preferring real carts over a duration-only stub; grow an existing FILLER
+     when present so the cumulative duration lands on the marker.
 4. **Over** (content past the hit):
    - Compress FLOAT MUSIC slightly (floor ``MIN_MUSIC_MS``), never past the floor.
    - Remaining overage is recorded in ``notes`` / return stats (late into the hit);
@@ -57,6 +59,75 @@ MAX_FILLER_INSERT_MS = 180_000  # 3:00 filler cap per window
 DEFAULT_FILLER_MS = 30_000
 
 HARD_TIMING = frozenset({"HIT", "HARD"})
+
+# Preferred event types when selecting a real cart for ETM FILLER inserts
+FILLER_POOL_TYPES = ("FILLER", "ID", "SWEEPER", "BED")
+FILLER_POOL_CODES = frozenset({"FL", "FILLER", "ID", "SW", "BED"})
+
+
+def load_filler_pool(conn) -> list[dict]:
+    """Load short FILLER/ID/SWEEPER/BED carts for ETM under-fills.
+
+    Operators seed these via ``seed-demo`` / ``ensure_filler_pool`` under
+    ``data/filler/`` (gitignored) plus fixture imaging carts.
+    """
+    rows = conn.execute(
+        """SELECT t.id, t.title, t.artist, t.duration_ms, t.event_type,
+                  COALESCE(c.code, t.rotation_category, '') AS category_code
+           FROM tracks t
+           LEFT JOIN categories c ON c.id = t.category_id
+           WHERE t.active = 1
+             AND (
+               UPPER(t.event_type) IN ('FILLER','ID','SWEEPER','BED')
+               OR UPPER(COALESCE(c.code,'')) IN ('FL','FILLER','ID','SW','BED')
+               OR UPPER(COALESCE(t.rotation_category,'')) IN ('FILLER','ID','SWEEPER','BED')
+             )
+           ORDER BY
+             CASE UPPER(t.event_type)
+               WHEN 'FILLER' THEN 0
+               WHEN 'ID' THEN 1
+               WHEN 'SWEEPER' THEN 2
+               ELSE 3
+             END,
+             t.duration_ms ASC"""
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def pick_filler_cart(
+    pool: list[dict],
+    need_ms: int,
+    *,
+    used_ids: Optional[set[int]] = None,
+) -> Optional[dict]:
+    """Choose the best short cart for an under-fill of ``need_ms``.
+
+    Prefers FILLER event_type, then ID/SWEEPER/BED. Favours duration closest to
+    need (slightly under preferred so we can stretch the event airtime).
+    """
+    if need_ms <= 0 or not pool:
+        return None
+    used = used_ids or set()
+    candidates = []
+    for t in pool:
+        tid = t.get("id")
+        if tid is not None and int(tid) in used:
+            continue
+        dur = max(0, int(t.get("duration_ms") or 0))
+        if dur < 500:
+            continue
+        et = str(t.get("event_type") or "").upper()
+        type_rank = {"FILLER": 0, "ID": 1, "SWEEPER": 2, "BED": 3}.get(et, 4)
+        # Prefer under/equal need; overage penalised
+        over = max(0, dur - need_ms)
+        under = max(0, need_ms - dur)
+        score = (type_rank, over, under, dur)
+        candidates.append((score, t))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda x: x[0])
+    return dict(candidates[0][1])
+
 
 
 def _parse_dt(value: Any) -> Optional[datetime]:
@@ -186,44 +257,87 @@ def _insert_or_grow_filler(
     *,
     when: datetime,
     stats: FillStats,
+    filler_pool: Optional[list[dict]] = None,
+    used_track_ids: Optional[set[int]] = None,
 ) -> int:
-    """Grow trailing FILLER or insert a new FILLER stub. Returns applied ms."""
+    """Grow trailing FILLER or insert from the short-cart pool / stub.
+
+    Prefer real FILLER/ID/SWEEPER/BED carts when ``filler_pool`` is provided.
+    Returns applied ms toward the hard marker.
+    """
     if need_ms <= 0:
         return 0
     apply = min(need_ms, MAX_FILLER_INSERT_MS)
+    used = used_track_ids if used_track_ids is not None else set()
+
     for e in reversed(events):
         if str(e.get("event_type") or "").upper() == "FILLER":
-            e["duration_ms"] = int(e.get("duration_ms") or 0) + apply
-            stats.filler_grown_ms += apply
+            cur = int(e.get("duration_ms") or 0)
+            # Cap single-window growth; existing stretched carts may already be long
+            add = min(apply, MAX_FILLER_INSERT_MS)
+            if add <= 0:
+                break
+            e["duration_ms"] = cur + add
+            stats.filler_grown_ms += add
             note = e.get("notes") or ""
-            tag = f"[ETM filler +{apply}ms]"
+            tag = f"[ETM filler +{add}ms]"
             if tag not in str(note):
                 e["notes"] = f"{note} {tag}".strip() if note else tag
-            return apply
+            return add
+
+    cart = pick_filler_cart(filler_pool or [], apply, used_ids=used)
+    title = "ETM FILL"
+    artist = "MQ Digital"
+    track_id = None
+    category_code = "FL"
+    cart_dur = None
+    notes = f"[ETM fill {apply}ms toward hard marker]"
+    if cart:
+        track_id = int(cart["id"]) if cart.get("id") is not None else None
+        title = cart.get("title") or title
+        artist = cart.get("artist") or artist
+        category_code = (cart.get("category_code") or "FL") or "FL"
+        cart_dur = max(0, int(cart.get("duration_ms") or 0))
+        et = str(cart.get("event_type") or "FILLER").upper()
+        notes = f"[ETM fill cart {et} #{track_id} · need {apply}ms]"
+        if track_id is not None:
+            used.add(track_id)
+
+    # Air duration = need (capped). Cart file may be shorter (engine stretch) or
+    # longer (trim toward need in engine); scheduler stamps the window need.
+    duration_ms = apply if apply >= 1000 else max(apply, min(DEFAULT_FILLER_MS, need_ms))
+    if apply < DEFAULT_FILLER_MS:
+        duration_ms = apply
+    # If we have a cart longer than need, still stamp need so we hit the marker
+    # (engine may trim). If cart is shorter, stamp need (stretch air toward hit).
+    if cart_dur and cart_dur > 0 and apply >= cart_dur:
+        # Prefer playing the cart once at cart length when that closes most of the gap
+        # and remaining under will be noted; but for hard hits use exact apply.
+        duration_ms = apply
 
     filler = {
         "scheduled_at": _fmt(when),
         "event_type": "FILLER",
-        "track_id": None,
-        "title": "ETM FILL",
-        "artist": "MQ Digital",
-        "duration_ms": apply if apply >= DEFAULT_FILLER_MS else max(apply, DEFAULT_FILLER_MS),
+        "track_id": track_id,
+        "title": title,
+        "artist": artist,
+        "duration_ms": duration_ms,
         "timing_mode": "FLOAT",
         "chain_mode": "AUTO",
         "status": "COMMITTED",
         "manual_flag": "AUTO",
-        "category_code": None,
+        "category_code": category_code,
         "clock_slot_id": None,
         "score": None,
-        "notes": f"[ETM fill {apply}ms toward hard marker]",
+        "notes": notes,
         "_when": when,
         "_etm_fill": True,
+        "_filler_cart_ms": cart_dur,
     }
-    # Use exact need if small
-    if apply < DEFAULT_FILLER_MS:
-        filler["duration_ms"] = apply
     events.append(filler)
     stats.filler_inserted += 1
+    if track_id is not None:
+        stats.notes.append(f"filler cart #{track_id} ({title}) for {apply}ms")
     return int(filler["duration_ms"])
 
 
@@ -246,17 +360,29 @@ def apply_hard_timing_fills(
     events: list[dict],
     *,
     hour_start: Optional[datetime] = None,
+    filler_pool: Optional[list[dict]] = None,
 ) -> tuple[list[dict], FillStats]:
     """Post-process an hour (or day) event list toward HIT/HARD/ETM markers.
 
     Returns a **new** list (may include inserted FILLER rows) and fill stats.
     Hard marker scheduled_at values are preserved; FLOAT rows are re-stamped.
+
+    When ``filler_pool`` is supplied (from ``load_filler_pool``), under-fills
+    prefer real short carts over a duration-only stub.
     """
     stats = FillStats()
     if not events:
         return [], stats
 
     work = [dict(e) for e in events]
+    used_track_ids: set[int] = set()
+    for e in work:
+        tid = e.get("track_id")
+        if tid is not None:
+            try:
+                used_track_ids.add(int(tid))
+            except (TypeError, ValueError):
+                pass
     # Determine hour_start from first event if needed
     first_when = None
     for e in work:
@@ -304,7 +430,12 @@ def apply_hard_timing_fills(
             still = delta - applied
             if still > 500:
                 grown = _insert_or_grow_filler(
-                    content, still, when=window_start + timedelta(milliseconds=content_ms + applied), stats=stats
+                    content,
+                    still,
+                    when=window_start + timedelta(milliseconds=content_ms + applied),
+                    stats=stats,
+                    filler_pool=filler_pool,
+                    used_track_ids=used_track_ids,
                 )
                 still -= grown
             if still > 1000:

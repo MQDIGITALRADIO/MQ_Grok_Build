@@ -177,8 +177,18 @@ Titlebar **CLOCKS** (or Settings → Category Clocks) opens a Maestro-dense slot
 When the Living Log has **ETM** / **HIT** / **HARD** markers:
 
 1. **Scheduler** (`etm_fill.apply_hard_timing_fills`): between hard markers, stretch FLOAT MUSIC and/or insert **FILLER** so cumulative duration lands on the hit; compress slightly if over; re-stamp FLOAT `scheduled_at`. Hard marker airtime stays fixed.
-2. **MockEngine**: on cart start, stretch or trim air duration toward the next hard marker (TO TIME / ETM already on the desk).
-3. Generate results include `etm_fill` stats (`stretched_ms`, `filler_inserted`, `overage_ms`, …).
+2. **FILLER cart pool**: under-fills prefer real short carts (category **FL** / event_type FILLER, plus ID/SWEEPER/BED) from `data/filler/` (gitignored, created by `seed-demo` / `ensure_filler_pool`) over a duration-only stub. Inserted FILLER rows carry `track_id` when a pool cart is available.
+3. **MockEngine**: on cart start, stretch or trim air duration toward the next hard marker (TO TIME / ETM already on the desk).
+4. Generate results include `etm_fill` stats (`stretched_ms`, `filler_inserted`, `overage_ms`, …).
+
+### Category / Library Manager
+
+Titlebar **LIBRARY** (or Settings → Category / Library) opens a Maestro-dense manager:
+
+- View categories with **name**, editable **rules summary** (SQLite `description`), priority, music flag, cart counts
+- Browse library carts filtered by category
+- **Add** / **rename** category codes (cascades to `clock_slots` + `log_events`)
+- Wired to SQLite `categories` / `tracks` — same codes clocks use (A/B/C, ID, SW, PR, BED, VT, **FL**)
 
 ```bash
 python -m mq_radio show-clocks
@@ -199,7 +209,7 @@ python -m mq_radio generate-log --date 2026-09-06 --music-categories B,C --enfor
 | Area | M1 (this zip) | Later |
 |------|---------------|--------|
 | Library / scanner | WAV + sidecar JSON, demo fixtures | Full tagging, APRA/PPCA workflows |
-| Scheduler | GENERAL + OVERNIGHT clocks, **Clock Editor UI**, hour/24h generate, constraints, MANUAL preserve, **ETM/HIT fills** | Multi-clock daypart designer, live runtime fill carts library |
+| Scheduler | GENERAL + OVERNIGHT clocks, **Clock Editor UI**, **Category/Library Manager**, hour/24h generate, constraints, MANUAL preserve, **ETM/HIT fills** + **FILLER cart pool** | Multi-clock daypart designer, richer daypart grid UI |
 | Engine | MockEngine + Liquidsoap stub | Real Liquidsoap / stream chain |
 | UI | On-Air Living Log prototype | Full HOME + STUDIO surfaces |
 | Voice / production / remote | AI VT scripts + Vocloner render path (clipboard) | Vocloner automation/API if available, production cart, remotes |
@@ -393,8 +403,8 @@ F1–F12 fire page-1 slots. Edit mode: click to edit, drag to reorder. Fire show
 ### Gatekeeper first open (Mac)
 After installing from the CI ZIP/DMG, prefer **Open MQ Radio.command** (ships next to the app in the artifact): runs `xattr -cr` + ad-hoc `codesign` then opens the app. Or right-click → Open once.
 
-### Local demo beds
-`python -m mq_radio seed-demo` writes richer harmonic fixtures under `fixtures/demo_audio/` and slightly longer beds under **`data/demo_beds/`** (gitignored — keeps the installer lean).
+### Local demo beds + FILLER pool
+`python -m mq_radio seed-demo` writes richer harmonic fixtures under `fixtures/demo_audio/`, slightly longer beds under **`data/demo_beds/`**, and short **FILLER / ID / SWEEPER** carts under **`data/filler/`** (both gitignored — keeps the installer lean). ETM under-fills prefer that pool.
 
 ## Mac install (DMG)
 

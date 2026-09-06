@@ -4,7 +4,7 @@
     "MUSIC", "ID", "SWEEPER", "PROMO", "VOICE_TRACK", "ETM", "BREAK", "FILLER", "BED",
   ];
   const TIMINGS = ["FLOAT", "HIT", "HARD", "SOFT"];
-  const CHAINS = ["AUTO", "MIX", "SEQ", "HOLD", "MANUAL"];
+  const CHAINS = ["AUTO", "MIX", "SEQ", "CUT", "HOLD", "MANUAL"];
 
   let bundle = null;
   let activeCode = "GENERAL";
@@ -144,6 +144,9 @@
       const data = await fetch("/api/clocks").then((r) => r.json());
       bundle = data;
       if (data.event_types) EVENT_TYPES.splice(0, EVENT_TYPES.length, ...data.event_types);
+      if (data.chain_modes && data.chain_modes.length) {
+        CHAINS.splice(0, CHAINS.length, ...data.chain_modes);
+      }
       syncTabs();
       renderSlots();
       dirty = false;
@@ -244,7 +247,7 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ date, hour, force: false }),
     }).then((r) => r.json());
-    if (!res.ok && res.ok !== undefined) {
+    if (res.ok === false || res.error) {
       setStatus(res.error || "generate failed");
       return;
     }
@@ -284,11 +287,17 @@
     }
     document.querySelectorAll(".clock-tab").forEach((btn) => {
       btn.addEventListener("click", () => {
-        if (dirty) readSlotsIntoClock();
-        activeCode = btn.getAttribute("data-clock") || "GENERAL";
+        const next = btn.getAttribute("data-clock") || "GENERAL";
+        if (next === activeCode) return;
+        if (dirty) {
+          readSlotsIntoClock();
+          // Keep edits in memory for the clock we leave; Save still required for DB
+          setStatus("modified (switch — save when ready)");
+        }
+        activeCode = next;
         syncTabs();
         renderSlots();
-        setStatus(activeCode);
+        if (!dirty) setStatus(activeCode);
       });
     });
     const save = $("btn-clock-save");

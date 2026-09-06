@@ -28,5 +28,6 @@ data/vt-inbox.json
 data/ramps.json
 data/processing.json
 data/demo_beds/
+data/filler/
 data/processing/
 data/clocks.json

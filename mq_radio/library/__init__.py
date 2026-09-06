@@ -1,4 +1,12 @@
 from mq_radio.library.scanner import scan_directory
+from mq_radio.library.categories import (
+    add_category,
+    categories_bundle,
+    list_categories,
+    list_tracks_for_category,
+    rename_category,
+    update_category,
+)
 from mq_radio.library.ingest import (
     ffmpeg_available,
     get_track,
@@ -26,4 +34,10 @@ __all__ = [
     "save_library_root_path",
     "library_audio_dir",
     "vt_inbox_dir",
+    "add_category",
+    "categories_bundle",
+    "list_categories",
+    "list_tracks_for_category",
+    "rename_category",
+    "update_category",
 ]
