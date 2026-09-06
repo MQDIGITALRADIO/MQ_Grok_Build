@@ -6,17 +6,19 @@ Lean build log for Matt. SHAs are on `main` (`MQDIGITALRADIO/MQ_Grok_Build`).
 
 | SHA | Theme |
 |-----|--------|
-| *(this commit)* | Desktop **0.1.4**; Matt 36-cart live-radio e2e; mid-cart SKIP no longer double-advances |
+| `3463637` | Desktop **0.1.4**; Matt bank through 36; mid-cart SKIP fix; ASSIST/crossfade/STOP/skip/hotkey e2e |
+| *(follow-up)* | Carts 37–47 + WAV beds/VT live-sim; full bank 47 (~184MB); suite 251 green |
 
 **Version:** Desktop packaging **0.1.4** (`desktop/package.json`, `build_info.DESKTOP_VERSION`, titlebar badge, preload fallback) for next Mac preview (idle meters/VU/import from `f7816c1` + tonight's grind).
 
 **Engine:** `MockEngine.skip` — mid-cart SKIP marks only the ON AIR row then starts the next cart. Idle SKIP still drops the upcoming cue once. Fixes operator NEXT burning two carts (paying-client live-radio bug).
 
-**Matt sample bank:** `data/matt_sample_carts/` — 36 real carts (MP3 music/imaging + WAV/MP3 ID/sweeper shorts 28–36). Live-sim covers import destinations (Library/Living Log/Hotkey/Deck A), ASSIST talk-up + GO, dual-deck crossfade timing, STOP mid-cart idle meters/VU, skip mid-sequence, WAV/MP3 hotkeys over music, full-bank ingest.
+**Matt sample bank:** `data/matt_sample_carts/` — **47** unique real carts (~184MB): long MP3 music, short imaging, WAV/MP3 ID/sweeper hotkeys (28–36), music 37–42, WAV beds/VT 43–47. Live-sim: import destinations (Library/Living Log/Hotkey/Deck A), ASSIST talk-up + GO, dual-deck crossfade timing, STOP mid-cart idle meters/VU, skip mid-sequence, hotkeys over music, VT/WAV beds on Living Log, full-bank ingest.
 
-**Tests:** expanded `tests/test_desk_live_radio_scenarios.py`; full suite green (250).
+**Tests:** expanded `tests/test_desk_live_radio_scenarios.py`; full suite **251** green.
 
 **Not Done:** AU host / Harbor / notarization (unchanged — do not claim Done).
+
 
 ## Desk grind 2026-09-07 (idle meters/VU + import destinations)
 

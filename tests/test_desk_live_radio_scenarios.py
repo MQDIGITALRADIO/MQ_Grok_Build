@@ -5,7 +5,7 @@ ASSIST talk-up / GO, dual-deck crossfade timing, STOP mid-cart, skip mid-sequenc
 Paying-client bar — complex simulated live-radio via HTTP API (fields that drive
 desk JS: timing.progress/talk_up_*, vu, now.status, oneshot, overlap/segue).
 
-Primary carts: Matt's real files under data/matt_sample_carts/ (36 carts: long MP3 music + short imaging/ID/sweeper (WAV+MP3)). Silence WAVs remain for pure edge-error cases.
+Primary carts: Matt's real files under data/matt_sample_carts/ (47 carts: long MP3 music + WAV beds/VT + short ID/sweeper hotkeys). Silence WAVs remain for pure edge-error cases.
 """
 
 from __future__ import annotations
@@ -118,12 +118,14 @@ MATT_SAMPLES_DIR = Path(__file__).resolve().parents[1] / "data" / "matt_sample_c
 # Short imaging MP3 (~43–54s): 1,2,6,7 · Tiny ID MP3 (~7s): 28 · WAV imaging/ID (~5–7s): 29–31
 # Medium (~2–3min): 5,20,21,26 · Long music (~3–5.7min): remaining MP3s
 MATT_SHORT = (1, 2, 6, 7)
-MATT_MEDIUM = (5, 20, 21, 26)
-MATT_LONG = (3, 4, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 22, 23, 24, 25, 27)
-MATT_WAV_IMAGING = (29, 30, 31, 32, 36)  # WAV ID / sweeper / promo beds
+MATT_MEDIUM = (5, 20, 21, 26, 38, 39, 41)
+MATT_LONG = (3, 4, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 22, 23, 24, 25, 27, 37, 40, 42)
+MATT_WAV_IMAGING = (29, 30, 31, 32, 36)  # short WAV ID / sweeper (~5–7s)
+MATT_WAV_BEDS = (44, 45, 46, 47)  # longer WAV beds / VT (~18–40s)
 MATT_TINY_ID = (28, 33, 34, 35)  # short MP3 ID / sweeper / hotkey hits
+MATT_VT_SHORT = (43,)  # ~20s MP3 VT / bed candidate
 MATT_HOTKEY_BANK = MATT_WAV_IMAGING + MATT_TINY_ID
-MATT_BANK_COUNT = 36
+MATT_BANK_COUNT = 47
 
 
 def _matt(n: int) -> Path:
@@ -624,14 +626,18 @@ def test_matt_samples_present_mix_short_and_long():
     med_ms = [probe_duration_ms(_matt(n)) for n in MATT_MEDIUM]
     long_ms = [probe_duration_ms(_matt(n)) for n in MATT_LONG]
     wav_ms = [probe_duration_ms(_matt(n)) for n in MATT_WAV_IMAGING]
+    bed_ms = [probe_duration_ms(_matt(n)) for n in MATT_WAV_BEDS]
     tiny_ms = [probe_duration_ms(_matt(n)) for n in MATT_TINY_ID]
+    vt_ms = [probe_duration_ms(_matt(n)) for n in MATT_VT_SHORT]
     assert all(30_000 < ms < 70_000 for ms in short_ms), short_ms
     assert all(100_000 < ms < 180_000 for ms in med_ms), med_ms
     assert all(ms > 180_000 for ms in long_ms), long_ms
     assert all(ms < 15_000 for ms in wav_ms), wav_ms
+    assert all(15_000 < ms < 50_000 for ms in bed_ms), bed_ms
     assert all(ms < 15_000 for ms in tiny_ms), tiny_ms
-    assert all(_matt(n).suffix.lower() == ".wav" for n in MATT_WAV_IMAGING)
-    assert all(_matt(n).suffix.lower() == ".mp3" for n in MATT_TINY_ID)
+    assert all(15_000 < ms < 30_000 for ms in vt_ms), vt_ms
+    assert all(_matt(n).suffix.lower() == ".wav" for n in MATT_WAV_IMAGING + MATT_WAV_BEDS)
+    assert all(_matt(n).suffix.lower() == ".mp3" for n in MATT_TINY_ID + MATT_VT_SHORT)
     assert len(MATT_HOTKEY_BANK) == 9
 
 
@@ -1211,6 +1217,56 @@ def test_matt_wav_imaging_as_hotkey_and_promo_over_music(server):
 
 
 # —— Full-bank smoke: ingest all 12 into library, cue a short→long Living Log ——
+
+
+
+def test_matt_wav_beds_and_vt_on_living_log(server):
+    """WAV beds 44–47 + MP3 VT 43 on Living Log with music — PLAY/skip/STOP idle."""
+    base, desk = server
+    day = "2026-09-19"
+    music = _ingest_matt(base, 40, "Bed Music")
+    vt = _ingest_matt(base, 43, "VT Short 43", event_type="VOICE_TRACK")
+    bed = _ingest_matt(base, 44, "WAV Bed 44", event_type="VOICE_TRACK")
+    after = -1
+    for res, title, dur, et in [
+        (vt, "VT Short 43", int(vt["duration_ms"]), "VOICE_TRACK"),
+        (music, "Bed Music", 15000, "MUSIC"),
+        (bed, "WAV Bed 44", int(bed["duration_ms"]), "VOICE_TRACK"),
+    ]:
+        _log_insert(
+            base,
+            day,
+            track_id=res["track_id"],
+            title=title,
+            duration_ms=dur,
+            after_position=after,
+            event_type=et,
+        )
+        after = max(int(e["position"]) for e in list_events(day, db_path=desk["db"]))
+
+    titles = [e["title"] for e in list_events(day, db_path=desk["db"])]
+    assert titles == ["VT Short 43", "Bed Music", "WAV Bed 44"]
+
+    code, play = _http_json("POST", f"{base}/api/play?date={day}")
+    assert code == 200 and play.get("running") is True
+    code, st = _http_json("GET", f"{base}/api/status?date={day}")
+    assert (st.get("now") or {}).get("title") == "VT Short 43"
+
+    _http_json("POST", f"{base}/api/skip?date={day}")
+    code, st2 = _http_json("GET", f"{base}/api/status?date={day}")
+    assert (st2.get("now") or {}).get("title") == "Bed Music"
+    assert float((st2.get("vu") or {}).get("left") or 0) > 0.0 or (st2.get("vu") or {}).get("playing") is True
+
+    _http_json("POST", f"{base}/api/skip?date={day}")
+    code, st3 = _http_json("GET", f"{base}/api/status?date={day}")
+    assert (st3.get("now") or {}).get("title") == "WAV Bed 44"
+
+    code, stop = _http_json("POST", f"{base}/api/stop?date={day}")
+    assert stop.get("running") is False
+    code, idle = _http_json("GET", f"{base}/api/status?date={day}")
+    assert idle.get("running") is False
+    assert float((idle.get("timing") or {}).get("progress") or 0) == 0.0
+    assert float((idle.get("vu") or {}).get("left") or 0) == 0.0
 
 
 def test_matt_full_bank_ingest_and_short_long_play_stop(server):
