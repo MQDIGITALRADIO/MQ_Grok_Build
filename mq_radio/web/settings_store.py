@@ -102,13 +102,16 @@ def _mix_minus_fields(outputs: dict[str, str], inputs: dict[str, str]) -> dict[s
         "out": out,
         "aux_in": aux_in,
         "paired": paired,
+        "subtract_active": False,  # live flag comes from audio_route / browser report
         "output_role": "mix_minus",
         "paired_input_role": "aux_in",
         "paired_input_device": aux_in,
         "output_device": raw_out,
         "description": (
             "Mix-minus = Program (processed) minus Aux input return — "
-            "caller/Zoom hears the show without their own voice."
+            "caller/Zoom hears the show without their own voice. "
+            "Browser Web Audio subtracts when Aux capture is live; "
+            "Mac path: program_processed - aux_return → mix_minus device."
         ),
     }
 

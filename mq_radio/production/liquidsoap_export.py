@@ -20,7 +20,7 @@ from mq_radio.production.processing import (
     normalize_processing,
 )
 
-HANDOFF_VERSION = 1
+HANDOFF_VERSION = 2
 
 
 def _repo_packaging_dir() -> Path:
@@ -49,8 +49,9 @@ def handoff_payload(
         "notes": (
             "MQ native on-air processing handoff — NOT an Orban Optimod schematic clone. "
             "Topology is public broadcast practice: AGC → EQ → Multiband → Exciter → Peak Limiter. "
-            "Browser On-Air approximates this; transmission-path DSP applies these params in Liquidsoap/Mac later. "
-            "AU/AAX hosting is out of scope here (optional Mac production-bus later)."
+            "Browser On-Air is the live Program processor (desk or transmission_mode). "
+            "Server peak/AGC stub: mq_radio.production.transmission_dsp.process_wav_file on exported WAV. "
+            "Mac/Liquidsoap should wire these params on the transmission path; AU/AAX hosting remains later."
         ),
         "topology": " → ".join(STAGE_LABELS[s] for s in STAGE_ORDER),
         "stage_order": list(STAGE_ORDER),
@@ -58,6 +59,7 @@ def handoff_payload(
         "current": {
             "enabled": current.get("enabled"),
             "template": current.get("template"),
+            "transmission_mode": bool(current.get("transmission_mode")),
             "output": current.get("output"),
             "stages": current.get("stages"),
             "notes": current.get("notes"),
@@ -74,6 +76,16 @@ def handoff_payload(
             },
             "fm_output": "preemphasis flag + stereo_enhance — apply only on FM path",
             "digital_output": "no preemphasis; ISR-aware limiter ceiling",
+            "transmission_mode": (
+                "When true, push denser FM (more drive / tighter release) vs cleaner Digital "
+                "(lower ceiling, milder exciter) — mirrors browser Program processor TX toggle"
+            ),
+            "python_stub": "mq_radio.production.transmission_dsp.process_wav_file(src, dst, template=...)",
+            "mix_minus_mac": (
+                "Mac engine path: mix_minus_out = program_processed - aux_in_return "
+                "(polarity invert + sum). Browser Web Audio implements this when Aux capture is live; "
+                "CoreAudio dual-device subtract remains engine milestone."
+            ),
         },
     }
     if include_templates:
@@ -101,16 +113,23 @@ def render_liq_snippet(chain: Optional[dict[str, Any]] = None) -> str:
         "# STATUS: stub — wire real operators in Mac/Liquidsoap milestone.",
         "# NOT an Optimod clone. Params mirror data/processing.json / native desk.",
         "#",
-        "# Suggested program chain (pseudo / documented):",
+        "# Suggested program chain (pseudo / documented — wire real operators on Mac):",
         "#   program = input  # harbor / playlist / request.queue",
-        "#   program = mq_agc(program, ...)",
-        "#   program = mq_eq(program, ...)",
-        "#   program = mq_multiband(program, ...)",
-        "#   program = mq_exciter(program, ...)",
-        "#   program = mq_limiter(program, ...)",
-        "#   output.icecast(%mp3, ... , program)  # or FM encoder path",
+        "#   program = compress(target=agc.target_db, attack=..., release=..., program)",
+        "#   program = eq(...)  # low_shelf + presence + air + high_cut from stages.eq",
+        "#   program = compress.multiband(crossovers=mb.crossovers_hz, drive=mb.drive_db, program)",
+        "#   program = dry_wet(highshelf_harmonics(...), mix=exc.mix)  # mild",
+        "#   program = limit(ceiling=lim.ceiling_dbfs, lookahead=lim.lookahead_ms, program)",
+        "#   # FM only: preemphasis(us=out.preemphasis_us, program)",
+        "#   output.icecast(%mp3, ... , program)  # or FM encoder / soundcard",
+        "#",
+        "# Mix-minus (Mac engine):",
+        "#   aux_return = input.microphone(...)  # or harbor from Zoom/hybrid",
+        "#   mix_minus = program - aux_return    # polarity invert aux, sum with program",
+        "#   output.speaker(mix_minus)           # hybrid send / USB out",
         "#",
         f"# enabled={bool(c.get('enabled'))}  path={out.get('path')}  "
+        f"transmission_mode={bool(c.get('transmission_mode'))}  "
         f"preemphasis={out.get('preemphasis')} us={out.get('preemphasis_us')}",
         "#",
         f"# AGC: target_db={agc.get('target_db')} drive_db={agc.get('drive_db')} "
@@ -205,8 +224,10 @@ Documented stub for a future Mac / Liquidsoap transmission chain.
 - Not AU/AAX hosting
 - Not a multiband Optimod schematic clone
 
-Browser On-Air already approximates this chain for desk audition.
+Browser On-Air is the live Program processor (optional **transmission_mode** for denser FM vs cleaner Digital).
+Python peak/AGC stub: `mq_radio.production.transmission_dsp.process_wav_file` on exported WAV.
 Wire these params into Liquidsoap operators when the Mac engine owns the transmission path.
+Mix-minus: browser subtracts Aux return when capture is live; Mac path is `program - aux_return` (documented above).
 
 Regenerate from Python:
 

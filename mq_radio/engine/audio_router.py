@@ -18,12 +18,21 @@ Multi-bus (this pass)
 secondary best-effort streams when PortAudio resolves a distinct device;
 otherwise they stay ``configured`` / ``mock`` / ``unresolved`` stubs.
 
-Mix-minus pairing
------------------
-Status exposes ``mix_minus: {out, aux_in, paired}`` — the Mix-minus *output*
-device paired with Aux input (caller/Zoom return). ``paired`` is true when
-both sides are set to a real (non-``none``) device. Actual DSP subtraction
-remains a later engine step; this pass records the pairing for the desk.
+Mix-minus pairing + subtract
+----------------------------
+Status exposes ``mix_minus: {out, aux_in, paired, subtract_active, ...}`` —
+Mix-minus *output* paired with Aux input (caller/Zoom return). ``paired`` is
+true when both sides are set to a real (non-``none``) device.
+
+**Browser On-Air:** when Aux capture is live, Web Audio builds
+``mix_minus = program_processed − aux_return`` (invert + sum) and reports
+``subtract_active=true`` via ``AudioRouter.set_mix_minus_subtract``.
+Without Aux capture, pairing-only behaviour remains (``subtract_active=false``).
+
+**Mac engine path (documented, not fully hosted here):**
+``aux_return → invert → sum with program_processed → mix_minus device``.
+CoreAudio dual-device PCM subtract is still an engine milestone; browser graph
+is the live subtract today.
 
 Program insert chain (AU architecture stub — not a full AU host)
 ----------------------------------------------------------------
@@ -183,25 +192,49 @@ def _mix_minus_pairing(
     inputs: dict[str, str],
     bus_state: Optional[dict[str, Any]] = None,
     catalogue: Optional[dict[str, Any]] = None,
+    *,
+    subtract_active: bool = False,
+    subtract_mode: Optional[str] = None,
+    subtract_detail: Optional[str] = None,
 ) -> dict[str, Any]:
-    """Mix-minus out ↔ Aux-in pairing for status (``{out, aux_in, paired}``)."""
+    """Mix-minus out ↔ Aux-in pairing + subtract status for desk/API."""
     out = _resolve_effective_id("mix_minus", outputs)
     aux_in = str(inputs.get("aux_in") or "none").strip() or "none"
     paired = _is_real_device(out) and _is_real_device(aux_in)
     cat = catalogue or {}
     bus = bus_state or {}
+    mode = subtract_mode or (
+        "program_minus_aux" if subtract_active else ("pairing_only" if paired else "idle")
+    )
     return {
         "out": out,
         "aux_in": aux_in,
         "paired": paired,
+        "subtract_active": bool(subtract_active),
+        "subtract_mode": mode,
+        "subtract_detail": subtract_detail,
         "out_label": _label_for_id(out, cat) or bus.get("label"),
         "aux_in_label": _label_for_id(aux_in, cat),
         "state": bus.get("state"),
         "index": bus.get("index"),
+        "mac_engine_path": (
+            "program_processed - aux_in_return → mix_minus device "
+            "(CoreAudio PCM subtract still engine milestone; browser Web Audio "
+            "implements live subtract when Aux capture succeeds)"
+        ),
         "description": (
             "Mix-minus = Program (processed) minus Aux input return — "
             "caller/Zoom hears the show without their own voice. "
-            "Pairing recorded; DSP subtraction is a later engine step."
+            + (
+                "Browser subtract graph live (program − aux)."
+                if subtract_active
+                else (
+                    "Paired; waiting for Aux capture / browser graph "
+                    "(fallback: pairing-only until subtract_active)."
+                    if paired
+                    else "Select Mix-minus out + Aux in to pair."
+                )
+            )
         ),
     }
 
@@ -301,6 +334,10 @@ class AudioRouter:
         self._warnings: list[str] = []
         # No AU host in Python/Electron yet — future Electron host flips this
         self._au_host_available: bool = False
+        # Browser (or future Mac engine) reports live Program−Aux subtract
+        self._mix_minus_subtract_active: bool = False
+        self._mix_minus_subtract_mode: Optional[str] = None
+        self._mix_minus_subtract_detail: Optional[str] = None
 
     # ------------------------------------------------------------------ API
 
@@ -561,6 +598,20 @@ class AudioRouter:
                 if st.get("state") == "open":
                     st["state"] = "closed"
 
+    def set_mix_minus_subtract(
+        self,
+        active: bool,
+        *,
+        mode: Optional[str] = None,
+        detail: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """Record browser/engine mix-minus subtract liveness for status."""
+        with _lock:
+            self._mix_minus_subtract_active = bool(active)
+            self._mix_minus_subtract_mode = mode
+            self._mix_minus_subtract_detail = detail
+            return self.status()
+
     def status(self) -> dict[str, Any]:
         """Status envelope for ``/api/status`` → ``audio_route``."""
         with _lock:
@@ -590,6 +641,9 @@ class AudioRouter:
                 self._inputs,
                 bus_state=self._bus_state.get("mix_minus"),
                 catalogue=self._catalogue,
+                subtract_active=self._mix_minus_subtract_active,
+                subtract_mode=self._mix_minus_subtract_mode,
+                subtract_detail=self._mix_minus_subtract_detail,
             )
 
             warnings = list(self._warnings)
@@ -631,11 +685,15 @@ class AudioRouter:
                     "out": mix["out"],
                     "aux_in": mix["aux_in"],
                     "paired": mix["paired"],
+                    "subtract_active": mix["subtract_active"],
+                    "subtract_mode": mix.get("subtract_mode"),
+                    "subtract_detail": mix.get("subtract_detail"),
                     # Extra desk context (safe additive fields)
                     "out_label": mix.get("out_label"),
                     "aux_in_label": mix.get("aux_in_label"),
                     "state": mix.get("state"),
                     "index": mix.get("index"),
+                    "mac_engine_path": mix.get("mac_engine_path"),
                     "description": mix.get("description"),
                 },
                 "buses": buses_snapshot,

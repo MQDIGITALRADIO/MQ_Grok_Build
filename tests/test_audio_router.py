@@ -130,9 +130,12 @@ def test_mix_minus_pairing_fields():
     assert mm["out"] == "usb"
     assert mm["aux_in"] == "zoom_return"
     assert mm["paired"] is True
+    assert mm["subtract_active"] is False
+    assert mm["subtract_mode"] == "pairing_only"
     assert mm["out_label"] == "USB Interface"
     assert mm["aux_in_label"] == "Zoom Return (mock)"
     assert mm["state"] == "mock"
+    assert "mac_engine_path" in mm
 
     st2 = router.apply(
         {"program": "blackhole", "mix_minus": "usb"},

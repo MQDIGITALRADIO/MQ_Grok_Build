@@ -1,9 +1,9 @@
 {
-  "version": 1,
+  "version": 2,
   "kind": "mq_radio_processing_handoff",
   "engine_target": "liquidsoap",
   "status": "stub",
-  "notes": "MQ native on-air processing handoff \u2014 NOT an Orban Optimod schematic clone. Topology is public broadcast practice: AGC \u2192 EQ \u2192 Multiband \u2192 Exciter \u2192 Peak Limiter. Browser On-Air approximates this; transmission-path DSP applies these params in Liquidsoap/Mac later. AU/AAX hosting is out of scope here (optional Mac production-bus later).",
+  "notes": "MQ native on-air processing handoff \u2014 NOT an Orban Optimod schematic clone. Topology is public broadcast practice: AGC \u2192 EQ \u2192 Multiband \u2192 Exciter \u2192 Peak Limiter. Browser On-Air is the live Program processor (desk or transmission_mode). Server peak/AGC stub: mq_radio.production.transmission_dsp.process_wav_file on exported WAV. Mac/Liquidsoap should wire these params on the transmission path; AU/AAX hosting remains later.",
   "topology": "AGC / Leveler \u2192 EQ \u2192 Multiband \u2192 Exciter / Presence \u2192 Peak Limiter",
   "stage_order": [
     "agc",
@@ -22,6 +22,7 @@
   "current": {
     "enabled": true,
     "template": "FM",
+    "transmission_mode": false,
     "output": {
       "path": "FM",
       "preemphasis": true,
@@ -83,7 +84,7 @@
         "isr": false
       }
     },
-    "notes": "Native MQ processing \u2014 AGC\u2192EQ\u2192Multiband\u2192Exciter\u2192Limiter. FM = classic dense on-air; Digital = cleaner streaming/DAB path. Not an Optimod clone; AU plugins are production-bus only (later)."
+    "notes": "Native MQ processing \u2014 AGC\u2192EQ\u2192Multiband\u2192Exciter\u2192Limiter. FM = classic dense on-air; Digital = cleaner streaming/DAB path. Not an Optimod clone; AU plugins are production-bus only (later). transmission_mode=true pushes FM denser / Digital cleaner for audible TX preview."
   },
   "liquidsoap_hints": {
     "input": "harbor / playlist / request.queue (program bus)",
@@ -96,14 +97,18 @@
       "limiter": "limit (ceiling_dbfs, lookahead_ms); ISR flag for digital path"
     },
     "fm_output": "preemphasis flag + stereo_enhance \u2014 apply only on FM path",
-    "digital_output": "no preemphasis; ISR-aware limiter ceiling"
+    "digital_output": "no preemphasis; ISR-aware limiter ceiling",
+    "transmission_mode": "When true, push denser FM (more drive / tighter release) vs cleaner Digital (lower ceiling, milder exciter) \u2014 mirrors browser Program processor TX toggle",
+    "python_stub": "mq_radio.production.transmission_dsp.process_wav_file(src, dst, template=...)",
+    "mix_minus_mac": "Mac engine path: mix_minus_out = program_processed - aux_in_return (polarity invert + sum). Browser Web Audio implements this when Aux capture is live; CoreAudio dual-device subtract remains engine milestone."
   },
   "templates": {
     "FM": {
       "enabled": true,
       "insert_policy": "native_when_empty",
       "template": "FM",
-      "notes": "Native MQ processing \u2014 AGC\u2192EQ\u2192Multiband\u2192Exciter\u2192Limiter. FM = classic dense on-air; Digital = cleaner streaming/DAB path. Not an Optimod clone; AU plugins are production-bus only (later).",
+      "transmission_mode": false,
+      "notes": "Native MQ processing \u2014 AGC\u2192EQ\u2192Multiband\u2192Exciter\u2192Limiter. FM = classic dense on-air; Digital = cleaner streaming/DAB path. Not an Optimod clone; AU plugins are production-bus only (later). transmission_mode=true pushes FM denser / Digital cleaner for audible TX preview.",
       "stages": {
         "agc": {
           "enabled": true,
@@ -170,7 +175,8 @@
       "enabled": true,
       "insert_policy": "native_when_empty",
       "template": "DIGITAL",
-      "notes": "Native MQ processing \u2014 AGC\u2192EQ\u2192Multiband\u2192Exciter\u2192Limiter. FM = classic dense on-air; Digital = cleaner streaming/DAB path. Not an Optimod clone; AU plugins are production-bus only (later).",
+      "transmission_mode": false,
+      "notes": "Native MQ processing \u2014 AGC\u2192EQ\u2192Multiband\u2192Exciter\u2192Limiter. FM = classic dense on-air; Digital = cleaner streaming/DAB path. Not an Optimod clone; AU plugins are production-bus only (later). transmission_mode=true pushes FM denser / Digital cleaner for audible TX preview.",
       "stages": {
         "agc": {
           "enabled": true,

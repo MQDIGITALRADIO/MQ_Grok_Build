@@ -19,8 +19,10 @@ Documented stub for a future Mac / Liquidsoap transmission chain.
 - Not AU/AAX hosting
 - Not a multiband Optimod schematic clone
 
-Browser On-Air already approximates this chain for desk audition.
+Browser On-Air is the live Program processor (optional **transmission_mode** for denser FM vs cleaner Digital).
+Python peak/AGC stub: `mq_radio.production.transmission_dsp.process_wav_file` on exported WAV.
 Wire these params into Liquidsoap operators when the Mac engine owns the transmission path.
+Mix-minus: browser subtracts Aux return when capture is live; Mac path is `program - aux_return` (documented above).
 
 Regenerate from Python:
 

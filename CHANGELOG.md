@@ -2,22 +2,40 @@
 
 Lean build log for Matt. SHAs are on `main` (`MQDIGITALRADIO/MQ_Grok_Build`).
 
+## Away session 2026-09-06 (mix-minus subtract + TX DSP)
+
+| SHA | Theme |
+|-----|--------|
+| *(this commit)* | Browser mix-minus Program−Aux subtract + transmission DSP depth |
+| `8172f9e` | Multi-bus CoreAudio/mock router + AU insert architecture stub |
+| `dc26a8b` | Program CoreAudio / mock audio output router + `/api/status` `audio_route` |
+| `3464662` | Real Mac CoreAudio device enum bridge + Settings wire-up |
+
+**Mix-minus subtract:** Browser On-Air Web Audio builds `program_processed − aux_return` when Aux capture is live; status `mix_minus.subtract_active` (via `POST /api/audio/mix-minus`). Fallback pairing-only when no Aux capture. Mac engine path documented (`program − aux → mix_minus device`); CoreAudio PCM subtract still engine milestone.
+
+**Transmission DSP depth:** Settings **transmission_mode** toggle (desk vs aggressive FM/Digital) on the browser Program processor — audible difference (FM pre-emphasis denser / Digital cleaner). Server peak/AGC stub `transmission_dsp.process_wav_file` + `POST /api/settings/processing/wav-stub`. Liquidsoap handoff **v2** JSON/liq regenerated to match templates + mix-minus Mac notes.
+
+### Still deferred (not DMG-bar met)
+- Real **AU/AAX hosting** (plugins not loaded — architecture + `au_insert_inactive` warning only)
+- Mac/Liquidsoap **full** transmission chain (browser Program processor + WAV peak/AGC stub + handoff stub — not a live Liquidsoap operator graph)
+- CoreAudio **PCM** mix-minus subtract on dual devices (browser graph is live subtract today)
+
 ## Away session 2026-09-06 (continued)
 
 | SHA | Theme |
 |-----|--------|
-| *(this commit)* | Multi-bus CoreAudio/mock router + AU insert architecture stub |
+| `8172f9e` | Multi-bus CoreAudio/mock router + AU insert architecture stub |
 | `dc26a8b` | Program CoreAudio / mock audio output router + `/api/status` `audio_route` |
 | `3464662` | Real Mac CoreAudio device enum bridge + Settings wire-up |
 
-**Multi-bus routing:** `audio_router` treats **Program as primary** and opens best-effort CoreAudio/PortAudio streams for Headphones, Aux, **Monitor, Mix-minus, Stream, Record** when `sounddevice` resolves devices (Mac). Linux/CI mock records all buses in status. Mix-minus status: `{out, aux_in, paired}` (Aux-in pairing; DSP subtract later).
+**Multi-bus routing:** `audio_router` treats **Program as primary** and opens best-effort CoreAudio/PortAudio streams for Headphones, Aux, **Monitor, Mix-minus, Stream, Record** when `sounddevice` resolves devices (Mac). Linux/CI mock records all buses in status. Mix-minus status: `{out, aux_in, paired}` (browser subtract added in later commit).
 
 **AU insert architecture (not a host):** Program path documented as `source → [AU insert if set] → native processing → device`. Selected AU **name** persists in Settings. Without an AU host, `audio_route.au_insert.warning = au_insert_inactive` and **native still runs**. Electron note for a future host in `desktop/main.js`.
 
 ### Still deferred (not DMG-bar met)
 - Real **AU/AAX hosting** (plugins not loaded — architecture + warning only)
-- Transmission-path **DSP** beyond Web Audio approx + Liquidsoap handoff stub
-- Mix-minus **DSP subtraction** (pairing recorded only)
+- Mac/Liquidsoap **full** transmission operator chain (browser TX mode + WAV stub + handoff v2 are in)
+- Mix-minus **CoreAudio PCM** subtract (browser Web Audio subtract is in; Mac dual-device still later)
 
 ## Away session 2026-09-06
 
@@ -41,7 +59,7 @@ Wave from On-Air desk depth through daypart weekday packs (HEAD was `35c686c` be
 
 ### Still deferred (not DMG-bar met)
 - **AU/AAX hosting** (insert slot + optional `auval` name list only)
-- Transmission-path **DSP** beyond Web Audio approx + Liquidsoap handoff stub
-- Opening CoreAudio **streams** to selected devices (enumeration ≠ routing)
+- Transmission-path **DSP** / mix-minus subtract — see newer section above (closed further since)
+- Opening CoreAudio **streams** — later commits open multi-bus streams on Mac
 
-Do **not** treat the unsigned/ad-hoc Mac DMG as broadcast-ready until AU host + transmission DSP bar is closed.
+Do **not** treat the unsigned/ad-hoc Mac DMG as broadcast-ready until AU host + full Mac TX chain bar is closed.

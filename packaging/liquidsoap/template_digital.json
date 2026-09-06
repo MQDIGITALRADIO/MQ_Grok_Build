@@ -2,7 +2,8 @@
   "enabled": true,
   "insert_policy": "native_when_empty",
   "template": "DIGITAL",
-  "notes": "Native MQ processing \u2014 AGC\u2192EQ\u2192Multiband\u2192Exciter\u2192Limiter. FM = classic dense on-air; Digital = cleaner streaming/DAB path. Not an Optimod clone; AU plugins are production-bus only (later).",
+  "transmission_mode": false,
+  "notes": "Native MQ processing \u2014 AGC\u2192EQ\u2192Multiband\u2192Exciter\u2192Limiter. FM = classic dense on-air; Digital = cleaner streaming/DAB path. Not an Optimod clone; AU plugins are production-bus only (later). transmission_mode=true pushes FM denser / Digital cleaner for audible TX preview.",
   "stages": {
     "agc": {
       "enabled": true,

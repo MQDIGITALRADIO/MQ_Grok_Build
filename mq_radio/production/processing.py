@@ -36,10 +36,12 @@ _BASE_CHAIN = {
     "enabled": True,
     "insert_policy": "native_when_empty",  # Program path: empty AU insert → native chain
     "template": "FM",
+    # desk = mild On-Air approx; transmission = more aggressive FM vs Digital flavour
+    "transmission_mode": False,
     "notes": (
         "Native MQ processing — AGC→EQ→Multiband→Exciter→Limiter. "
         "FM = classic dense on-air; Digital = cleaner streaming/DAB path. "
-        "Not an Optimod clone; AU plugins are production-bus only (later)."
+        "Not an Optimod clone; AU plugins are production-bus only (later). transmission_mode=true pushes FM denser / Digital cleaner for audible TX preview."
     ),
     "stages": {
         "agc": {
@@ -176,6 +178,8 @@ def normalize_processing(payload: dict[str, Any] | None) -> dict[str, Any]:
 
     if "enabled" in payload:
         chain["enabled"] = bool(payload["enabled"])
+    if "transmission_mode" in payload:
+        chain["transmission_mode"] = bool(payload["transmission_mode"])
     if payload.get("notes"):
         chain["notes"] = str(payload["notes"])
 
@@ -228,6 +232,7 @@ def save_processing(payload: dict[str, Any], data_dir: Optional[Path] = None) ->
     to_store = {
         "enabled": chain["enabled"],
         "template": chain["template"],
+        "transmission_mode": bool(chain.get("transmission_mode")),
         "notes": chain["notes"],
         "output": chain["output"],
         "stages": chain["stages"],
@@ -241,4 +246,5 @@ def processing_summary(chain: Optional[dict[str, Any]] = None) -> str:
     if not c.get("enabled"):
         return "PROC BYPASS"
     on = [STAGE_LABELS[s][:3].upper() for s in STAGE_ORDER if c["stages"].get(s, {}).get("enabled")]
-    return f"{c.get('template', 'FM')} [{'·'.join(on) or 'off'}]"
+    tx = "+TX" if c.get("transmission_mode") else ""
+    return f"{c.get('template', 'FM')}{tx} [{'·'.join(on) or 'off'}]"

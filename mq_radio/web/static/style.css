@@ -751,6 +751,13 @@ input { border-radius: 0; }
 .settings-body {
   padding: 10px 12px;
 }
+.settings-hint {
+  display: block;
+  font-size: 0.78rem;
+  opacity: 0.75;
+  margin-top: 0.25rem;
+  color: var(--mq-accent, #7ec8e3);
+}
 .settings-intro {
   font-size: 11px;
   color: var(--muted);

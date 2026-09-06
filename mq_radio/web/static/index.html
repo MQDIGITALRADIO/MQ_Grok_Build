@@ -374,6 +374,13 @@
             <option value="DIGITAL">Digital — stream / DAB</option>
           </select>
         </div>
+        <div class="audio-route-row">
+          <label for="proc-tx-mode">Program processor</label>
+          <select id="proc-tx-mode" title="Desk = milder On-Air approx; Transmission = denser FM / cleaner Digital (audible)">
+            <option value="0">Desk (On-Air approx)</option>
+            <option value="1">Transmission (aggressive FM/Digital)</option>
+          </select>
+        </div>
         <div class="proc-stage-grid" id="proc-stage-grid">
           <label class="proc-stage"><input type="checkbox" id="proc-agc" checked /> AGC</label>
           <label class="proc-stage"><input type="checkbox" id="proc-eq" checked /> EQ</label>
@@ -463,6 +470,8 @@
         <p class="settings-intro">
           Program is always the <em>processed</em> on-air bus. Mix-minus is paired
           with Aux input so Zoom/caller hears program <strong>minus</strong> their return.
+          Browser On-Air subtracts Aux when capture is live (<code>mix_minus.subtract_active</code>);
+          otherwise pairing-only. Mac engine path: <code>program − aux_return → mix_minus device</code>.
           Dropdowns use the live device catalogue (CoreAudio on Mac / mock elsewhere).
         </p>
         <div class="audio-route-row">
@@ -490,6 +499,7 @@
           <div class="audio-route-row">
             <label for="out-mix-minus">Mix-minus output</label>
             <select id="out-mix-minus" data-role="mix_minus"></select>
+            <span class="settings-hint" id="mix-minus-hint">Program − Aux when capture live</span>
           </div>
           <div class="audio-route-row">
             <label for="in-aux">Aux input (caller return)</label>

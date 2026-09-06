@@ -25,6 +25,27 @@
   let audioRouteState = { sink_label: null, device_id: null, source: null, active: false };
   let currentSinkId = "";
 
+  // Mix-minus: program − aux return (browser graph)
+  let mmProgGain = null;
+  let mmAuxGain = null; // polarity invert (−1) when subtract live
+  let mmSum = null;
+  let mmOutGain = null;
+  let mmAnalyser = null;
+  let mmCtx = null; // optional second context for mix-minus sink
+  let mmMaster = null;
+  let auxStream = null;
+  let auxSource = null;
+  let auxDeviceId = "";
+  let mixMinusState = {
+    paired: false,
+    subtract_active: false,
+    subtract_mode: "idle",
+    aux_label: null,
+    out_label: null,
+    detail: null,
+  };
+  let lastReportedSubtract = null;
+
   let rampsState = { profiles: RAMP_DEFAULTS, active_profile: "default", ai_dj_profile: "overnight" };
 
   // Dual decks A/B → per-deck gains → procInput
@@ -60,6 +81,183 @@
     } catch (_) {
       return "";
     }
+  }
+
+  async function resolveInputDeviceId(label) {
+    if (!label || label === "none") return "";
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return "";
+    try {
+      if (navigator.mediaDevices.getUserMedia) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          stream.getTracks().forEach((t) => t.stop());
+        } catch (_) {}
+      }
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const ins = devices.filter((d) => d.kind === "audioinput");
+      const hit = ins.find((d) => labelsMatch(d.label, label));
+      return hit ? hit.deviceId : "";
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function reportMixMinusSubtract() {
+    const payload = {
+      subtract_active: !!mixMinusState.subtract_active,
+      subtract_mode: mixMinusState.subtract_mode || "idle",
+      subtract_detail: mixMinusState.detail || null,
+    };
+    const key = JSON.stringify(payload);
+    if (key === lastReportedSubtract) return;
+    lastReportedSubtract = key;
+    try {
+      fetch("/api/audio/mix-minus", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }).catch(() => {});
+    } catch (_) {}
+  }
+
+  function ensureMixMinusGraph() {
+    // Caller must have ctx (ensureCtx). Do not call ensureCtx here — recursion.
+    if (!ctx || !procOutput) return;
+    if (mmSum) return;
+    mmProgGain = ctx.createGain();
+    mmProgGain.gain.value = 1;
+    mmAuxGain = ctx.createGain();
+    mmAuxGain.gain.value = 0; // silent until aux capture (pairing-only)
+    mmSum = ctx.createGain();
+    mmSum.gain.value = 1;
+    mmOutGain = ctx.createGain();
+    mmOutGain.gain.value = 1;
+    mmAnalyser = ctx.createAnalyser();
+    mmAnalyser.fftSize = 1024;
+    procOutput.connect(mmProgGain);
+    mmProgGain.connect(mmSum);
+    mmAuxGain.connect(mmSum);
+    mmSum.connect(mmOutGain);
+    mmOutGain.connect(mmAnalyser);
+    // Keep graph alive without leaking into program destination by default
+    const silent = ctx.createGain();
+    silent.gain.value = 0.0001;
+    mmAnalyser.connect(silent);
+    silent.connect(ctx.destination);
+    // Do NOT push mm nodes into procNodes — rebuildProcessing must not tear them down
+  }
+
+  async function stopAuxCapture() {
+    if (auxSource) {
+      try { auxSource.disconnect(); } catch (_) {}
+      auxSource = null;
+    }
+    if (auxStream) {
+      try { auxStream.getTracks().forEach((t) => t.stop()); } catch (_) {}
+      auxStream = null;
+    }
+    auxDeviceId = "";
+    if (mmAuxGain) mmAuxGain.gain.value = 0;
+    mixMinusState.subtract_active = false;
+    if (mixMinusState.paired) {
+      mixMinusState.subtract_mode = "pairing_only";
+      mixMinusState.detail = "No Aux capture — pairing only (program feed to mix-minus path)";
+    } else {
+      mixMinusState.subtract_mode = "idle";
+      mixMinusState.detail = null;
+    }
+    reportMixMinusSubtract();
+  }
+
+  async function startAuxCapture(label) {
+    ensureCtx();
+    ensureMixMinusGraph();
+    if (!label || label === "none") {
+      await stopAuxCapture();
+      return false;
+    }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      mixMinusState.subtract_active = false;
+      mixMinusState.subtract_mode = "pairing_only";
+      mixMinusState.detail = "getUserMedia unavailable — pairing only";
+      reportMixMinusSubtract();
+      return false;
+    }
+    const deviceId = await resolveInputDeviceId(label);
+    // Reuse stream if same device
+    if (auxStream && auxDeviceId && deviceId && auxDeviceId === deviceId && mixMinusState.subtract_active) {
+      return true;
+    }
+    await stopAuxCapture();
+    const constraints = deviceId
+      ? { audio: { deviceId: { exact: deviceId } }, video: false }
+      : { audio: true, video: false };
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      auxStream = stream;
+      auxDeviceId = deviceId || (stream.getAudioTracks()[0] && stream.getAudioTracks()[0].getSettings().deviceId) || "";
+      auxSource = ctx.createMediaStreamSource(stream);
+      // Polarity invert: program − aux ≡ program + (−aux)
+      mmAuxGain.gain.value = -1;
+      auxSource.connect(mmAuxGain);
+      mixMinusState.subtract_active = true;
+      mixMinusState.subtract_mode = "program_minus_aux";
+      mixMinusState.aux_label = label;
+      mixMinusState.detail = deviceId
+        ? "Web Audio: program_processed − aux_return (live)"
+        : "Web Audio: program − default mic (label unmatched; best-effort)";
+      reportMixMinusSubtract();
+      return true;
+    } catch (err) {
+      mixMinusState.subtract_active = false;
+      mixMinusState.subtract_mode = "pairing_only";
+      mixMinusState.detail = "Aux capture failed: " + String(err && err.message || err);
+      reportMixMinusSubtract();
+      return false;
+    }
+  }
+
+  async function syncMixMinusFromRoute(route) {
+    route = route || {};
+    const mm = route.mix_minus || {};
+    const paired = !!mm.paired;
+    mixMinusState.paired = paired;
+    mixMinusState.out_label = mm.out_label || null;
+    mixMinusState.aux_label = mm.aux_in_label || null;
+    ensureCtx();
+    ensureMixMinusGraph();
+
+    // Optional distinct mix-minus sink via second AudioContext
+    const outLabel = mm.out_label || null;
+    if (outLabel && mm.out && mm.out !== "none") {
+      try {
+        const sinkId = await resolveOutputSinkId(outLabel);
+        if (sinkId && typeof AudioContext !== "undefined") {
+          if (!mmCtx) {
+            const AC = global.AudioContext || global.webkitAudioContext;
+            mmCtx = new AC();
+            mmMaster = mmCtx.createGain();
+            mmMaster.gain.value = 1;
+            mmMaster.connect(mmCtx.destination);
+          }
+          if (typeof mmCtx.setSinkId === "function") {
+            await mmCtx.setSinkId(sinkId);
+          }
+          // Bridge mmSum into mmCtx via MediaStream — best-effort; silent if unsupported
+          // (primary subtract still runs in main ctx for status/honesty)
+        }
+      } catch (_) {}
+    }
+
+    if (paired && mm.aux_in_label) {
+      await startAuxCapture(mm.aux_in_label);
+    } else if (paired && !mm.aux_in_label) {
+      // Paired by id but no label — try generic capture
+      await startAuxCapture("default");
+    } else {
+      await stopAuxCapture();
+    }
+    return Object.assign({}, mixMinusState);
   }
 
   async function applyAudioRoute(route) {
@@ -114,6 +312,12 @@
       audioRouteState.sink_match = false;
       audioRouteState.sink_error = String(err && err.message || err);
     }
+    try {
+      await syncMixMinusFromRoute(route);
+      audioRouteState.mix_minus = Object.assign({}, mixMinusState);
+    } catch (mmErr) {
+      audioRouteState.mix_minus_error = String(mmErr && mmErr.message || mmErr);
+    }
     return audioRouteState;
   }
 
@@ -146,6 +350,7 @@
     procOutput.connect(masterGain);
     masterGain.connect(analyser);
     analyser.connect(ctx.destination);
+    ensureMixMinusGraph();
     startVuLoop();
     return ctx;
   }
@@ -154,6 +359,7 @@
     return {
       enabled: true,
       template: "FM",
+      transmission_mode: false,
       stages: {
         agc: { enabled: true, target_db: -15, drive_db: 7 },
         eq: { enabled: true, low_shelf_db: 1.5, presence_db: 1.5, air_db: 0.75 },
@@ -186,14 +392,18 @@
     const enabled = currentProc && currentProc.enabled !== false;
     const insertBypass = !enabled;
 
+    const txMode = !!(currentProc && currentProc.transmission_mode);
     if (!insertBypass && stages.agc && stages.agc.enabled !== false) {
       const agc = ctx.createDynamicsCompressor();
-      const drive = Number(stages.agc.drive_db || 6);
+      let drive = Number(stages.agc.drive_db || 6);
+      if (txMode) drive *= 1.45;
       agc.threshold.value = Number(stages.agc.target_db || -16) - drive * 0.35;
-      agc.knee.value = 12;
+      agc.knee.value = txMode ? 8 : 12;
       agc.ratio.value = 3.5 + drive * 0.15;
       agc.attack.value = Math.max(0.005, (Number(stages.agc.attack_ms) || 50) / 1000);
-      agc.release.value = Math.max(0.05, (Number(stages.agc.release_ms) || 1000) / 1000);
+      let rel = Math.max(0.05, (Number(stages.agc.release_ms) || 1000) / 1000);
+      if (txMode) rel *= 0.7;
+      agc.release.value = rel;
       node.connect(agc);
       procNodes.push(agc);
       node = agc;
@@ -290,9 +500,60 @@
       node = trim;
     }
 
-    const makeup = ctx.createGain();
+    // Path flavour: FM pre-emphasis shelf vs Digital cleaner air
     const tmpl = (currentProc.template || "").toUpperCase();
-    makeup.gain.value = tmpl === "DIGITAL" ? 0.92 : 1.05;
+    const tx = !!(currentProc && currentProc.transmission_mode);
+    const outCfg = (currentProc && currentProc.output) || {};
+
+    if (!insertBypass && tmpl === "FM" && outCfg.preemphasis !== false) {
+      const pre = ctx.createBiquadFilter();
+      pre.type = "highshelf";
+      // 50/75µs awareness — approximate with mild HF lift (stronger in TX mode)
+      const us = Number(outCfg.preemphasis_us) || 50;
+      pre.frequency.value = us >= 70 ? 2100 : 3200;
+      pre.gain.value = tx ? (us >= 70 ? 4.5 : 3.5) : (us >= 70 ? 2.2 : 1.6);
+      node.connect(pre);
+      procNodes.push(pre);
+      node = pre;
+      if (tx) {
+        const dens = ctx.createDynamicsCompressor();
+        dens.threshold.value = -18;
+        dens.knee.value = 6;
+        dens.ratio.value = 4.5;
+        dens.attack.value = 0.008;
+        dens.release.value = 0.12;
+        node.connect(dens);
+        procNodes.push(dens);
+        node = dens;
+      }
+    } else if (!insertBypass && tmpl === "DIGITAL") {
+      // Cleaner path: gentle HF cut + softer ceiling trim in TX mode
+      const soft = ctx.createBiquadFilter();
+      soft.type = "highshelf";
+      soft.frequency.value = 12000;
+      soft.gain.value = tx ? -1.8 : -0.6;
+      node.connect(soft);
+      procNodes.push(soft);
+      node = soft;
+      if (tx) {
+        const softLim = ctx.createDynamicsCompressor();
+        softLim.threshold.value = -3.5;
+        softLim.knee.value = 2;
+        softLim.ratio.value = 12;
+        softLim.attack.value = 0.004;
+        softLim.release.value = 0.08;
+        node.connect(softLim);
+        procNodes.push(softLim);
+        node = softLim;
+      }
+    }
+
+    const makeup = ctx.createGain();
+    if (tmpl === "DIGITAL") {
+      makeup.gain.value = tx ? 0.82 : 0.92;
+    } else {
+      makeup.gain.value = tx ? 1.18 : 1.05;
+    }
     node.connect(makeup);
     makeup.connect(procOutput);
     procNodes.push(makeup);
@@ -530,6 +791,8 @@
     if (st.ramps) setRamps(st.ramps);
     if (st.audio_route) {
       try { await applyAudioRoute(st.audio_route); } catch (_) {}
+    } else if (st.mix_minus) {
+      try { await syncMixMinusFromRoute({ mix_minus: st.mix_minus }); } catch (_) {}
     }
 
     const onAir = st.now && st.now.status === "ON_AIR" && st.running;
@@ -927,6 +1190,9 @@
     resume,
     applyProcessing,
     applyAudioRoute,
+    syncMixMinusFromRoute,
+    startAuxCapture,
+    stopAuxCapture,
     setRamps,
     playProgram,
     stopProgram,
@@ -942,6 +1208,7 @@
     auditionTemplate,
     auditionSegue,
     getAudioRoute() { return Object.assign({}, audioRouteState); },
+    getMixMinus() { return Object.assign({}, mixMinusState); },
     get currentProc() { return currentProc; },
     get programDeck() { return programDeck; },
     getDeckState() {

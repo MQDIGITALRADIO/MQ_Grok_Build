@@ -825,6 +825,25 @@ async function refresh() {
     procSt.textContent = `PROC: ${st.processing.summary || st.processing.template || "—"}`;
     procSt.title = st.processing.topology || "On-air processing";
   }
+  // Mix-minus subtract status (from audio_route; browser reports live graph)
+  const mm = (st.audio_route && st.audio_route.mix_minus) || {};
+  const mmHint = document.getElementById("mix-minus-hint");
+  if (mmHint) {
+    if (mm.subtract_active) {
+      mmHint.textContent = "Subtract live (program − aux)";
+    } else if (mm.paired) {
+      mmHint.textContent = "Paired — waiting Aux capture";
+    } else {
+      mmHint.textContent = "Program − Aux when capture live";
+    }
+  }
+  if (window.MQProgramAudio && window.MQProgramAudio.getMixMinus) {
+    const localMm = window.MQProgramAudio.getMixMinus();
+    if (localMm && localMm.subtract_active && !mm.subtract_active) {
+      // local graph ahead of next status poll — keep honest
+      if (mmHint) mmHint.textContent = "Subtract live (local graph)";
+    }
+  }
   if (st.running && onAir) {
     document.getElementById("engine-msg").textContent =
       document.getElementById("engine-msg").textContent || "playing";
@@ -1263,6 +1282,8 @@ function populateProcessingForm(p) {
   if (en) en.value = p.enabled === false ? "0" : "1";
   const tmpl = document.getElementById("proc-template");
   if (tmpl) tmpl.value = (p.template || "FM").toUpperCase() === "DIGITAL" ? "DIGITAL" : "FM";
+  const txEl = document.getElementById("proc-tx-mode");
+  if (txEl) txEl.value = p.transmission_mode ? "1" : "0";
   const st = p.stages || {};
   const map = [
     ["proc-agc", "agc"],
@@ -1294,6 +1315,7 @@ function readProcessingForm() {
   return {
     enabled: document.getElementById("proc-enabled")?.value !== "0",
     template,
+    transmission_mode: document.getElementById("proc-tx-mode")?.value === "1",
     output: {
       path: template,
       preemphasis: pre !== "0",

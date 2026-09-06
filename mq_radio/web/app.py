@@ -71,6 +71,7 @@ from mq_radio.production.processing import (
     save_processing,
 )
 from mq_radio.production.liquidsoap_export import export_processing_handoff, handoff_payload
+from mq_radio.production.transmission_dsp import process_wav_file
 from mq_radio.engine.audio_devices import list_audio_devices
 from mq_radio.engine.audio_router import get_audio_router, apply_audio_route_from_settings
 from mq_radio.web.settings_store import (
@@ -304,6 +305,7 @@ def make_handler(db_path: Path):
                     "processing": {
                         "enabled": proc.get("enabled"),
                         "template": proc.get("template"),
+                        "transmission_mode": bool(proc.get("transmission_mode")),
                         "summary": processing_summary(proc),
                         "topology": proc.get("topology"),
                         "stages": proc.get("stages"),
@@ -504,6 +506,48 @@ def make_handler(db_path: Path):
                 # Full routing matrix: outputs + inputs + AU insert stub
                 body = payload if isinstance(payload, dict) else {}
                 _json_response(self, save_audio_outputs(body, DATA_DIR))
+                return
+
+            if path == "/api/audio/mix-minus":
+                # Browser reports live Program−Aux subtract graph state
+                router = get_audio_router()
+                active = bool(payload.get("subtract_active") or payload.get("active"))
+                mode = payload.get("subtract_mode") or payload.get("mode")
+                detail = payload.get("subtract_detail") or payload.get("detail")
+                st = router.set_mix_minus_subtract(active, mode=mode, detail=detail)
+                _json_response(
+                    self,
+                    {
+                        "ok": True,
+                        "mix_minus": st.get("mix_minus"),
+                        "audio_route": st,
+                    },
+                )
+                return
+
+            if path == "/api/settings/processing/wav-stub":
+                # Server-side peak/AGC stub on an exported WAV path (transmission preview)
+                src = payload.get("src") or payload.get("path") or payload.get("wav")
+                if not src:
+                    _json_response(self, {"ok": False, "error": "src path required"}, status=400)
+                    return
+                dst = payload.get("dst") or payload.get("out")
+                tmpl = payload.get("template")
+                chain = None
+                if payload.get("stages") or payload.get("apply_template"):
+                    chain = payload
+                tx = payload.get("transmission_mode")
+                if tx is None:
+                    tx = True
+                result = process_wav_file(
+                    src,
+                    dst,
+                    template=tmpl,
+                    chain=chain,
+                    transmission_mode=bool(tx),
+                )
+                status = 200 if result.get("ok") else 400
+                _json_response(self, result, status=status)
                 return
 
             if path == "/api/settings/vocloner":
