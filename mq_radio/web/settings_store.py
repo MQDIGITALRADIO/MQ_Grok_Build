@@ -1,4 +1,9 @@
-"""Persist On-Air UI settings (routing matrix, Vocloner, AU insert stub) under data/."""
+"""Persist On-Air UI settings (routing matrix, Vocloner, AU insert architecture) under data/.
+
+Program path: source → [AU insert if set] → native processing → device.
+Selected AU name/slot persists; without an AU host, status warns au_insert_inactive
+and native processing still runs (see audio_router).
+"""
 
 from __future__ import annotations
 
@@ -38,9 +43,10 @@ DEFAULT_INPUTS = {
 # Optional AU insert on Program path — empty = native processing is main output.
 # Real AU hosting is Mac-later / production-bus; web demo is config + UI only.
 DEFAULT_INSERT = {
-    "slot": "none",                # none | native_only | (future au:<id>)
+    "slot": "none",                # none | native_only | au:<type:subtype:manu>
     "mode": "native_when_empty",   # when slot empty → native chain; when AU present → plugin then/instead
     "label": "(none) — Native processing",
+    "name": "(none)",              # persisted display name of selected AU / native stub
 }
 
 # Back-compat aliases used by tests / older callers
@@ -82,6 +88,31 @@ def _device_catalogue() -> dict[str, Any]:
         }
 
 
+
+def _mix_minus_fields(outputs: dict[str, str], inputs: dict[str, str]) -> dict[str, Any]:
+    """Compact mix-minus pairing for Settings envelope (mirrors audio_route)."""
+    raw_out = str(outputs.get("mix_minus") or "none").strip() or "none"
+    if raw_out == "same_as_program":
+        out = str(outputs.get("program") or "none").strip() or "none"
+    else:
+        out = raw_out
+    aux_in = str(inputs.get("aux_in") or "none").strip() or "none"
+    paired = out not in ("none", "", "same_as_program") and aux_in not in ("none", "")
+    return {
+        "out": out,
+        "aux_in": aux_in,
+        "paired": paired,
+        "output_role": "mix_minus",
+        "paired_input_role": "aux_in",
+        "paired_input_device": aux_in,
+        "output_device": raw_out,
+        "description": (
+            "Mix-minus = Program (processed) minus Aux input return — "
+            "caller/Zoom hears the show without their own voice."
+        ),
+    }
+
+
 def _envelope(
     outputs: dict[str, str],
     inputs: dict[str, str],
@@ -94,7 +125,14 @@ def _envelope(
     # Sync label from slot against live options (includes discovered AUs on Mac)
     for opt in insert_options:
         if opt.get("id") == insert.get("slot"):
-            insert = {**insert, "label": opt.get("label") or insert.get("label")}
+            label = opt.get("label") or insert.get("label")
+            insert = {
+                **insert,
+                "label": label,
+                "name": insert.get("name")
+                if insert.get("name") and insert.get("name") not in ("(none)", "")
+                else (label or insert.get("slot")),
+            }
             break
     envelope = {
         "outputs": outputs,
@@ -108,16 +146,7 @@ def _envelope(
         "device_backend": catalogue.get("backend"),
         "device_note": catalogue.get("note"),
         "audio_units": catalogue.get("audio_units") or [],
-        "mix_minus": {
-            "output_role": "mix_minus",
-            "paired_input_role": "aux_in",
-            "paired_input_device": inputs.get("aux_in", "none"),
-            "output_device": outputs.get("mix_minus", "none"),
-            "description": (
-                "Mix-minus = Program (processed) minus Aux input return — "
-                "caller/Zoom hears the show without their own voice."
-            ),
-        },
+        "mix_minus": _mix_minus_fields(outputs, inputs),
         "source": source,
     }
     # Reflect current router status (do not re-apply on every load — save applies)
@@ -186,13 +215,27 @@ def save_audio_outputs(payload: dict[str, Any], db_dir: Path | None = None) -> d
         insert["slot"] = insert_in["slot"]
     if isinstance(insert_in.get("mode"), str):
         insert["mode"] = insert_in["mode"]
+    if isinstance(insert_in.get("label"), str) and insert_in.get("label").strip():
+        insert["label"] = insert_in["label"].strip()
+    if isinstance(insert_in.get("name"), str) and insert_in.get("name").strip():
+        insert["name"] = insert_in["name"].strip()
 
-    # Resolve label from live insert options (native + optional Mac AU list)
+    # Resolve label/name from live insert options (native + optional Mac AU list)
     catalogue = _device_catalogue()
     for opt in catalogue.get("insert_options") or INSERT_OPTIONS:
         if opt.get("id") == insert["slot"]:
             insert["label"] = opt.get("label") or insert["label"]
+            # Persist selected AU / stub display name
+            insert["name"] = (opt.get("label") or insert.get("name") or insert["slot"]).strip()
             break
+    else:
+        # Unknown slot (e.g. au:… not in capped list) — keep payload name/label
+        if insert["slot"].startswith("au:") and insert.get("name") in ("(none)", "", None):
+            insert["name"] = insert.get("label") or insert["slot"]
+        elif insert["slot"] == "none":
+            insert["name"] = "(none)"
+        elif insert["slot"] == "native_only":
+            insert["name"] = insert.get("label") or "Native only"
 
     stored = {"outputs": outputs, "inputs": inputs, "insert": insert}
     path.write_text(json.dumps(stored, indent=2) + "\n", encoding="utf-8")

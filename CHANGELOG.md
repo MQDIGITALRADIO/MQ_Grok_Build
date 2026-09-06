@@ -6,15 +6,18 @@ Lean build log for Matt. SHAs are on `main` (`MQDIGITALRADIO/MQ_Grok_Build`).
 
 | SHA | Theme |
 |-----|--------|
-| *(this commit)* | Program CoreAudio / mock audio output router + `/api/status` `audio_route` |
+| *(this commit)* | Multi-bus CoreAudio/mock router + AU insert architecture stub |
+| `dc26a8b` | Program CoreAudio / mock audio output router + `/api/status` `audio_route` |
 | `3464662` | Real Mac CoreAudio device enum bridge + Settings wire-up |
 
-**Audio output routing:** `mq_radio.engine.audio_router` applies Settings device IDs. On macOS with `sounddevice`, opens Program (and best-effort Headphones/Aux) CoreAudio/PortAudio output streams; without it, records the route and the On-Air Web Audio graph uses `AudioContext.setSinkId` / label match. Linux/CI: mock router records selection, never fails. Status: `audio_route: {program, source, active, …}` on `GET /api/status` and `GET /api/audio/route`. Settings save applies the router.
+**Multi-bus routing:** `audio_router` treats **Program as primary** and opens best-effort CoreAudio/PortAudio streams for Headphones, Aux, **Monitor, Mix-minus, Stream, Record** when `sounddevice` resolves devices (Mac). Linux/CI mock records all buses in status. Mix-minus status: `{out, aux_in, paired}` (Aux-in pairing; DSP subtract later).
+
+**AU insert architecture (not a host):** Program path documented as `source → [AU insert if set] → native processing → device`. Selected AU **name** persists in Settings. Without an AU host, `audio_route.au_insert.warning = au_insert_inactive` and **native still runs**. Electron note for a future host in `desktop/main.js`.
 
 ### Still deferred (not DMG-bar met)
-- **AU/AAX hosting** (insert slot + optional name list only)
+- Real **AU/AAX hosting** (plugins not loaded — architecture + warning only)
 - Transmission-path **DSP** beyond Web Audio approx + Liquidsoap handoff stub
-- Full multi-bus CoreAudio (Monitor / Mix-minus / Stream / Record remain config-only this pass)
+- Mix-minus **DSP subtraction** (pairing recorded only)
 
 ## Away session 2026-09-06
 

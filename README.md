@@ -309,7 +309,7 @@ No proprietary logos, trademarks, or pixel-perfect clones. Avoid modern SaaS / S
 - Imaging without track metadata uses short-duration → COLD / longer → FADE heuristics
 - UI readout examples: `FADE · 8.0s`, `INTRO 5.2s · FADE · 8.0s`
 
-**Audio outputs (Settings ⚙):** Multi-bus routing — Program/On-Air, Monitor/Cue, Headphones/Talent, Aux, Mix-minus, Stream Encode (or Same as Program), Record Bus. Choices persist to `localStorage` and `data/audio_outputs.json` via `/api/settings/audio`. Device dropdowns load from **`GET /api/audio/devices`**: on macOS the engine enumerates real **CoreAudio** names (`system_profiler`, optional `sounddevice`); on Linux/CI/web it returns the mock studio catalogue (`source: "mock"`). **Routing:** saving Settings applies `audio_router` — on Mac with `sounddevice`, Program (and best-effort Headphones/Aux) open PortAudio/CoreAudio streams; the On-Air Web Audio Program bus also follows the selected Program device via `AudioContext.setSinkId` / label match (Electron). Linux/CI uses a mock router that records the selection in **`audio_route`** on `/api/status` (and `GET /api/audio/route`) without failing. Monitor / Mix-minus / Stream / Record stay config-only this pass.
+**Audio outputs (Settings ⚙):** Multi-bus routing — Program/On-Air (**primary**), Monitor/Cue, Headphones/Talent, Aux, Mix-minus, Stream Encode (or Same as Program), Record Bus. Choices persist to `localStorage` and `data/audio_outputs.json` via `/api/settings/audio`. Device dropdowns load from **`GET /api/audio/devices`**: on macOS the engine enumerates real **CoreAudio** names (`system_profiler`, optional `sounddevice`); on Linux/CI/web it returns the mock studio catalogue (`source: "mock"`). **Routing:** saving Settings applies `audio_router` — on Mac with `sounddevice`, **Program opens as the primary** PortAudio/CoreAudio stream and secondary buses (Headphones/Aux/**Monitor/Mix-minus/Stream/Record**) open best-effort when devices resolve; the On-Air Web Audio Program bus also follows the selected Program device via `AudioContext.setSinkId` / label match (Electron). Linux/CI uses a mock router that records multi-bus selection in **`audio_route`** on `/api/status` (and `GET /api/audio/route`) without failing. Mix-minus status exposes `{out, aux_in, paired}` with Aux input. **Program path:** `source → [AU insert if set] → native processing → device` — selected AU name persists; without an AU host, `au_insert_inactive` warns and native still runs.
 
 **Voice renderer (Settings ⚙ / VT Studio):** Default **Vocloner** (`voice_renderer: vocloner` in `data/vocloner.json` + `localStorage`). Preferred model/voice notes field; **Render in Vocloner** copies script → opens https://vocloner.com/.
 
@@ -358,12 +358,12 @@ Matt’s release bar: next DMG must meet **broadcast-ready specs**, not a thin s
 - **VT / Segment server-side trim**: ffmpeg cuts/re-encodes IN/OUT when available (`trim_mode=cut`); **markers-only** fallback when ffmpeg missing (VT Save take + Segment Editor)
 - **Liquidsoap processing handoff stub**: `packaging/liquidsoap/` (+ `data/processing/`) JSON + `.liq` snippet for FM/Digital templates — not a full Optimod clone (`POST /api/settings/processing/export`)
 - **MQ Digital library root** + VT inbox paths in Settings (ingest lands under configured root)
-- **Studio routing matrix**: Program (processed), Monitor, Headphones, Aux 1/2, **Mix-minus ↔ Aux input** (caller/Zoom), Stream, Record — persisted
-- **Program AU insert slot** stub: `(none) / Native only` persisted; empty slot → native chain is main output
+- **Studio routing matrix**: Program (processed, **primary**), Monitor, Headphones, Aux 1/2, **Mix-minus ↔ Aux input** (`{out, aux_in, paired}`), Stream, Record — persisted; Mac opens best-effort CoreAudio streams per bus when `sounddevice` is available
+- **Program AU insert architecture**: path `source → [AU insert if set] → native processing → device`; `(none) / Native only` + optional `auval` names persisted; empty/none → native; AU selected without host → `au_insert_inactive`
 
 ### Still mock / deferred (called out, not fake-ready)
-- **Device enumeration + Program routing**: `GET /api/audio/devices` + `audio_router` / `audio_route` on status — CoreAudio streams on Mac (`sounddevice`) + browser sink; mock router on Linux/web. Full multi-bus hardware matrix still partial (Headphones/Aux best-effort; Monitor/Mix-minus/Stream/Record config-only)
-- **AU/AAX hosting**: insert slot + config only — **not** hosting plugins on-air; optional AU remains later Mac *production-bus* feature
+- **Device enumeration + multi-bus routing**: `GET /api/audio/devices` + `audio_router` / `audio_route` on status — Program **primary** CoreAudio stream on Mac (`sounddevice`) + best-effort Monitor/Mix-minus/Stream/Record/Headphones/Aux; browser sink; mock multi-bus on Linux/web. Mix-minus `{out, aux_in, paired}`
+- **AU insert architecture** (not a full host): Program path `source → [AU insert if set] → native processing → device`; selected AU name persisted; without host → `au_insert_inactive` + native still runs. Optional Electron host later — see `desktop/main.js`
 - **True multiband DSP / hardware chain**: browser On-Air graph approximates AGC/EQ/multiband/exciter/limiter so FM vs Digital is audible; Liquidsoap/Mac engine still owns transmission-path processing (handoff stub exported under `packaging/liquidsoap/`)
 - **Hotkey engine inject on real Liquidsoap**: MockEngine inject works now; Liquidsoap telnet/harbor inject remains later
 - **Hotkey path on pure web**: browsers hide absolute paths — Electron/Mac app resolves via `webUtils.getPathForFile` (preload); web UI asks operator to paste path
@@ -424,7 +424,7 @@ Matt return brief — major SHAs this wave (see `CHANGELOG.md` for the table):
 - **Gatekeeper helper** — `639b2b4`
 - **Electron hotkey absolute-path drop** — preload `webUtils` (this polish); web still pastes path
 
-**Still deferred — do not claim DMG bar met:** AU/AAX hosting (insert slot + optional `auval` names only), CoreAudio stream routing to selected devices, transmission-path DSP (Web Audio approx + Liquidsoap stub only). Device *enumeration* is in.
+**Still deferred — do not claim DMG bar met:** real **AU/AAX hosting** (architecture + `au_insert_inactive` warning only — plugins are not loaded), transmission-path **DSP** (Web Audio approx + Liquidsoap handoff stub only), mix-minus **DSP subtraction** (pairing recorded; not yet subtracted). Multi-bus CoreAudio *stream open* (Program primary + best-effort secondaries) and device enumeration are in.
 
 ## Mac install (DMG)
 
