@@ -11,7 +11,7 @@ Cross-check vs Maestro / early Zetta / Netia Radio-Assist / mAirList / StationPl
 - [x] Hybrid UI: Maestro-clear transport/log/decks + modern Netia-landscape shell (not Win95 beige)
 - [x] PLAY plays an ingested cart through Program path with playable_url (web e2e; Mac hear-through verify)
 - [ ] AUTO advances on end-pulse / segue; ASSIST/LIVE talk-up VOCALS IN works
-- [ ] Living Log edit: select, Delete, Insert, Replace; survives regenerate for MANUAL/VT
+- [x] Living Log edit: select, Delete, Insert, Replace; survives regenerate for MANUAL/VT
 - [ ] Hotkeys: fire cart (library or in-place path); inject over program / queue next
 - [ ] VT Record → trim → save → attach to log; Segment Editor cuts long files
 - [ ] Segue Editor: markers + duck + real audition + dual-deck crossfade
@@ -61,15 +61,15 @@ Cross-check vs Maestro / early Zetta / Netia Radio-Assist / mAirList / StationPl
 | P0 Clear English labels | **Done** | PLAY/STOP/SKIP/NEXT, Import audio, Library, Clocks, Settings, Refresh |
 | P0 Hybrid UI (Maestro + Netia landscape) | **Done** | `.desk-hybrid` modern dark landscape shell + big transport; not Win95 beige |
 | P0 PLAY ingested cart → playable_url | **Done** | ingest → log insert → play → status `playable_url`; e2e test |
-| P0 AUTO end-pulse / ASSIST talk-up | **Partial** | Engine `finish_if_due` + client `/api/pulse`; ASSIST arms GO; VOCALS IN ASSIST/LIVE; pytest pulse/talk-up; Mac hear-through still verify |
-| P0 Living Log edit Delete/Insert/Replace | **Partial** | APIs + UI exist; verify after import workflow |
-| P0 Hotkeys fire / inject | **Partial** | `/api/hotkey/fire` inject over_program/queue_next; desk `playOneShot` + status oneshot backup hear-through; path-as-is; Mac path via preload |
-| P0 VT record / Segment Editor | **Partial** | UI + APIs + ffmpeg cut/markers-only; VT attach error surfaced; needs Mac audio device pass |
-| P0 Segue Editor audition + dual-deck | **Partial** | Markers/duck/audition present; Mac hear-through |
+| P0 AUTO end-pulse / ASSIST talk-up | **Partial** | `finish_if_due` + `/api/pulse` (body `date` honored); ASSIST GO clears + advances; timing exposes `in_intro`/`talk_up_remaining_ms`/`vocals_in`; pytest desk harden; Mac hear-through still verify |
+| P0 Living Log edit Delete/Insert/Replace | **Done** | Service + `/api/log/{delete,insert,replace}`; insert clamps `after_position`; MANUAL/VT survive soft regenerate; API e2e in `tests/test_desk_harden_partials.py` |
+| P0 Hotkeys fire / inject | **Partial** | `/api/hotkey/fire` + status message (missing path); `/api/hotkeys/reorder` + color persist + F-key rekey; desk drag/Up-Down; Mac path via preload still verify |
+| P0 VT record / Segment Editor | **Partial** | Segment invalid window / missing track errors; ffmpeg cut + markers-only; VT attach; needs Mac audio device pass |
+| P0 Segue Editor audition + dual-deck | **Partial** | `save_segue` validates same-id/duck/crossfade/marks; audition URLs; Mac hear-through |
 | P1 Decks A/B/C readable | **Partial** | Hybrid cards; ending/timers in |
-| P1 Cartwall multi-page | **Partial** | Hotkey bank pages exist |
+| P1 Cartwall multi-page | **Partial** | Pages + reorder/persist/color; status feedback on fire |
 | P1 Clocks + daypart packs | **Partial** | Clock editor + daypart UI |
-| P1 Categories / FILLER | **Partial** | Library manager + filler pool |
+| P1 Categories / FILLER | **Partial** | Library manager + filler pool; ingest rejects bad/empty/dir/unsupported; FLAC/mp4 edges tested |
 | P1 TO TIME / ETM | **Partial** | Studio clock panel |
 | P1 Multi-bus + mix-minus subtract | **Partial** | Browser subtract live; CoreAudio PCM still P2 |
 | P1 Native FM/Digital + TX mode | **Partial** | Browser processor + WAV stub |

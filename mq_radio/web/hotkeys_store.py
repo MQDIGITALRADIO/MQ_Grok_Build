@@ -39,6 +39,7 @@ def _empty_slot(slot: int) -> dict[str, Any]:
         "key": key,
         "label": "",
         "type": "",
+        "color": "",
         "target": None,
         "path": None,
         "macro": None,
@@ -70,12 +71,14 @@ def _normalize(items: list[dict]) -> list[dict]:
             inject = "queue_next"
         if inject not in ("over_program", "queue_next"):
             inject = "over_program"
+        color = str(it.get("color") or "").strip()
         empty = not label and not typ and not it.get("target") and not path_ref and not it.get("macro")
         row = {
             "slot": s,
             "key": it.get("key") or "",
             "label": label,
             "type": typ,
+            "color": color,
             "target": it.get("target"),
             "path": path_ref,  # absolute path for one-shot — plays in place, no library copy
             "macro": it.get("macro"),
@@ -137,3 +140,56 @@ def save_hotkeys(hotkeys: list[dict], data_dir: Optional[Path] = None) -> dict:
     }
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return {**payload, "ok": True, "path": str(path), "source": "file"}
+
+
+def _rekey_page0(slots: list[dict]) -> list[dict]:
+    """Ensure page-0 slots keep F1–F12 key labels after reorder."""
+    for i, row in enumerate(slots):
+        row["slot"] = i
+        if i < SLOTS_PER_PAGE:
+            row["key"] = f"F{i + 1}" if i < 12 else ""
+        else:
+            row["key"] = row.get("key") or ""
+    return slots
+
+
+def reorder_hotkeys(
+    from_slot: int,
+    to_slot: int,
+    data_dir: Optional[Path] = None,
+) -> dict:
+    """Swap two hotkey bank slots and persist (drag-reorder / Up/Down)."""
+    try:
+        a = int(from_slot)
+        b = int(to_slot)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "from_slot and to_slot must be integers"}
+    if a == b:
+        loaded = load_hotkeys(data_dir)
+        return {
+            "ok": True,
+            "unchanged": True,
+            "hotkeys": loaded["hotkeys"],
+            "pages": loaded["pages"],
+            "slots_per_page": loaded["slots_per_page"],
+        }
+    loaded = load_hotkeys(data_dir)
+    slots = list(loaded["hotkeys"])
+    n = len(slots)
+    if a < 0 or b < 0 or a >= n or b >= n:
+        return {"ok": False, "error": f"slot out of range (0..{n - 1})"}
+    ha = dict(slots[a])
+    hb = dict(slots[b])
+    ha["slot"] = b
+    hb["slot"] = a
+    slots[b] = ha
+    slots[a] = hb
+    slots = _rekey_page0(slots)
+    saved = save_hotkeys(slots, data_dir)
+    return {
+        **saved,
+        "ok": True,
+        "from_slot": a,
+        "to_slot": b,
+        "message": f"Hotkey slot {a + 1} ↔ {b + 1} reordered",
+    }

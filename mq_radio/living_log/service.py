@@ -227,6 +227,10 @@ def list_library(
 
 def delete_event(event_id: int, db_path: Optional[Path] = None) -> dict:
     """Delete a log event and shift subsequent positions down."""
+    try:
+        event_id = int(event_id)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "event_id must be an integer"}
     conn = get_connection(db_path)
     row = conn.execute(
         "SELECT * FROM log_events WHERE id = ?", (event_id,)
@@ -301,8 +305,17 @@ def insert_event(
         if duration_ms is None:
             duration_ms = 8000 if raw_type == "VOICE_TRACK" else 5000
 
-    # Resolve insert position
+    # Resolve insert position (clamp after_position into [ -1 .. max_pos ])
     after = int(after_position) if after_position is not None else -1
+    max_row = conn.execute(
+        "SELECT COALESCE(MAX(position), -1) AS m FROM log_events WHERE daily_log_id = ?",
+        (daily_log_id,),
+    ).fetchone()
+    max_pos = int(max_row["m"] if max_row else -1)
+    if after < -1:
+        after = -1
+    if after > max_pos:
+        after = max_pos
     new_pos = after + 1
     if new_pos < 0:
         new_pos = 0
@@ -395,6 +408,11 @@ def insert_event(
 
 def replace_event(event_id: int, track_id: int, db_path: Optional[Path] = None) -> dict:
     """Swap the cart on an existing log event from the library; mark MANUAL."""
+    try:
+        event_id = int(event_id)
+        track_id = int(track_id)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "event_id and track_id must be integers"}
     conn = get_connection(db_path)
     row = conn.execute(
         "SELECT * FROM log_events WHERE id = ?", (event_id,)
@@ -406,6 +424,9 @@ def replace_event(event_id: int, track_id: int, db_path: Optional[Path] = None) 
     if not track:
         conn.close()
         return {"ok": False, "error": f"track {track_id} not found"}
+    if not track.get("active", 1):
+        conn.close()
+        return {"ok": False, "error": f"track {track_id} is inactive"}
 
     ev = dict(row)
     new_type = (track.get("event_type") or ev.get("event_type") or "MUSIC").upper()

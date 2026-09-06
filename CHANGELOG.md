@@ -2,6 +2,22 @@
 
 Lean build log for Matt. SHAs are on `main` (`MQDIGITALRADIO/MQ_Grok_Build`).
 
+## Desk harden 2026-09-06 (P0 Living Log Done + Partial depth)
+
+| SHA | Theme |
+|-----|--------|
+| *(this commit)* | Living Log Done; talk-up/pulse/hotkey/segue/ingest harden + pytest |
+
+**Living Log (Done):** insert clamps oversized after_position; delete/replace integer + not-found paths; MANUAL/VT survive soft regenerate; HTTP e2e for delete/insert/replace.
+
+**AUTO / ASSIST talk-up (still Partial — Mac hear-through):** SESSION.timing exposes in_intro / talk_up_remaining_ms / vocals_in / event_type; desk prefers server countdown; /api/pulse honors body date so ASSIST GO advances the correct day.
+
+**Hotkeys (Partial):** /api/hotkeys/reorder + color persist + F1–F12 rekey; fire status for missing path.
+
+**Segue / segment / ingest:** duck/crossfade/mark validation; segment invalid windows; ingest rejects missing/empty/dir/no-ext/unsupported; FLAC+corrupt mp4 edges.
+
+**Still not Done:** AU host, live Liquidsoap Harbor, CoreAudio PCM multi-bus, notarization; AUTO/hotkey/VT/segue Mac hear-through.
+
 ## Overnight package grind 2026-09-06 (substance + P1 desk depth)
 
 | SHA | Theme |

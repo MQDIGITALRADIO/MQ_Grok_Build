@@ -125,6 +125,9 @@ class PlayoutSession:
         return self.active_deck
 
     def timing(self) -> dict:
+        """Elapsed/remaining + end-pulse + ASSIST talk-up (VOCALS IN) countdown fields."""
+        intro = int(self.intro_ms or 0)
+        etype = (self.event_type or "").upper()
         if self.started_at is None or self.event_id is None:
             return {
                 "playing": False,
@@ -133,9 +136,13 @@ class PlayoutSession:
                 "duration_ms": self.duration_ms or 0,
                 "progress": 0.0,
                 "end_pulse_ms": self.end_pulse_ms or 0,
-                "intro_ms": self.intro_ms or 0,
+                "intro_ms": intro,
                 "in_end_pulse": False,
                 "pulse_due": False,
+                "in_intro": False,
+                "talk_up_remaining_ms": 0,
+                "vocals_in": False,
+                "event_type": etype,
                 "active_deck": self.active_deck,
                 "overlap_active": self.overlap_active,
                 "assist_go_ready": self.assist_go_ready,
@@ -153,6 +160,10 @@ class PlayoutSession:
                 pulse_due = elapsed >= max(0, dur - pulse)
             else:
                 pulse_due = elapsed >= dur
+        # Talk-up / VOCALS IN: remaining intro window (desk shows in ASSIST/LIVE)
+        in_intro = intro > 0 and elapsed < intro
+        talk_up_remaining_ms = max(0, intro - elapsed) if in_intro else 0
+        vocals_in = intro > 0 and elapsed >= intro
         return {
             "playing": True,
             "elapsed_ms": elapsed,
@@ -161,9 +172,13 @@ class PlayoutSession:
             "progress": progress,
             "finished": dur > 0 and elapsed >= dur,
             "end_pulse_ms": pulse,
-            "intro_ms": int(self.intro_ms or 0),
+            "intro_ms": intro,
             "in_end_pulse": in_pulse,
             "pulse_due": pulse_due,
+            "in_intro": in_intro,
+            "talk_up_remaining_ms": talk_up_remaining_ms,
+            "vocals_in": vocals_in,
+            "event_type": etype,
             "track_id": self.track_id,
             "file_path": self.file_path or "",
             "ramp_profile": self.ramp_profile,

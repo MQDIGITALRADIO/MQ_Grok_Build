@@ -448,7 +448,10 @@ function syncTimingFromStatus(st) {
         ? t.end_pulse_ms
         : (onAir && nowEv.outro_ms) || 0
     ),
-    event_type: (onAir && nowEv.event_type) || "",
+    event_type: (t.event_type || (onAir && nowEv.event_type) || "").toUpperCase(),
+    in_intro: !!t.in_intro,
+    talk_up_remaining_ms: Number(t.talk_up_remaining_ms || 0),
+    vocals_in: !!t.vocals_in,
     syncedAt: Date.now(),
     _pulseSent: sameCart ? !!timingSnap._pulseSent : false,
   };
@@ -535,7 +538,12 @@ function updateVocalsInPopup(live) {
     return;
   }
 
-  const leftMs = Math.max(0, introMs - live.elapsed_ms);
+  // Prefer server talk-up remaining when present (same clock as end-pulse)
+  const serverLeft = Number(timingSnap.talk_up_remaining_ms);
+  const leftMs =
+    timingSnap.in_intro && Number.isFinite(serverLeft) && serverLeft >= 0
+      ? Math.max(0, serverLeft - Math.max(0, live.elapsed_ms - timingSnap.elapsed_ms))
+      : Math.max(0, introMs - live.elapsed_ms);
   // Maestro-style one-decimal countdown (tenths), never negative
   const tenths = Math.max(0, leftMs / 1000);
   countEl.textContent = tenths.toFixed(1);

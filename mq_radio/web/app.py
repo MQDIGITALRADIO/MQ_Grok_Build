@@ -65,7 +65,7 @@ from mq_radio.voice_tracker.service import (
     list_vt,
     script_for_transition,
 )
-from mq_radio.web.hotkeys_store import load_hotkeys, save_hotkeys
+from mq_radio.web.hotkeys_store import load_hotkeys, reorder_hotkeys, save_hotkeys
 from mq_radio.web.multipart import parse_multipart
 from mq_radio.production.processing import (
     load_processing,
@@ -513,6 +513,14 @@ def make_handler(db_path: Path):
             else:
                 payload = _read_json(self, body)
 
+            # Body date wins for engine / log ops (desk may POST without ?date=)
+            if isinstance(payload, dict) and payload.get("date"):
+                d = str(payload.get("date")).strip()
+                if d in ("today", "Today"):
+                    d = date.today().isoformat()
+                if d:
+                    log_date = d
+
             if path == "/api/settings/audio":
                 # Full routing matrix: outputs + inputs + AU insert stub
                 body = payload if isinstance(payload, dict) else {}
@@ -571,6 +579,15 @@ def make_handler(db_path: Path):
                     _json_response(self, {"ok": False, "error": "hotkeys list required"}, status=400)
                     return
                 _json_response(self, save_hotkeys(items, DATA_DIR))
+                return
+
+            if path == "/api/hotkeys/reorder":
+                result = reorder_hotkeys(
+                    payload.get("from_slot"),
+                    payload.get("to_slot"),
+                    DATA_DIR,
+                )
+                _json_response(self, result, status=200 if result.get("ok") else 400)
                 return
 
             if path == "/api/hotkey/fire":

@@ -73,11 +73,26 @@ def save_segue(payload: dict, db_path: Optional[Path] = None) -> dict:
     """Upsert a segue link between from_event_id and to_event_id."""
     from_id = payload.get("from_event_id")
     to_id = payload.get("to_event_id")
-    if not from_id or not to_id:
+    if from_id is None or to_id is None or from_id == "" or to_id == "":
         return {"ok": False, "error": "from_event_id and to_event_id required"}
+    try:
+        from_id = int(from_id)
+        to_id = int(to_id)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "from_event_id and to_event_id must be integers"}
+    if from_id == to_id:
+        return {"ok": False, "error": "from_event_id and to_event_id must differ"}
 
     conn = get_connection(db_path)
-    for eid in (from_id, to_id, payload.get("vt_event_id")):
+    vt_raw = payload.get("vt_event_id")
+    vt_id = None
+    if vt_raw is not None and vt_raw != "":
+        try:
+            vt_id = int(vt_raw)
+        except (TypeError, ValueError):
+            conn.close()
+            return {"ok": False, "error": "vt_event_id must be an integer"}
+    for eid in (from_id, to_id, vt_id):
         if eid is None:
             continue
         exists = conn.execute(
@@ -90,14 +105,42 @@ def save_segue(payload: dict, db_path: Optional[Path] = None) -> dict:
     duck = payload.get("duck_db")
     if duck is None:
         duck = DEFAULT_DUCK_DB
+    try:
+        duck_f = float(duck)
+    except (TypeError, ValueError):
+        conn.close()
+        return {"ok": False, "error": "duck_db must be a number"}
+    # Broadcast-sensible duck range (0 = no duck, down to -40 dB)
+    duck_f = max(-40.0, min(0.0, duck_f))
+    try:
+        from_outro = max(0, int(payload.get("from_outro_mark_ms") or 0))
+        to_intro = max(0, int(payload.get("to_intro_mark_ms") or 0))
+        vt_in = max(0, int(payload.get("vt_in_ms") or 0))
+        xfade = int(payload.get("crossfade_ms") or 0)
+    except (TypeError, ValueError):
+        conn.close()
+        return {"ok": False, "error": "marker / crossfade values must be integers"}
+    xfade = max(0, min(xfade, 12000))
+    vt_out = payload.get("vt_out_ms")
+    if vt_out is not None and vt_out != "":
+        try:
+            vt_out = max(0, int(vt_out))
+        except (TypeError, ValueError):
+            conn.close()
+            return {"ok": False, "error": "vt_out_ms must be an integer"}
+        if vt_out < vt_in:
+            conn.close()
+            return {"ok": False, "error": "vt_out_ms must be >= vt_in_ms"}
+    else:
+        vt_out = None
     fields = (
-        payload.get("vt_event_id"),
-        int(payload.get("from_outro_mark_ms") or 0),
-        int(payload.get("to_intro_mark_ms") or 0),
-        int(payload.get("vt_in_ms") or 0),
-        payload.get("vt_out_ms"),
-        float(duck),
-        int(payload.get("crossfade_ms") or 0),
+        vt_id,
+        from_outro,
+        to_intro,
+        vt_in,
+        vt_out,
+        duck_f,
+        xfade,
         payload.get("notes") or "",
     )
     existing = conn.execute(
@@ -128,6 +171,7 @@ def save_segue(payload: dict, db_path: Optional[Path] = None) -> dict:
     row = conn.execute("SELECT * FROM segue_links WHERE id=?", (segue_id,)).fetchone()
     conn.close()
     return {"ok": True, "segue": dict(row)}
+
 
 
 def segue_context_for_event(event_id: int, db_path: Optional[Path] = None) -> dict:

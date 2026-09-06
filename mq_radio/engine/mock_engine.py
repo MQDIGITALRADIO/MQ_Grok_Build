@@ -402,7 +402,10 @@ class MockEngine(PlayoutEngine):
         did = self._daily_log_id(conn)
         if not did:
             conn.close()
-            self._state.message = "no daily log — generate-log first"
+            if force:
+                with SESSION.lock:
+                    SESSION.assist_go_ready = False
+            self._state.message = f"no daily log for {self.log_date} — generate-log / sample-hour first"
             return self._state
 
         with SESSION.lock:

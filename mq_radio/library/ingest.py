@@ -535,12 +535,30 @@ def ingest_file(
     dest_subdir: str = "library",
 ) -> dict:
     """Ingest an existing filesystem path (copy into data/). Supports long concerts."""
-    src = Path(src).expanduser().resolve()
+    if src is None or str(src).strip() == "":
+        return {"ok": False, "error": "path required"}
+    try:
+        src = Path(src).expanduser()
+    except Exception as exc:
+        return {"ok": False, "error": f"bad path: {exc}"}
+    # Resolve after existence checks so missing parents stay readable in errors
+    if src.exists() and src.is_dir():
+        return {"ok": False, "error": f"path is a directory, not audio: {src}"}
+    if not src.exists():
+        return {"ok": False, "error": f"file not found: {src}"}
+    try:
+        src = src.resolve()
+    except Exception:
+        pass
     if not src.is_file():
         return {"ok": False, "error": f"not a file: {src}"}
+    if src.stat().st_size <= 0:
+        return {"ok": False, "error": f"empty file: {src}"}
     ext = src.suffix.lower()
+    if not ext:
+        return {"ok": False, "error": "missing file extension — use wav/mp3/flac/mp4"}
     if ext not in INGEST_EXTS:
-        return {"ok": False, "error": f"unsupported type {ext}"}
+        return {"ok": False, "error": f"unsupported type {ext} — use wav/mp3/flac/mp4"}
 
     root = Path(data_dir) if data_dir else _cfg.DATA_DIR
     dest_root = root / dest_subdir
