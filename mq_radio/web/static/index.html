@@ -23,6 +23,7 @@
         <label class="date-label">LOG DATE
           <input type="date" id="log-date" />
         </label>
+        <button type="button" id="btn-clocks" class="btn-chrome" title="Category clocks">CLOCKS</button>
         <button type="button" id="btn-settings" class="btn-chrome" title="Settings">⚙</button>
         <button type="button" id="btn-refresh" class="btn-chrome" title="Refresh log">↻</button>
       </div>
@@ -417,6 +418,17 @@
           (env <code>MQ_RADIO_LIBRARY_ROOT</code> also honored). Default: <code>data/library</code>.
         </p>
 
+        <div class="settings-section-title">CATEGORY CLOCKS</div>
+        <p class="settings-intro">
+          GENERAL + OVERNIGHT hour templates drive Living Log expansion.
+          Edit category / AU / VT stub slots in the Clock Editor; save writes
+          SQLite + <code>data/clocks.json</code>. Regenerate hour uses the edited clock.
+          ETM / HIT / HARD markers get fill/stretch toward the hit.
+        </p>
+        <div class="settings-actions" style="justify-content:flex-start;margin-bottom:10px">
+          <button type="button" class="btn-dialog primary" id="btn-open-clock-editor">Open Clock Editor…</button>
+        </div>
+
         <div class="settings-section-title">PROGRAM INSERT (AU stub)</div>
         <p class="settings-intro">
           Optional insert on the Program / On-Air path. When the slot is
@@ -484,6 +496,63 @@
           <button type="button" class="btn-dialog" id="btn-settings-cancel">Cancel</button>
           <button type="button" class="btn-dialog primary" id="btn-settings-save">OK</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Category Clock Editor (Maestro-dense) -->
+  <div class="settings-backdrop" id="clock-backdrop" aria-hidden="true">
+    <div class="settings-dialog clock-dialog" role="dialog" aria-labelledby="clock-title">
+      <div class="settings-titlebar">
+        <span id="clock-title">MQ Radio — Category Clocks</span>
+        <button type="button" class="settings-close" id="btn-clock-close" title="Close">×</button>
+      </div>
+      <div class="settings-body clock-body">
+        <p class="settings-intro">
+          Hour templates for deterministic Living Log expansion. AI never picks MUSIC live.
+          <strong>ETM / HIT / HARD</strong> = hard markers (fill/stretch toward hit).
+          <strong>VOICE_TRACK</strong> = VT stubs for AI / Vocloner path.
+        </p>
+        <div class="clock-toolbar">
+          <div class="clock-tabs" role="tablist">
+            <button type="button" class="clock-tab active" data-clock="GENERAL">GENERAL</button>
+            <button type="button" class="clock-tab" data-clock="OVERNIGHT">OVERNIGHT</button>
+          </div>
+          <div class="clock-toolbar-actions">
+            <label class="clock-regen-label">Regen hour
+              <input type="number" id="clock-regen-hour" min="0" max="23" value="12" title="Hour 0–23" />
+            </label>
+            <button type="button" class="btn-dialog" id="btn-clock-regen">Generate hour</button>
+            <button type="button" class="btn-dialog" id="btn-clock-add-slot">+ Slot</button>
+            <button type="button" class="btn-dialog" id="btn-clock-reset">Reset canonical</button>
+            <button type="button" class="btn-dialog primary" id="btn-clock-save">Save</button>
+          </div>
+        </div>
+        <div class="clock-meta-row">
+          <label>Name <input type="text" id="clock-name" autocomplete="off" /></label>
+          <label class="clock-desc-label">Description <input type="text" id="clock-desc" autocomplete="off" /></label>
+          <span class="clock-status" id="clock-status">—</span>
+        </div>
+        <div class="clock-table-wrap">
+          <table class="clock-table" id="clock-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Type</th>
+                <th>Cat</th>
+                <th>Timing</th>
+                <th>Chain</th>
+                <th>Label</th>
+                <th>Off s</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="clock-slots-body"></tbody>
+          </table>
+        </div>
+        <p class="clock-hint" id="clock-hint">
+          Save → DB + data/clocks.json. Generate hour expands the active clock with ETM fills.
+        </p>
       </div>
     </div>
   </div>
@@ -659,6 +728,7 @@
     </div>
   </div>
   <script src="/static/program_audio.js"></script>
+  <script src="/static/clock_editor.js"></script>
   <script src="/static/app.js"></script>
   <script src="/static/desk_programming.js"></script>
 </body>

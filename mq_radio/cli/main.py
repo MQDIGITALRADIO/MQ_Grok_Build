@@ -82,23 +82,42 @@ def cmd_generate_log(args: argparse.Namespace) -> int:
 
 
 def cmd_show_clocks(args: argparse.Namespace) -> int:
-    grid = describe_daypart_grid()
+    from mq_radio.db.connection import get_connection, init_db
+    from mq_radio.scheduler.clocks import clocks_bundle
+
+    db = Path(args.db) if getattr(args, "db", None) and args.db else None
+    init_db(db)
+    conn = get_connection(db)
+    try:
+        bundle = clocks_bundle(conn)
+    except Exception:
+        bundle = describe_daypart_grid()
+    finally:
+        conn.close()
     if args.json:
-        print(json.dumps(grid, indent=2))
+        print(json.dumps(bundle, indent=2, default=str))
         return 0
     print("MQ DIGITAL — category clocks / daypart grid")
     print("-" * 60)
-    for code_row in list_clock_defs():
+    for clock in bundle.get("clocks") or list_clock_defs():
+        slots = clock.get("slots") or []
+        if "slot_count" in clock:
+            sc, ms, vt = clock["slot_count"], clock.get("music_slots"), clock.get("vt_slots")
+        else:
+            sc = len(slots)
+            ms = sum(1 for s in slots if s.get("event_type") == "MUSIC")
+            vt = sum(1 for s in slots if s.get("event_type") == "VOICE_TRACK")
         print(
-            f"{code_row['code']:<12} {code_row['name']}  "
-            f"slots={code_row['slot_count']} music={code_row['music_slots']} "
-            f"vt={code_row['vt_slots']}"
+            f"{clock['code']:<12} {clock.get('name') or ''}  "
+            f"slots={sc} music={ms} vt={vt}"
         )
     print()
     print("Hour → clock:")
+    hour_clock = bundle.get("hour_clock") or {}
     line = []
     for h in range(24):
-        line.append(f"{h:02d}:{grid['hour_clock'][str(h)][:3]}")
+        code = hour_clock.get(str(h), "?")
+        line.append(f"{h:02d}:{str(code)[:3]}")
         if len(line) == 6:
             print("  " + "  ".join(line))
             line = []
@@ -106,6 +125,7 @@ def cmd_show_clocks(args: argparse.Namespace) -> int:
         print("  " + "  ".join(line))
     print()
     print("AI never picks MUSIC live. VT placeholders → generate-ai-breaks → approve.")
+    print("Clock Editor (On-Air CLOCKS) saves DB + data/clocks.json; ETM/HIT get fills.")
     return 0
 
 

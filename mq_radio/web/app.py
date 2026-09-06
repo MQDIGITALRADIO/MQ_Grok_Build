@@ -35,6 +35,15 @@ from mq_radio.living_log.service import (
     now_and_upcoming,
     replace_event,
 )
+from mq_radio.db.connection import get_connection
+from mq_radio.scheduler.clocks import (
+    clocks_bundle,
+    export_clocks_json,
+    reset_clock_to_canonical,
+    save_clock_slots,
+    save_daypart_grid,
+)
+from mq_radio.scheduler.generator import generate_hour, generate_log
 from mq_radio.segue.service import get_segue, save_segue, segue_context_for_event
 from mq_radio.voice_tracker.inserter import generate_ai_breaks
 from mq_radio.voice_tracker.recording import attach_vt_cart, save_vt_recording
@@ -279,6 +288,15 @@ def make_handler(db_path: Path):
             if path == "/api/log":
                 events = list_events(log_date, db_path=db_path)
                 _json_response(self, {"date": log_date, "events": events})
+                return
+
+            if path == "/api/clocks":
+                conn = get_connection(db_path)
+                try:
+                    bundle = clocks_bundle(conn)
+                finally:
+                    conn.close()
+                _json_response(self, bundle)
                 return
 
             if path == "/api/library":
@@ -581,6 +599,93 @@ def make_handler(db_path: Path):
                 clear = payload.get("clear_day", True)
                 result = load_sample_hour(d, db_path=db_path, hour=hour, clear_day=bool(clear))
                 _json_response(self, result, status=200 if result.get("ok") else 400)
+                return
+
+            if path == "/api/clocks/save":
+                code = str(payload.get("code") or "").strip().upper()
+                slots = payload.get("slots")
+                if not code or not isinstance(slots, list):
+                    _json_response(
+                        self,
+                        {"ok": False, "error": "code and slots[] required"},
+                        status=400,
+                    )
+                    return
+                conn = get_connection(db_path)
+                try:
+                    saved = save_clock_slots(
+                        conn,
+                        code,
+                        slots,
+                        name=payload.get("name"),
+                        description=payload.get("description"),
+                    )
+                    if isinstance(payload.get("hour_clock"), dict):
+                        save_daypart_grid(conn, payload["hour_clock"])
+                    conn.commit()
+                    json_path = export_clocks_json(conn, DATA_DIR / "clocks.json")
+                    bundle = clocks_bundle(conn)
+                    _json_response(
+                        self,
+                        {
+                            "ok": True,
+                            "clock": saved,
+                            "json_path": str(json_path),
+                            "bundle": bundle,
+                        },
+                    )
+                except KeyError as exc:
+                    _json_response(self, {"ok": False, "error": str(exc)}, status=404)
+                finally:
+                    conn.close()
+                return
+
+            if path == "/api/clocks/reset":
+                code = str(payload.get("code") or "GENERAL").strip().upper()
+                conn = get_connection(db_path)
+                try:
+                    restored = reset_clock_to_canonical(conn, code)
+                    conn.commit()
+                    json_path = export_clocks_json(conn, DATA_DIR / "clocks.json")
+                    bundle = clocks_bundle(conn)
+                    _json_response(
+                        self,
+                        {
+                            "ok": True,
+                            "clock": restored,
+                            "json_path": str(json_path),
+                            "bundle": bundle,
+                        },
+                    )
+                except KeyError as exc:
+                    _json_response(self, {"ok": False, "error": str(exc)}, status=404)
+                finally:
+                    conn.close()
+                return
+
+            if path == "/api/log/generate-hour":
+                d = payload.get("date") or log_date
+                if d in ("today", "Today"):
+                    d = date.today().isoformat()
+                try:
+                    hour = int(payload.get("hour") if payload.get("hour") is not None else 12)
+                except (TypeError, ValueError):
+                    hour = 12
+                force = bool(payload.get("force"))
+                result = generate_hour(d, hour, db_path=db_path, force=force)
+                _json_response(self, {"ok": True, **result})
+                return
+
+            if path == "/api/log/generate":
+                d = payload.get("date") or log_date
+                if d in ("today", "Today"):
+                    d = date.today().isoformat()
+                force = bool(payload.get("force"))
+                hours = payload.get("hours")
+                result = generate_log(
+                    d, db_path=db_path, force=force, hours=hours
+                )
+                _json_response(self, {"ok": True, **result})
                 return
 
             if path == "/api/vt/attach-cart":

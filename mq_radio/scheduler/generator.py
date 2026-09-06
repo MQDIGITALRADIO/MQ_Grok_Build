@@ -14,6 +14,7 @@ from typing import Iterable, Optional
 
 from mq_radio.db.connection import get_connection
 from mq_radio.scheduler.clocks import load_hour_clock_map, normalize_hours
+from mq_radio.scheduler.etm_fill import apply_hard_timing_fills
 from mq_radio.scheduler.rules import HistoryWindow, Ruleset, score_track
 
 ASSET_EVENT_TYPES = {"SWEEPER", "ID", "PROMO", "VOICE_TRACK", "BED", "FILLER"}
@@ -519,6 +520,15 @@ def generate_log(
     built: list[dict] = []
     generated = 0
     preserved = 0
+    fill_totals = {
+        "windows": 0,
+        "stretched_ms": 0,
+        "compressed_ms": 0,
+        "filler_inserted": 0,
+        "filler_grown_ms": 0,
+        "overage_ms": 0,
+        "under_after_ms": 0,
+    }
 
     for hour in hours_to_build:
         clock_id = hour_clocks.get(hour, default_clock)
@@ -559,6 +569,13 @@ def generate_log(
         else:
             hour_events = _merge_manuals_into_hour(auto_events, manuals_by_hour[hour])
             preserved += sum(1 for e in hour_events if e.get("manual_flag") == "MANUAL")
+        # Hard ETM / HIT / HARD fills: stretch FLOAT or insert FILLER toward markers
+        hour_events, fill_stats = apply_hard_timing_fills(
+            hour_events, hour_start=hour_start
+        )
+        fs = fill_stats.as_dict()
+        for k in fill_totals:
+            fill_totals[k] += int(fs.get(k) or 0)
         generated += sum(1 for e in hour_events if e.get("manual_flag") != "MANUAL")
         built.extend(hour_events)
 
@@ -662,6 +679,7 @@ def generate_log(
             "block_explicit": constraints.block_explicit,
             "min_score": constraints.min_score,
         },
+        "etm_fill": fill_totals,
     }
 
 

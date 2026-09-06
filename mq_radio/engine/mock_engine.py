@@ -16,6 +16,7 @@ from mq_radio.db.connection import get_connection
 from mq_radio.engine.base import EngineState, PlayoutEngine
 from mq_radio.engine.session import FadingDeck, SESSION
 from mq_radio.production.ramps import profile_for_context
+from mq_radio.scheduler.etm_fill import engine_air_duration_toward_hit
 from mq_radio.segue.service import resolve_overlap_params
 
 
@@ -107,6 +108,48 @@ class MockEngine(PlayoutEngine):
             (nxt["event_type"] or "") if nxt else "",
         )
 
+    def _following_events(self, conn, ev) -> list[dict]:
+        """Committed/draft events after current position (includes hard markers)."""
+        try:
+            daily_log_id = int(ev["daily_log_id"])
+            pos = int(ev["position"])
+        except Exception:
+            return []
+        rows = conn.execute(
+            """SELECT e.* FROM log_events e
+               WHERE e.daily_log_id = ? AND e.position > ?
+                 AND e.status IN ('COMMITTED', 'DRAFT')
+               ORDER BY e.position""",
+            (daily_log_id, pos),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def _air_duration_for(self, conn, ev) -> tuple[int, dict]:
+        """Base air duration, then stretch/trim toward next HIT/HARD/ETM."""
+        base = _air_duration(ev)
+        following = self._following_events(conn, ev)
+        # Prefer wall-clock "now" aligned to scheduled_at timezone (naive local)
+        now = datetime.now()
+        sched = None
+        try:
+            raw = ev["scheduled_at"] if "scheduled_at" in ev.keys() else None
+            if raw:
+                sched = datetime.fromisoformat(str(raw).replace("Z", "").replace(" ", "T", 1))
+                # If we're simulating / stepping without wall sync, use scheduled_at as "now"
+                # only when SESSION has no real start — otherwise wall clock.
+        except Exception:
+            sched = None
+        with SESSION.lock:
+            has_session = SESSION.started_at is not None
+        ref_now = now if has_session else (sched or now)
+        adj, meta = engine_air_duration_toward_hit(
+            base_duration_ms=base,
+            event=dict(ev),
+            following=following,
+            now=ref_now,
+        )
+        return adj, meta
+
     def _bind_session(
         self,
         ev,
@@ -188,7 +231,7 @@ class MockEngine(PlayoutEngine):
         )
         conn.execute("UPDATE log_events SET status='ON_AIR' WHERE id=?", (ev["id"],))
         conn.commit()
-        duration = _air_duration(ev)
+        duration, etm_meta = self._air_duration_for(conn, ev)
         prev_t, next_t = self._neighbor_event_types(conn, ev)
         neighbor = next_t or prev_t
         near_vt = "VOICE_TRACK" in (prev_t, next_t, ev["event_type"] or "")
@@ -199,6 +242,10 @@ class MockEngine(PlayoutEngine):
             neighbor_event_type=neighbor,
             near_vt=near_vt,
         )
+        etm_note = ""
+        action = (etm_meta or {}).get("action") or "none"
+        if action in ("stretch", "trim"):
+            etm_note = f" · ETM {action} {etm_meta.get('adjusted_ms')}ms"
         self._state = EngineState(
             running=True,
             current_event_id=int(ev["id"]),
@@ -207,7 +254,7 @@ class MockEngine(PlayoutEngine):
             position=int(ev["position"]),
             message=(
                 f"ON AIR #{ev['position']} [{ev['event_type']}] "
-                f"{ev['artist'] or ''} — {ev['title']}"
+                f"{ev['artist'] or ''} — {ev['title']}{etm_note}"
             ),
         )
         return self._state
@@ -276,7 +323,8 @@ class MockEngine(PlayoutEngine):
                     SESSION.event_id != int(on_air["id"]) or SESSION.started_at is None
                 )
             if needs_bind:
-                self._bind_session(on_air, _air_duration(on_air))
+                dur, _meta = self._air_duration_for(conn, on_air)
+                self._bind_session(on_air, dur)
             else:
                 with SESSION.lock:
                     SESSION.running = True

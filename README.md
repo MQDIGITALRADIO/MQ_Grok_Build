@@ -89,7 +89,7 @@ python -m mq_radio serve --host 127.0.0.1 --port 8080
 | `scan [--path DIR]` | Index audio into library |
 | `seed-demo` | Categories, GENERAL clock, MQ DIGITAL rules, synthetic WAV fixtures |
 | `generate-log [--date] [--force] [--hour N\|--hours …\|--overnight]` | Build Living Log (24h or hour subset); preserves MANUAL unless `--force` |
-| `show-clocks [--json]` | Print GENERAL / OVERNIGHT clock defs + hour→clock grid |
+| `show-clocks [--json]` | Print GENERAL / OVERNIGHT clocks from DB (editor source of truth) + hour→clock grid |
 | `show-log [--date] [--limit N]` | Print log |
 | `engine-step [--action step\|play\|stop\|skip]` | MockEngine advance |
 | `serve [--port 8080]` | On-Air prototype |
@@ -161,6 +161,25 @@ Living Log rows come from **category clocks** — hour templates of event type +
 | **GENERAL** | 05–22 | 2 VT placeholders, A/B/C mix, promo + ETM/break |
 | **OVERNIGHT** | 23–04 | **4 VT placeholders** for AI DJ breaks, softer B/C lean, sparse A |
 
+### Clock Editor (On-Air)
+
+Titlebar **CLOCKS** (or Settings → Category Clocks) opens a Maestro-dense slot grid:
+
+- View / edit **GENERAL** + **OVERNIGHT** slots (type, category, timing, chain, label, offset)
+- Edit category / AU / **VT stub** rows; add/remove slots
+- **Save** → SQLite `clock_slots` + mirror `data/clocks.json`
+- **Generate hour** expands the *edited* clock (ETM/HIT fills applied)
+- **Reset canonical** restores factory GENERAL/OVERNIGHT definitions
+- `ensure_canonical_clocks` / seed **preserve** operator edits unless reset
+
+### Hard ETM / HIT fills
+
+When the Living Log has **ETM** / **HIT** / **HARD** markers:
+
+1. **Scheduler** (`etm_fill.apply_hard_timing_fills`): between hard markers, stretch FLOAT MUSIC and/or insert **FILLER** so cumulative duration lands on the hit; compress slightly if over; re-stamp FLOAT `scheduled_at`. Hard marker airtime stays fixed.
+2. **MockEngine**: on cart start, stretch or trim air duration toward the next hard marker (TO TIME / ETM already on the desk).
+3. Generate results include `etm_fill` stats (`stretched_ms`, `filler_inserted`, `overage_ms`, …).
+
 ```bash
 python -m mq_radio show-clocks
 python -m mq_radio generate-log --date 2026-09-06
@@ -180,7 +199,7 @@ python -m mq_radio generate-log --date 2026-09-06 --music-categories B,C --enfor
 | Area | M1 (this zip) | Later |
 |------|---------------|--------|
 | Library / scanner | WAV + sidecar JSON, demo fixtures | Full tagging, APRA/PPCA workflows |
-| Scheduler | GENERAL + OVERNIGHT clocks, hour/24h generate, constraints, MANUAL preserve by airtime | Clock editor UI, fills, hard ETM engine hit |
+| Scheduler | GENERAL + OVERNIGHT clocks, **Clock Editor UI**, hour/24h generate, constraints, MANUAL preserve, **ETM/HIT fills** | Multi-clock daypart designer, live runtime fill carts library |
 | Engine | MockEngine + Liquidsoap stub | Real Liquidsoap / stream chain |
 | UI | On-Air Living Log prototype | Full HOME + STUDIO surfaces |
 | Voice / production / remote | AI VT scripts + Vocloner render path (clipboard) | Vocloner automation/API if available, production cart, remotes |

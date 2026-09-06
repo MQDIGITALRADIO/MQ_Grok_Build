@@ -231,23 +231,30 @@ def describe_daypart_grid() -> dict[str, Any]:
     }
 
 
-def ensure_canonical_clocks(conn) -> dict[str, int]:
+def ensure_canonical_clocks(conn, *, reset: bool = False) -> dict[str, int]:
     """Upsert GENERAL + OVERNIGHT clocks, slots, and default daypart_clocks.
 
-    Returns {code: clock_id}. Idempotent for demo seed / migrate-forward.
+    Returns {code: clock_id}.
+
+    - Default (reset=False): create missing clocks/slots only — **preserve**
+      operator edits from the Clock Editor.
+    - reset=True: rewrite slots + daypart grid from CANONICAL_CLOCKS (seed / Reset).
     """
     ids: dict[str, int] = {}
     for clock in CANONICAL_CLOCKS:
         row = conn.execute(
             "SELECT id FROM clocks WHERE code = ?", (clock.code,)
         ).fetchone()
+        created = False
         if row:
             clock_id = int(row["id"])
-            conn.execute(
-                """UPDATE clocks SET name=?, description=?, duration_sec=? WHERE id=?""",
-                (clock.name, clock.description, clock.duration_sec, clock_id),
-            )
+            if reset:
+                conn.execute(
+                    """UPDATE clocks SET name=?, description=?, duration_sec=? WHERE id=?""",
+                    (clock.name, clock.description, clock.duration_sec, clock_id),
+                )
         else:
+            created = True
             if clock.id_hint is not None:
                 # Prefer stable ids when free
                 taken = conn.execute(
@@ -282,33 +289,39 @@ def ensure_canonical_clocks(conn) -> dict[str, int]:
                 clock_id = int(cur.lastrowid)
         ids[clock.code] = clock_id
 
-        conn.execute("DELETE FROM clock_slots WHERE clock_id = ?", (clock_id,))
-        for s in clock.slots:
-            conn.execute(
-                """INSERT INTO clock_slots
-                   (clock_id, position, event_type, category_code, timing_mode,
-                    chain_mode, label, offset_sec, duration_sec)
-                   VALUES (?,?,?,?,?,?,?,?,?)""",
-                (
-                    clock_id,
-                    s.position,
-                    s.event_type,
-                    s.category_code,
-                    s.timing_mode,
-                    s.chain_mode,
-                    s.label,
-                    s.offset_sec,
-                    s.duration_sec,
-                ),
-            )
+        slot_count = conn.execute(
+            "SELECT COUNT(*) AS c FROM clock_slots WHERE clock_id = ?", (clock_id,)
+        ).fetchone()["c"]
+        if reset or created or int(slot_count) == 0:
+            conn.execute("DELETE FROM clock_slots WHERE clock_id = ?", (clock_id,))
+            for s in clock.slots:
+                conn.execute(
+                    """INSERT INTO clock_slots
+                       (clock_id, position, event_type, category_code, timing_mode,
+                        chain_mode, label, offset_sec, duration_sec)
+                       VALUES (?,?,?,?,?,?,?,?,?)""",
+                    (
+                        clock_id,
+                        s.position,
+                        s.event_type,
+                        s.category_code,
+                        s.timing_mode,
+                        s.chain_mode,
+                        s.label,
+                        s.offset_sec,
+                        s.duration_sec,
+                    ),
+                )
 
-    conn.execute("DELETE FROM daypart_clocks")
-    for hour in range(24):
-        code = DEFAULT_HOUR_CLOCK[hour]
-        conn.execute(
-            "INSERT INTO daypart_clocks (hour, clock_id, day_mask) VALUES (?, ?, 127)",
-            (hour, ids[code]),
-        )
+    daypart_n = conn.execute("SELECT COUNT(*) AS c FROM daypart_clocks").fetchone()["c"]
+    if reset or int(daypart_n) == 0:
+        conn.execute("DELETE FROM daypart_clocks")
+        for hour in range(24):
+            code = DEFAULT_HOUR_CLOCK[hour]
+            conn.execute(
+                "INSERT INTO daypart_clocks (hour, clock_id, day_mask) VALUES (?, ?, 127)",
+                (hour, ids[code]),
+            )
     return ids
 
 
@@ -335,3 +348,270 @@ def normalize_hours(hours: Optional[Iterable[int]]) -> Optional[list[int]]:
     if not out:
         return None
     return out
+
+
+# —— Clock editor: load / save DB + JSON mirror ——————————————————————
+
+
+EVENT_TYPES_EDITABLE = (
+    "MUSIC",
+    "ID",
+    "SWEEPER",
+    "PROMO",
+    "VOICE_TRACK",
+    "ETM",
+    "BREAK",
+    "FILLER",
+    "BED",
+    "COMMAND",
+    "LIVE",
+    "SHOW",
+)
+TIMING_MODES = ("FLOAT", "HIT", "HARD", "SOFT")
+CHAIN_MODES = ("AUTO", "MIX", "SEQ", "HOLD", "MANUAL")
+
+
+def load_clocks_from_db(conn) -> list[dict[str, Any]]:
+    """Load all clocks + slots from DB (editor / API source of truth)."""
+    clocks = []
+    for row in conn.execute(
+        "SELECT id, code, name, description, duration_sec FROM clocks ORDER BY id"
+    ).fetchall():
+        slots = conn.execute(
+            """SELECT id, position, event_type, category_code, timing_mode, chain_mode,
+                      label, offset_sec, duration_sec
+               FROM clock_slots WHERE clock_id=? ORDER BY position""",
+            (row["id"],),
+        ).fetchall()
+        clocks.append(
+            {
+                "id": int(row["id"]),
+                "code": row["code"],
+                "name": row["name"],
+                "description": row["description"],
+                "duration_sec": int(row["duration_sec"] or 3600),
+                "slots": [
+                    {
+                        "id": int(s["id"]),
+                        "position": int(s["position"]),
+                        "event_type": s["event_type"],
+                        "category_code": s["category_code"],
+                        "timing_mode": s["timing_mode"] or "FLOAT",
+                        "chain_mode": s["chain_mode"] or "AUTO",
+                        "label": s["label"] or "",
+                        "offset_sec": s["offset_sec"],
+                        "duration_sec": s["duration_sec"],
+                    }
+                    for s in slots
+                ],
+            }
+        )
+    return clocks
+
+
+def load_daypart_grid_from_db(conn) -> dict[str, str]:
+    """hour(str) → clock code from daypart_clocks."""
+    out: dict[str, str] = {}
+    rows = conn.execute(
+        """SELECT d.hour, c.code FROM daypart_clocks d
+           JOIN clocks c ON c.id = d.clock_id ORDER BY d.hour"""
+    ).fetchall()
+    for r in rows:
+        out[str(int(r["hour"]))] = r["code"]
+    if not out:
+        out = {str(h): DEFAULT_HOUR_CLOCK[h] for h in range(24)}
+    return out
+
+
+def clocks_bundle(conn) -> dict[str, Any]:
+    """Full editor payload: clocks, daypart grid, canonical notes."""
+    clocks = load_clocks_from_db(conn)
+    return {
+        "clocks": clocks,
+        "hour_clock": load_daypart_grid_from_db(conn),
+        "dayparts": {k: list(v) for k, v in DAYPART_HOURS.items()},
+        "event_types": list(EVENT_TYPES_EDITABLE),
+        "timing_modes": list(TIMING_MODES),
+        "chain_modes": list(CHAIN_MODES),
+        "notes": [
+            "Edits save to SQLite clock_slots; mirrored to data/clocks.json.",
+            "generate-log / generate-hour expands the saved clock — AI never picks live.",
+            "ETM / HIT / HARD slots are hard markers; FLOAT content fills toward them.",
+            "MANUAL Living Log rows survive regenerate unless --force.",
+        ],
+    }
+
+
+def _normalize_slot_payload(raw: dict, position: int) -> dict[str, Any]:
+    et = str(raw.get("event_type") or "MUSIC").strip().upper()
+    if et in ("VT", "VOICE TRACK"):
+        et = "VOICE_TRACK"
+    if et not in EVENT_TYPES_EDITABLE:
+        et = "MUSIC"
+    timing = str(raw.get("timing_mode") or "FLOAT").strip().upper()
+    if timing not in TIMING_MODES:
+        timing = "FLOAT"
+    chain = str(raw.get("chain_mode") or "AUTO").strip().upper()
+    if chain not in CHAIN_MODES:
+        chain = "AUTO"
+    cat = raw.get("category_code")
+    if cat is not None:
+        cat = str(cat).strip() or None
+    offset = raw.get("offset_sec")
+    if offset is not None and offset != "":
+        try:
+            offset = int(offset)
+        except (TypeError, ValueError):
+            offset = None
+    else:
+        offset = None
+    dur = raw.get("duration_sec")
+    if dur is not None and dur != "":
+        try:
+            dur = int(dur)
+        except (TypeError, ValueError):
+            dur = None
+    else:
+        dur = None
+    label = str(raw.get("label") or "").strip()
+    # ETM defaults
+    if et == "ETM":
+        timing = "HIT"
+        if not label:
+            label = "ETM / stopset window"
+    if et == "VOICE_TRACK" and not cat:
+        cat = "VT"
+    return {
+        "position": int(position),
+        "event_type": et,
+        "category_code": cat,
+        "timing_mode": timing,
+        "chain_mode": chain,
+        "label": label,
+        "offset_sec": offset,
+        "duration_sec": dur,
+    }
+
+
+def save_clock_slots(
+    conn,
+    code: str,
+    slots: list[dict],
+    *,
+    name: Optional[str] = None,
+    description: Optional[str] = None,
+) -> dict[str, Any]:
+    """Replace clock_slots for an existing clock code. Returns saved clock dict."""
+    row = conn.execute("SELECT * FROM clocks WHERE code = ?", (code,)).fetchone()
+    if not row:
+        raise KeyError(f"Unknown clock code: {code}")
+    clock_id = int(row["id"])
+    if name is not None:
+        conn.execute("UPDATE clocks SET name=? WHERE id=?", (str(name), clock_id))
+    if description is not None:
+        conn.execute(
+            "UPDATE clocks SET description=? WHERE id=?", (str(description), clock_id)
+        )
+
+    normalized = [_normalize_slot_payload(s, i) for i, s in enumerate(slots or [])]
+    conn.execute("DELETE FROM clock_slots WHERE clock_id = ?", (clock_id,))
+    for s in normalized:
+        conn.execute(
+            """INSERT INTO clock_slots
+               (clock_id, position, event_type, category_code, timing_mode,
+                chain_mode, label, offset_sec, duration_sec)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
+            (
+                clock_id,
+                s["position"],
+                s["event_type"],
+                s["category_code"],
+                s["timing_mode"],
+                s["chain_mode"],
+                s["label"],
+                s["offset_sec"],
+                s["duration_sec"],
+            ),
+        )
+    saved = load_clocks_from_db(conn)
+    for c in saved:
+        if c["code"] == code:
+            return c
+    raise RuntimeError("save_clock_slots: clock missing after write")
+
+
+def save_daypart_grid(conn, hour_clock: dict) -> dict[str, str]:
+    """Update daypart_clocks from {hour: code} mapping."""
+    code_ids: dict[str, int] = {}
+    for row in conn.execute("SELECT id, code FROM clocks").fetchall():
+        code_ids[row["code"]] = int(row["id"])
+    conn.execute("DELETE FROM daypart_clocks")
+    for h in range(24):
+        code = None
+        if hour_clock:
+            code = hour_clock.get(str(h), hour_clock.get(h))
+        if not code:
+            code = DEFAULT_HOUR_CLOCK.get(h, "GENERAL")
+        clock_id = code_ids.get(str(code), code_ids.get("GENERAL"))
+        if clock_id is None:
+            continue
+        conn.execute(
+            "INSERT INTO daypart_clocks (hour, clock_id, day_mask) VALUES (?, ?, 127)",
+            (h, clock_id),
+        )
+    return load_daypart_grid_from_db(conn)
+
+
+def export_clocks_json(conn, path: Optional[Any] = None) -> Any:
+    """Write clocks bundle to data/clocks.json (or path). Returns Path."""
+    from pathlib import Path
+
+    from mq_radio.config import DATA_DIR
+
+    target = Path(path) if path is not None else DATA_DIR / "clocks.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    bundle = clocks_bundle(conn)
+    bundle["exported_at"] = __import__("datetime").datetime.now(
+        __import__("datetime").timezone.utc
+    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    target.write_text(
+        __import__("json").dumps(bundle, indent=2), encoding="utf-8"
+    )
+    return target
+
+
+def reset_clock_to_canonical(conn, code: str) -> dict[str, Any]:
+    """Restore one clock's slots from CANONICAL_CLOCKS (editor Reset)."""
+    clock = get_clock_def(code)
+    row = conn.execute("SELECT id FROM clocks WHERE code = ?", (code,)).fetchone()
+    if not row:
+        ensure_canonical_clocks(conn, reset=True)
+        row = conn.execute("SELECT id FROM clocks WHERE code = ?", (code,)).fetchone()
+    clock_id = int(row["id"])
+    conn.execute(
+        """UPDATE clocks SET name=?, description=?, duration_sec=? WHERE id=?""",
+        (clock.name, clock.description, clock.duration_sec, clock_id),
+    )
+    conn.execute("DELETE FROM clock_slots WHERE clock_id = ?", (clock_id,))
+    for s in clock.slots:
+        conn.execute(
+            """INSERT INTO clock_slots
+               (clock_id, position, event_type, category_code, timing_mode,
+                chain_mode, label, offset_sec, duration_sec)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
+            (
+                clock_id,
+                s.position,
+                s.event_type,
+                s.category_code,
+                s.timing_mode,
+                s.chain_mode,
+                s.label,
+                s.offset_sec,
+                s.duration_sec,
+            ),
+        )
+    for c in load_clocks_from_db(conn):
+        if c["code"] == code:
+            return c
+    raise RuntimeError("reset_clock_to_canonical failed")
