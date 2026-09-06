@@ -13,6 +13,7 @@ from mq_radio.engine.audio_devices import (
     NATIVE_INSERT_OPTIONS,
     list_audio_devices,
 )
+from mq_radio.engine.audio_router import apply_audio_route_from_settings
 
 SETTINGS_FILE = DATA_DIR / "audio_outputs.json"
 
@@ -95,7 +96,7 @@ def _envelope(
         if opt.get("id") == insert.get("slot"):
             insert = {**insert, "label": opt.get("label") or insert.get("label")}
             break
-    return {
+    envelope = {
         "outputs": outputs,
         "inputs": inputs,
         "insert": insert,
@@ -119,6 +120,18 @@ def _envelope(
         },
         "source": source,
     }
+    # Reflect current router status (do not re-apply on every load — save applies)
+    try:
+        from mq_radio.engine.audio_router import get_audio_router
+
+        envelope["audio_route"] = get_audio_router().status()
+    except Exception:
+        envelope["audio_route"] = {
+            "program": {"device_id": outputs.get("program"), "state": "idle"},
+            "source": catalogue.get("source") or "mock",
+            "active": False,
+        }
+    return envelope
 
 
 def load_audio_outputs(db_dir: Path | None = None) -> dict[str, Any]:
@@ -184,6 +197,20 @@ def save_audio_outputs(payload: dict[str, Any], db_dir: Path | None = None) -> d
     stored = {"outputs": outputs, "inputs": inputs, "insert": insert}
     path.write_text(json.dumps(stored, indent=2) + "\n", encoding="utf-8")
     loaded = load_audio_outputs(db_dir)
+    # Apply CoreAudio / mock router so Program follows selected device
+    try:
+        route = apply_audio_route_from_settings(loaded)
+        loaded = {**loaded, "audio_route": route}
+    except Exception as exc:  # pragma: no cover
+        loaded = {
+            **loaded,
+            "audio_route": {
+                "program": {"device_id": outputs.get("program"), "state": "error"},
+                "active": False,
+                "error": str(exc),
+                "source": loaded.get("device_source") or "mock",
+            },
+        }
     return {"ok": True, **loaded, "path": str(path)}
 
 

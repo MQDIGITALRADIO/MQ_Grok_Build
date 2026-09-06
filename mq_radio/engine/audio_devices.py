@@ -17,8 +17,9 @@ API shape (also embedded in ``/api/settings/audio``)::
       "note": "..."
     }
 
-Real CoreAudio *routing* (opening streams to specific devices) and AU *hosting*
-remain Mac-later / transmission DSP work — this module is enumeration + config only.
+Device *enumeration* for Settings. Opening Program streams is handled by
+``audio_router`` (CoreAudio via sounddevice on Mac; mock on Linux). AU *hosting*
+remains Mac-later / transmission DSP work.
 """
 
 from __future__ import annotations
@@ -479,8 +480,8 @@ def list_audio_devices(*, include_audio_units: bool = True) -> dict[str, Any]:
         "insert_options": insert_options,
         "note": (
             "Real CoreAudio device names from the Mac engine "
-            f"(via {backend}). Routing to these devices and AU hosting "
-            "are still Mac-later / transmission DSP — Settings stores the choice."
+            f"(via {backend}). Program routing applied by audio_router "
+            "(sounddevice streams + browser sink); AU hosting still Mac-later."
         ),
         "backend": backend,
     }

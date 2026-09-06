@@ -309,7 +309,7 @@ No proprietary logos, trademarks, or pixel-perfect clones. Avoid modern SaaS / S
 - Imaging without track metadata uses short-duration → COLD / longer → FADE heuristics
 - UI readout examples: `FADE · 8.0s`, `INTRO 5.2s · FADE · 8.0s`
 
-**Audio outputs (Settings ⚙):** Multi-bus routing — Program/On-Air, Monitor/Cue, Headphones/Talent, Aux, Mix-minus, Stream Encode (or Same as Program), Record Bus. Choices persist to `localStorage` and `data/audio_outputs.json` via `/api/settings/audio`. Device dropdowns load from **`GET /api/audio/devices`**: on macOS the engine enumerates real **CoreAudio** names (`system_profiler`, optional `sounddevice`); on Linux/CI/web it returns the mock studio catalogue (`source: "mock"`). Enum ≠ routing — opening streams to those devices is still Mac-later.
+**Audio outputs (Settings ⚙):** Multi-bus routing — Program/On-Air, Monitor/Cue, Headphones/Talent, Aux, Mix-minus, Stream Encode (or Same as Program), Record Bus. Choices persist to `localStorage` and `data/audio_outputs.json` via `/api/settings/audio`. Device dropdowns load from **`GET /api/audio/devices`**: on macOS the engine enumerates real **CoreAudio** names (`system_profiler`, optional `sounddevice`); on Linux/CI/web it returns the mock studio catalogue (`source: "mock"`). **Routing:** saving Settings applies `audio_router` — on Mac with `sounddevice`, Program (and best-effort Headphones/Aux) open PortAudio/CoreAudio streams; the On-Air Web Audio Program bus also follows the selected Program device via `AudioContext.setSinkId` / label match (Electron). Linux/CI uses a mock router that records the selection in **`audio_route`** on `/api/status` (and `GET /api/audio/route`) without failing. Monitor / Mix-minus / Stream / Record stay config-only this pass.
 
 **Voice renderer (Settings ⚙ / VT Studio):** Default **Vocloner** (`voice_renderer: vocloner` in `data/vocloner.json` + `localStorage`). Preferred model/voice notes field; **Render in Vocloner** copies script → opens https://vocloner.com/.
 
@@ -362,7 +362,7 @@ Matt’s release bar: next DMG must meet **broadcast-ready specs**, not a thin s
 - **Program AU insert slot** stub: `(none) / Native only` persisted; empty slot → native chain is main output
 
 ### Still mock / deferred (called out, not fake-ready)
-- **Device enumeration**: `GET /api/audio/devices` — CoreAudio on macOS, mock on Linux/web (wired into Settings)
+- **Device enumeration + Program routing**: `GET /api/audio/devices` + `audio_router` / `audio_route` on status — CoreAudio streams on Mac (`sounddevice`) + browser sink; mock router on Linux/web. Full multi-bus hardware matrix still partial (Headphones/Aux best-effort; Monitor/Mix-minus/Stream/Record config-only)
 - **AU/AAX hosting**: insert slot + config only — **not** hosting plugins on-air; optional AU remains later Mac *production-bus* feature
 - **True multiband DSP / hardware chain**: browser On-Air graph approximates AGC/EQ/multiband/exciter/limiter so FM vs Digital is audible; Liquidsoap/Mac engine still owns transmission-path processing (handoff stub exported under `packaging/liquidsoap/`)
 - **Hotkey engine inject on real Liquidsoap**: MockEngine inject works now; Liquidsoap telnet/harbor inject remains later

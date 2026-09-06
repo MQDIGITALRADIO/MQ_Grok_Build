@@ -1144,11 +1144,19 @@ function saveAudioRoutes(bundle) {
     insert: bundle.insert || DEFAULT_INSERT,
   };
   localStorage.setItem(SETTINGS_LS_KEY, JSON.stringify(payload));
-  fetch("/api/settings/audio", {
+  return fetch("/api/settings/audio", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
-  }).catch(() => {});
+  })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((data) => {
+      if (data && data.audio_route && window.MQProgramAudio && window.MQProgramAudio.applyAudioRoute) {
+        window.MQProgramAudio.applyAudioRoute(data.audio_route).catch(() => {});
+      }
+      return data;
+    })
+    .catch(() => null);
 }
 
 function deviceOptionsHtml(includeSameAsProgram, devices) {

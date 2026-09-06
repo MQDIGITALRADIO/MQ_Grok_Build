@@ -22,6 +22,9 @@
   let currentProc = null;
   let vuRaf = 0;
   let lastVuLevels = { playing: false, left: 0.02, right: 0.02, source: "idle" };
+  let audioRouteState = { sink_label: null, device_id: null, source: null, active: false };
+  let currentSinkId = "";
+
   let rampsState = { profiles: RAMP_DEFAULTS, active_profile: "default", ai_dj_profile: "overnight" };
 
   // Dual decks A/B → per-deck gains → procInput
@@ -31,6 +34,88 @@
   };
   let programDeck = "A";
   let crossfadeTimer = 0;
+
+  function labelsMatch(a, b) {
+    const x = String(a || "").trim().toLowerCase();
+    const y = String(b || "").trim().toLowerCase();
+    if (!x || !y) return false;
+    return x === y || x.includes(y) || y.includes(x);
+  }
+
+  async function resolveOutputSinkId(label) {
+    if (!label || label === "none") return "";
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return "";
+    try {
+      // Prompt once so labels are populated in Chromium/Electron
+      if (navigator.mediaDevices.getUserMedia) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          stream.getTracks().forEach((t) => t.stop());
+        } catch (_) { /* permission optional — labels may still match in Electron */ }
+      }
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const outs = devices.filter((d) => d.kind === "audiooutput");
+      const hit = outs.find((d) => labelsMatch(d.label, label));
+      return hit ? hit.deviceId : "";
+    } catch (_) {
+      return "";
+    }
+  }
+
+  async function applyAudioRoute(route) {
+    route = route || {};
+    const prog = route.program || {};
+    const label = route.sink_label || prog.label || null;
+    const deviceKey = prog.device_id || route.device_id || null;
+    audioRouteState = {
+      sink_label: label,
+      device_id: deviceKey,
+      source: route.source || null,
+      active: !!route.active,
+      backend: route.backend || null,
+      note: route.note || null,
+    };
+    if (!label || deviceKey === "none") {
+      // Reset to default sink when Program is None
+      try {
+        if (ctx && typeof ctx.setSinkId === "function" && currentSinkId) {
+          await ctx.setSinkId("");
+          currentSinkId = "";
+        }
+      } catch (_) {}
+      return audioRouteState;
+    }
+    const sinkId = await resolveOutputSinkId(label);
+    if (!sinkId) {
+      audioRouteState.sink_match = false;
+      return audioRouteState;
+    }
+    ensureCtx();
+    try {
+      if (ctx && typeof ctx.setSinkId === "function") {
+        await ctx.setSinkId(sinkId);
+        currentSinkId = sinkId;
+        audioRouteState.sink_match = true;
+        audioRouteState.sink_id = sinkId;
+      } else {
+        // Fallback: setSinkId on media elements (works when not using MediaElementSource)
+        const els = [decks.A.el, decks.B.el, oneshotEl].filter(Boolean);
+        for (const el of els) {
+          if (typeof el.setSinkId === "function") {
+            try { await el.setSinkId(sinkId); } catch (_) {}
+          }
+        }
+        currentSinkId = sinkId;
+        audioRouteState.sink_match = true;
+        audioRouteState.sink_id = sinkId;
+        audioRouteState.sink_via = "media_element";
+      }
+    } catch (err) {
+      audioRouteState.sink_match = false;
+      audioRouteState.sink_error = String(err && err.message || err);
+    }
+    return audioRouteState;
+  }
 
   function ensureCtx() {
     if (ctx) return ctx;
@@ -443,6 +528,9 @@
     if (!st) return;
     if (st.processing) applyProcessing(st.processing);
     if (st.ramps) setRamps(st.ramps);
+    if (st.audio_route) {
+      try { await applyAudioRoute(st.audio_route); } catch (_) {}
+    }
 
     const onAir = st.now && st.now.status === "ON_AIR" && st.running;
     const active = (st.active_deck || (st.decks && st.decks.active) || programDeck || "A").toUpperCase();
@@ -838,6 +926,7 @@
     ensureCtx,
     resume,
     applyProcessing,
+    applyAudioRoute,
     setRamps,
     playProgram,
     stopProgram,
@@ -852,6 +941,7 @@
     clearDeckPulse,
     auditionTemplate,
     auditionSegue,
+    getAudioRoute() { return Object.assign({}, audioRouteState); },
     get currentProc() { return currentProc; },
     get programDeck() { return programDeck; },
     getDeckState() {

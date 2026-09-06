@@ -331,7 +331,9 @@
         <p class="settings-intro">
           Broadcast-style output routing. Device lists come from
           <code>/api/audio/devices</code> — real <strong>CoreAudio</strong> names on macOS,
-          mock studio names on Linux/CI/web.
+          mock studio names on Linux/CI/web. Saving applies the Program route
+          (Mac CoreAudio stream + browser sink; Linux mock status only).
+          Headphones/Aux best-effort; Monitor/Mix-minus config-only this pass.
         </p>
         <p class="settings-intro" id="audio-device-source" data-source="mock">Devices: …</p>
         <div class="settings-section-title">VOICE RENDERER</div>

@@ -72,6 +72,7 @@ from mq_radio.production.processing import (
 )
 from mq_radio.production.liquidsoap_export import export_processing_handoff, handoff_payload
 from mq_radio.engine.audio_devices import list_audio_devices
+from mq_radio.engine.audio_router import get_audio_router, apply_audio_route_from_settings
 from mq_radio.web.settings_store import (
     load_audio_outputs,
     load_vocloner,
@@ -112,6 +113,25 @@ def _read_json(handler: BaseHTTPRequestHandler, body: bytes) -> dict:
     except (json.JSONDecodeError, UnicodeDecodeError):
         return {}
     return payload if isinstance(payload, dict) else {}
+
+
+def _status_audio_route():
+    """Current Program/Headphones/Aux route status (mock or CoreAudio)."""
+    try:
+        router = get_audio_router()
+        st = router.status()
+        # Lazy-apply from disk once if never applied (desk boot)
+        if st.get("applied_at") is None:
+            settings = load_audio_outputs(DATA_DIR)
+            st = apply_audio_route_from_settings(settings)
+        return st
+    except Exception as exc:  # pragma: no cover
+        return {
+            "program": {"device_id": None, "state": "error"},
+            "source": "mock",
+            "active": False,
+            "error": str(exc),
+        }
 
 
 def _synthetic_vu() -> dict:
@@ -289,7 +309,12 @@ def make_handler(db_path: Path):
                         "stages": proc.get("stages"),
                         "output": proc.get("output"),
                     },
+                    "audio_route": _status_audio_route(),
                 })
+                return
+
+            if path == "/api/audio/route":
+                _json_response(self, _status_audio_route())
                 return
 
             if path == "/api/vu":

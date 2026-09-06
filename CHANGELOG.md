@@ -6,14 +6,15 @@ Lean build log for Matt. SHAs are on `main` (`MQDIGITALRADIO/MQ_Grok_Build`).
 
 | SHA | Theme |
 |-----|--------|
-| *(this commit)* | Real Mac CoreAudio device enum bridge + Settings wire-up |
+| *(this commit)* | Program CoreAudio / mock audio output router + `/api/status` `audio_route` |
+| `3464662` | Real Mac CoreAudio device enum bridge + Settings wire-up |
 
-**CoreAudio device enumeration:** Python engine lists real input/output names on macOS via `system_profiler SPAudioDataType` (optional `sounddevice` if installed). Linux/CI/web keep mock catalogue. API: `GET /api/audio/devices` → `{source: "coreaudio"|"mock", devices, input_devices, insert_options, …}`; Settings routing dropdowns populate from it. AU insert stays stub (`none` = native); on Mac, `auval -a` may append read-only AU names — hosting still deferred.
+**Audio output routing:** `mq_radio.engine.audio_router` applies Settings device IDs. On macOS with `sounddevice`, opens Program (and best-effort Headphones/Aux) CoreAudio/PortAudio output streams; without it, records the route and the On-Air Web Audio graph uses `AudioContext.setSinkId` / label match. Linux/CI: mock router records selection, never fails. Status: `audio_route: {program, source, active, …}` on `GET /api/status` and `GET /api/audio/route`. Settings save applies the router.
 
 ### Still deferred (not DMG-bar met)
 - **AU/AAX hosting** (insert slot + optional name list only)
 - Transmission-path **DSP** beyond Web Audio approx + Liquidsoap handoff stub
-- Opening CoreAudio streams to selected devices (enum ≠ route)
+- Full multi-bus CoreAudio (Monitor / Mix-minus / Stream / Record remain config-only this pass)
 
 ## Away session 2026-09-06
 
