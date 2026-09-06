@@ -40,6 +40,7 @@ def _empty_slot(slot: int) -> dict[str, Any]:
         "label": "",
         "type": "",
         "target": None,
+        "path": None,
         "macro": None,
         "empty": True,
     }
@@ -58,13 +59,17 @@ def _normalize(items: list[dict]) -> list[dict]:
         typ = (it.get("type") or "").strip().upper()
         if typ == "VOICE_TRACK":
             typ = "VT"
-        empty = not label and not typ and not it.get("target") and not it.get("macro")
+        path_ref = it.get("path") or it.get("file_path") or None
+        if path_ref is not None:
+            path_ref = str(path_ref).strip() or None
+        empty = not label and not typ and not it.get("target") and not path_ref and not it.get("macro")
         row = {
             "slot": s,
             "key": it.get("key") or "",
             "label": label,
             "type": typ,
             "target": it.get("target"),
+            "path": path_ref,  # absolute path for one-shot — plays in place, no library copy
             "macro": it.get("macro"),
             "empty": empty,
         }

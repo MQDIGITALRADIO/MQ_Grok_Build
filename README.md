@@ -240,6 +240,54 @@ No proprietary logos, trademarks, or pixel-perfect clones. Avoid modern SaaS / S
 
 **Voice renderer (Settings ⚙ / VT Studio):** Default **Vocloner** (`voice_renderer: vocloner` in `data/vocloner.json` + `localStorage`). Preferred model/voice notes field; **Render in Vocloner** copies script → opens https://vocloner.com/.
 
+
+
+## On-Air desk — VU, carts, ingest, Segment Editor, VT inbox, processing
+
+**PROGRAM VU:** Stereo LED meter on the top strip. Driven by MockEngine play state (synthetic analyser until a real engine peak bus is wired). Peak-hold readout in dB; greens/ambers/reds like a classic on-air desk.
+
+**Cart decks:** Deck A/B/C titles and artists wrap and scroll — no clipped ellipsis. Hover shows full cart metadata.
+
+**Drag-and-drop ingest:** Drop `.wav` / `.mp3` / `.flac` / `.mp4` on the desk or the DROP AUDIO zone (or Browse…). Files land under `data/library/` and register as library carts (SQLite). MP4 extracts audio via **ffmpeg** (video not kept). FLAC is decoded to WAV when ffmpeg is available. Long concerts/interviews are supported.
+
+**Segment Editor:** Distinct from Segue Editor. Open from the ingest strip → pick a long cart → set IN/OUT (ms) with mark tools → save each slice as its own library cart (`data/segments/`). Uses ffmpeg to cut.
+
+**Import from Downloads / VT inbox:** One-click import of Vocloner (and other) `.mp3`/`.wav`/`.flac`/`.mp4` renders.
+- Mac: defaults to `~/Downloads` when present
+- Linux/web demo: `data/vt-inbox` (override with Settings → VT inbox path, or env `MQ_RADIO_VT_INBOX`)
+- Copies into `data/vt/` + library; optionally attaches audio to the selected VT log event
+
+**On-air processing (native):** Settings → **ON-AIR PROCESSING**. Topology is public broadcast practice — **AGC → EQ → Multiband → Exciter → Peak Limiter** — with **FM** (dense on-air, pre-emphasis) and **Digital** (stream/DAB, ISR-aware) templates. This is **not** an Orban Optimod schematic clone and **not** AU/AAX hosting (optional AU hosting remains a later Mac *production-bus* feature only). Params persist to `data/processing.json`; MockEngine exposes a PROC summary on the status bar for desk trust. Real sample processing lands with Liquidsoap/Mac engine later.
+
+API highlights: `POST /api/library/ingest`, `POST /api/library/segment`, `POST /api/vt/import-inbox`, `GET|POST /api/settings/processing`, `vu` + `processing` on `/api/status`.
+
+
+
+## Broadcast-ready bar (production-desk vs mock)
+
+Matt’s release bar: next DMG must meet **broadcast-ready specs**, not a thin stub ship.
+
+### Production-desk in this build (real, usable)
+- Living Log edit (insert/replace/delete), sample hour, AUTO/ASSIST/LIVE modes
+- Cart decks A/B/C with full title/artist (no clipped ellipsis), timers, end-ramp
+- **PROGRAM VU** stereo LED meter (synthetic levels tied to MockEngine play — analyser UI is real; peak source is mock until engine peak bus)
+- **Drag-drop / Browse ingest** of `.wav` `.mp3` `.flac` `.mp4` → copies into `data/library/` + SQLite carts (ffmpeg for mp4/flac decode)
+- **Segment Editor** — cut long carts into library segments (`data/segments/`); distinct from Segue Editor
+- **VT Studio mic Record** (MediaRecorder) → mark IN/OUT → **Save take to log** (cleaned cut via ffmpeg when available) → optional **Segment Editor** on that take → attach to Living Log VT
+- **Import from Downloads / VT inbox** (Mac `~/Downloads` or `data/vt-inbox` / `MQ_RADIO_VT_INBOX`)
+- **Hotkey / one-shot carts** store **absolute path references** and fire without copying into the library; library ingest only on explicit drop/import
+- **Native on-air processing** templates **FM** + **Digital** (AGC→EQ→Multiband→Exciter→Limiter) persisted in `data/processing.json`
+- **Studio routing matrix**: Program (processed), Monitor, Headphones, Aux 1/2, **Mix-minus ↔ Aux input** (caller/Zoom), Stream, Record — persisted
+- **Program AU insert slot** stub: `(none) / Native only` persisted; empty slot → native chain is main output
+
+### Still mock / deferred (called out, not fake-ready)
+- **Device enumeration**: mock device names in web demo; real CoreAudio on Mac engine later
+- **AU/AAX hosting**: insert slot + config only — **not** hosting plugins on-air; optional AU remains later Mac *production-bus* feature
+- **Actual DSP DSP apply**: processing params + templates are desk-complete; sample processing application awaits Liquidsoap/Mac engine
+- **VU peak source**: desk meter is production-grade UI; levels are synthetic from play session until engine wires real peaks
+- **Hotkey path on pure web**: browsers hide absolute paths — Electron/desktop provides `File.path`; web UI asks operator to paste path
+- **One-shot audio playback**: fire API resolves path/track and reports; MockEngine does not yet stream arbitrary hotkey files to speakers
+
 ## Mac install (DMG)
 
 ### One-time: enable the DMG builder (needs workflow file on GitHub)

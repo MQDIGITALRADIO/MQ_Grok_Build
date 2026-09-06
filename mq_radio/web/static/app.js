@@ -16,11 +16,37 @@ const MOCK_AUDIO_DEVICES = [
   { id: "usb", label: "USB Interface" },
   { id: "aggregate", label: "Aggregate Device" },
   { id: "blackhole", label: "BlackHole 2ch" },
+  { id: "zoom_virtual", label: "ZoomAudioDevice (mock)" },
+  { id: "phone_hybrid", label: "Phone Hybrid (mock)" },
   { id: "none", label: "None" },
 ];
 
-const AUDIO_ROLES = ["program", "monitor", "headphones", "stream", "record"];
-const SETTINGS_LS_KEY = "mq_radio_audio_outputs_v1";
+const MOCK_INPUT_DEVICES = [
+  { id: "none", label: "None" },
+  { id: "usb_in", label: "USB Interface In" },
+  { id: "builtin_in", label: "Built-in Mic / Line" },
+  { id: "zoom_return", label: "Zoom Return (mock)" },
+  { id: "phone_return", label: "Phone Hybrid Return (mock)" },
+  { id: "aggregate_in", label: "Aggregate Input" },
+];
+
+const INSERT_OPTIONS = [
+  { id: "none", label: "(none) — Native processing" },
+  { id: "native_only", label: "Native only (force MQ chain)" },
+];
+
+const AUDIO_ROLES = [
+  "program",
+  "monitor",
+  "headphones",
+  "aux1",
+  "aux2",
+  "mix_minus",
+  "stream",
+  "record",
+];
+const AUDIO_INPUT_ROLES = ["aux_in", "mic"];
+const SETTINGS_LS_KEY = "mq_radio_audio_outputs_v2";
 const VOCLONER_LS_KEY = "mq_radio_vocloner_v1";
 const VOCLONER_URL = "https://vocloner.com/";
 
@@ -28,8 +54,22 @@ const DEFAULT_AUDIO_ROUTES = {
   program: "builtin",
   monitor: "builtin",
   headphones: "usb",
+  aux1: "none",
+  aux2: "none",
+  mix_minus: "usb",
   stream: "same_as_program",
   record: "none",
+};
+
+const DEFAULT_AUDIO_INPUTS = {
+  aux_in: "none",
+  mic: "none",
+};
+
+const DEFAULT_INSERT = {
+  slot: "none",
+  mode: "native_when_empty",
+  label: "(none) — Native processing",
 };
 
 const DEFAULT_VOCLONER = {
@@ -190,8 +230,10 @@ function fillDeck(prefix, event, stateClass, stateText) {
   const tl = typeLabel(event.event_type);
   typeEl.textContent = tl;
   typeEl.className = `deck-type tag-${event.event_type} tag-${tl}`;
-  titleEl.textContent = event.title || event.event_type || "—";
+  titleEl.textContent = event.title || "—";
+  titleEl.title = event.title || "";
   artistEl.textContent = event.artist || "—";
+  artistEl.title = [event.artist, event.title, fmtDur(event.duration_ms)].filter(Boolean).join(" — ");
   chainEl.textContent = `${event.chain_mode || "—"}/${event.timing_mode || "—"}`;
   durEl.textContent = fmtDur(event.duration_ms);
   meterEl.className = stateClass === "onair" ? "meter-bar progressing" : "meter-bar idle";
@@ -370,6 +412,69 @@ function updateVocalsInPopup(live) {
   popup.classList.toggle("critical", secs <= 2);
 }
 
+
+let lastVu = { left: 0.02, right: 0.02, playing: false };
+
+let vuPeakHold = { left: 0, right: 0, at: 0 };
+
+function _paintVuLeds(containerId, level, peak) {
+  const root = document.getElementById(containerId);
+  if (!root) return;
+  const leds = root.querySelectorAll(".vu-led");
+  const n = leds.length || 20;
+  const lit = Math.round(Math.max(0, Math.min(1, level)) * n);
+  const peakIdx = Math.round(Math.max(0, Math.min(1, peak)) * n) - 1;
+  leds.forEach((el, i) => {
+    el.classList.remove("on", "g", "y", "r", "peak");
+    if (i < lit) {
+      el.classList.add("on");
+      const pct = (i + 1) / n;
+      if (pct >= 0.9) el.classList.add("r");
+      else if (pct >= 0.75) el.classList.add("y");
+      else el.classList.add("g");
+    }
+    if (i === peakIdx && peakIdx >= 0) el.classList.add("peak");
+  });
+}
+
+function applyVu(vu) {
+  if (!vu) return;
+  lastVu = vu;
+  const panel = document.getElementById("vu-panel");
+  const l = Math.max(0, Math.min(1, Number(vu.left) || 0));
+  const r = Math.max(0, Math.min(1, Number(vu.right) || 0));
+  const now = Date.now();
+  if (l >= vuPeakHold.left || now - vuPeakHold.at > 1200) vuPeakHold.left = l;
+  if (r >= vuPeakHold.right || now - vuPeakHold.at > 1200) vuPeakHold.right = r;
+  if (l >= vuPeakHold.left || r >= vuPeakHold.right) vuPeakHold.at = now;
+  // Slow peak fall
+  if (now - vuPeakHold.at > 400) {
+    vuPeakHold.left = Math.max(l, vuPeakHold.left * 0.92);
+    vuPeakHold.right = Math.max(r, vuPeakHold.right * 0.92);
+  }
+  _paintVuLeds("vu-left-leds", vu.playing ? l : 0.02, vu.playing ? vuPeakHold.left : 0);
+  _paintVuLeds("vu-right-leds", vu.playing ? r : 0.02, vu.playing ? vuPeakHold.right : 0);
+  const peakEl = document.getElementById("vu-peak-read");
+  if (peakEl) {
+    const db = (x) => (x <= 0.001 ? "-∞" : `${(20 * Math.log10(x)).toFixed(1)}dB`);
+    peakEl.textContent = vu.playing
+      ? `PK ${db(Math.max(vuPeakHold.left, vuPeakHold.right))}`
+      : "IDLE";
+  }
+  if (panel) panel.classList.toggle("playing", !!vu.playing);
+}
+
+function synthVuLocal(playing) {
+  if (!playing) {
+    return { playing: false, left: 0.02, right: 0.02 };
+  }
+  const t = Date.now() / 1000;
+  const env = 0.55 + 0.35 * Math.sin((timingSnap.progress || 0.5) * Math.PI);
+  const left = Math.min(1, env * (0.72 + 0.28 * Math.sin(t * 9.3)));
+  const right = Math.min(1, env * (0.70 + 0.30 * Math.sin(t * 11.1 + 0.7)));
+  return { playing: true, left, right };
+}
+
 function tickTimers() {
   const live = liveTiming();
   const elapsedEl = document.getElementById("deck-a-elapsed");
@@ -388,6 +493,7 @@ function tickTimers() {
     if (meterEl && meterEl.classList.contains("progressing")) {
       meterEl.style.setProperty("--progress", "0");
     }
+    applyVu(lastStatus && lastStatus.vu ? lastStatus.vu : synthVuLocal(false));
     return;
   }
 
@@ -399,6 +505,13 @@ function tickTimers() {
     meterEl.style.setProperty("--progress", String(live.progress));
   }
   applyEndRamp(deckEl, meterEl, live.remaining_ms);
+  applyVu(lastStatus && lastStatus.vu && lastStatus.vu.playing
+    ? {
+        playing: true,
+        left: synthVuLocal(true).left,
+        right: synthVuLocal(true).right,
+      }
+    : synthVuLocal(true));
 
   // When local timer hits zero, refresh so finish_if_due advances the log
   if (live.remaining_ms <= 0 && timingSnap.duration_ms > 0) {
@@ -424,10 +537,16 @@ async function refresh() {
   fillDeck("deck-c", up[1] || null, "ready", "READY");
 
   syncTimingFromStatus(st);
+  if (st.vu) applyVu(st.vu);
   tickTimers();
 
   document.getElementById("lamp-onair").classList.toggle("lit", !!onAir);
   document.getElementById("lamp-ready").classList.toggle("lit", !!up[0]);
+  const procSt = document.getElementById("proc-status");
+  if (procSt && st.processing) {
+    procSt.textContent = `PROC: ${st.processing.summary || st.processing.template || "—"}`;
+    procSt.title = st.processing.topology || "On-air processing";
+  }
   if (st.running && onAir) {
     document.getElementById("engine-msg").textContent =
       document.getElementById("engine-msg").textContent || "playing";
@@ -624,37 +743,68 @@ async function renderInVocloner(scriptText) {
 function loadAudioRoutes() {
   try {
     const raw = localStorage.getItem(SETTINGS_LS_KEY);
-    if (raw) return { ...DEFAULT_AUDIO_ROUTES, ...JSON.parse(raw) };
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // v2 shape or legacy flat outputs
+      if (parsed.outputs) {
+        return {
+          outputs: { ...DEFAULT_AUDIO_ROUTES, ...parsed.outputs },
+          inputs: { ...DEFAULT_AUDIO_INPUTS, ...(parsed.inputs || {}) },
+          insert: { ...DEFAULT_INSERT, ...(parsed.insert || {}) },
+        };
+      }
+      return {
+        outputs: { ...DEFAULT_AUDIO_ROUTES, ...parsed },
+        inputs: { ...DEFAULT_AUDIO_INPUTS },
+        insert: { ...DEFAULT_INSERT },
+      };
+    }
   } catch (_) {}
-  return { ...DEFAULT_AUDIO_ROUTES };
+  return {
+    outputs: { ...DEFAULT_AUDIO_ROUTES },
+    inputs: { ...DEFAULT_AUDIO_INPUTS },
+    insert: { ...DEFAULT_INSERT },
+  };
 }
 
-function saveAudioRoutes(routes) {
-  localStorage.setItem(SETTINGS_LS_KEY, JSON.stringify(routes));
-  // Also persist to server JSON when available
+function saveAudioRoutes(bundle) {
+  const payload = {
+    outputs: bundle.outputs || bundle,
+    inputs: bundle.inputs || DEFAULT_AUDIO_INPUTS,
+    insert: bundle.insert || DEFAULT_INSERT,
+  };
+  localStorage.setItem(SETTINGS_LS_KEY, JSON.stringify(payload));
   fetch("/api/settings/audio", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(routes),
+    body: JSON.stringify(payload),
   }).catch(() => {});
 }
 
-function deviceOptionsHtml(includeSameAsProgram) {
+function deviceOptionsHtml(includeSameAsProgram, devices) {
+  const list = devices || MOCK_AUDIO_DEVICES;
   const opts = [];
   if (includeSameAsProgram) {
-    opts.push(
-      `<option value="same_as_program">Same as Program</option>`
-    );
+    opts.push(`<option value="same_as_program">Same as Program</option>`);
   }
-  MOCK_AUDIO_DEVICES.forEach((d) => {
+  list.forEach((d) => {
     opts.push(`<option value="${d.id}">${escapeHtml(d.label)}</option>`);
   });
   return opts.join("");
 }
 
-function populateSettingsForm(routes) {
+function outSelectId(role) {
+  if (role === "mix_minus") return "out-mix-minus";
+  return `out-${role}`;
+}
+
+function populateSettingsForm(bundle) {
+  const routes = bundle.outputs || bundle;
+  const inputs = bundle.inputs || DEFAULT_AUDIO_INPUTS;
+  const insert = bundle.insert || DEFAULT_INSERT;
+
   AUDIO_ROLES.forEach((role) => {
-    const sel = document.getElementById(`out-${role}`);
+    const sel = document.getElementById(outSelectId(role));
     if (!sel) return;
     const same = role === "stream" || role === "record";
     sel.innerHTML = deviceOptionsHtml(same);
@@ -662,20 +812,142 @@ function populateSettingsForm(routes) {
     if ([...sel.options].some((o) => o.value === val)) sel.value = val;
     else sel.selectedIndex = 0;
   });
+
+  const inAux = document.getElementById("in-aux");
+  if (inAux) {
+    inAux.innerHTML = deviceOptionsHtml(false, MOCK_INPUT_DEVICES);
+    const v = inputs.aux_in || "none";
+    if ([...inAux.options].some((o) => o.value === v)) inAux.value = v;
+  }
+  const inMic = document.getElementById("in-mic");
+  if (inMic) {
+    inMic.innerHTML = deviceOptionsHtml(false, MOCK_INPUT_DEVICES);
+    const v = inputs.mic || "none";
+    if ([...inMic.options].some((o) => o.value === v)) inMic.value = v;
+  }
+
+  const ins = document.getElementById("prog-insert");
+  if (ins) {
+    ins.innerHTML = INSERT_OPTIONS.map(
+      (o) => `<option value="${o.id}">${escapeHtml(o.label)}</option>`
+    ).join("");
+    ins.value = insert.slot || "none";
+  }
 }
 
 function readSettingsForm() {
-  const routes = {};
+  const outputs = {};
   AUDIO_ROLES.forEach((role) => {
-    const sel = document.getElementById(`out-${role}`);
-    routes[role] = sel ? sel.value : DEFAULT_AUDIO_ROUTES[role];
+    const sel = document.getElementById(outSelectId(role));
+    outputs[role] = sel ? sel.value : DEFAULT_AUDIO_ROUTES[role];
   });
-  return routes;
+  const inputs = {
+    aux_in: document.getElementById("in-aux")?.value || "none",
+    mic: document.getElementById("in-mic")?.value || "none",
+  };
+  const slot = document.getElementById("prog-insert")?.value || "none";
+  const insert = {
+    slot,
+    mode: slot === "native_only" ? "force_native" : "native_when_empty",
+    label: INSERT_OPTIONS.find((o) => o.id === slot)?.label || slot,
+  };
+  return { outputs, inputs, insert };
+}
+
+
+function populateProcessingForm(p) {
+  if (!p) return;
+  const en = document.getElementById("proc-enabled");
+  if (en) en.value = p.enabled === false ? "0" : "1";
+  const tmpl = document.getElementById("proc-template");
+  if (tmpl) tmpl.value = (p.template || "FM").toUpperCase() === "DIGITAL" ? "DIGITAL" : "FM";
+  const st = p.stages || {};
+  const map = [
+    ["proc-agc", "agc"],
+    ["proc-eq", "eq"],
+    ["proc-mb", "multiband"],
+    ["proc-exc", "exciter"],
+    ["proc-lim", "limiter"],
+  ];
+  map.forEach(([id, key]) => {
+    const el = document.getElementById(id);
+    if (el) el.checked = !st[key] || st[key].enabled !== false;
+  });
+  const ceil = document.getElementById("proc-ceiling");
+  if (ceil && st.limiter) ceil.value = st.limiter.ceiling_dbfs ?? -1;
+  const agcT = document.getElementById("proc-agc-target");
+  if (agcT && st.agc) agcT.value = st.agc.target_db ?? -16;
+  const pre = document.getElementById("proc-preemph");
+  if (pre && p.output) {
+    if (!p.output.preemphasis) pre.value = "0";
+    else pre.value = String(p.output.preemphasis_us || 50);
+  }
+  const topo = document.getElementById("proc-topology");
+  if (topo) topo.textContent = p.topology || "AGC → EQ → Multiband → Exciter → Peak Limiter";
+}
+
+function readProcessingForm() {
+  const template = (document.getElementById("proc-template")?.value || "FM").toUpperCase();
+  const pre = document.getElementById("proc-preemph")?.value || "50";
+  return {
+    enabled: document.getElementById("proc-enabled")?.value !== "0",
+    template,
+    output: {
+      path: template,
+      preemphasis: pre !== "0",
+      preemphasis_us: pre === "0" ? 50 : Number(pre),
+    },
+    stages: {
+      agc: {
+        enabled: !!document.getElementById("proc-agc")?.checked,
+        target_db: Number(document.getElementById("proc-agc-target")?.value || -16),
+      },
+      eq: { enabled: !!document.getElementById("proc-eq")?.checked },
+      multiband: { enabled: !!document.getElementById("proc-mb")?.checked },
+      exciter: { enabled: !!document.getElementById("proc-exc")?.checked },
+      limiter: {
+        enabled: !!document.getElementById("proc-lim")?.checked,
+        ceiling_dbfs: Number(document.getElementById("proc-ceiling")?.value || -1),
+      },
+    },
+  };
+}
+
+async function loadProcessingSettings() {
+  try {
+    const data = await fetch("/api/settings/processing").then((r) => (r.ok ? r.json() : null));
+    if (data) populateProcessingForm(data);
+    return data;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function applyProcessingTemplate(name) {
+  const res = await fetch("/api/settings/processing", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ apply_template: name, template: name }),
+  }).then((r) => r.json());
+  if (res && res.ok !== false) {
+    populateProcessingForm(res);
+    const st = document.getElementById("proc-status");
+    if (st) st.textContent = `PROC: ${res.summary || name}`;
+    document.getElementById("engine-msg").textContent = `Loaded ${name} processing template`;
+  }
 }
 
 function openSettings() {
   populateSettingsForm(loadAudioRoutes());
   populateVoclonerForm(loadVoclonerSettings());
+  loadProcessingSettings();
+  fetch("/api/settings/vt-inbox")
+    .then((r) => (r.ok ? r.json() : null))
+    .then((data) => {
+      const el = document.getElementById("vt-inbox-path");
+      if (el && data && data.path) el.value = data.path;
+    })
+    .catch(() => {});
   const bd = document.getElementById("settings-backdrop");
   bd.classList.add("open");
   bd.setAttribute("aria-hidden", "false");
@@ -691,13 +963,36 @@ function initSettings() {
   document.getElementById("btn-settings").onclick = openSettings;
   document.getElementById("btn-settings-close").onclick = closeSettings;
   document.getElementById("btn-settings-cancel").onclick = closeSettings;
-  document.getElementById("btn-settings-save").onclick = () => {
+  document.getElementById("btn-settings-save").onclick = async () => {
     const routes = readSettingsForm();
     saveAudioRoutes(routes);
     const voc = saveVoclonerSettings(readVoclonerForm());
     populateVoclonerForm(voc);
+    const inboxEl = document.getElementById("vt-inbox-path");
+    if (inboxEl && inboxEl.value.trim()) {
+      try {
+        await fetch("/api/settings/vt-inbox", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: inboxEl.value.trim() }),
+        });
+      } catch (e) { /* ignore */ }
+    }
+    try {
+      const procPayload = readProcessingForm();
+      const savedProc = await fetch("/api/settings/processing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(procPayload),
+      }).then((r) => r.json());
+      if (savedProc) {
+        populateProcessingForm(savedProc);
+        const st = document.getElementById("proc-status");
+        if (st) st.textContent = `PROC: ${savedProc.summary || savedProc.template || "FM"}`;
+      }
+    } catch (e) { /* ignore */ }
     document.getElementById("engine-msg").textContent =
-      "Settings saved (audio + Vocloner)";
+      "Settings saved (audio + Vocloner + VT inbox + processing)";
     closeSettings();
   };
   document.getElementById("settings-backdrop").addEventListener("click", (ev) => {
@@ -708,7 +1003,12 @@ function initSettings() {
     .then((r) => (r.ok ? r.json() : null))
     .then((data) => {
       if (data && data.outputs) {
-        const merged = { ...loadAudioRoutes(), ...data.outputs };
+        const cur = loadAudioRoutes();
+        const merged = {
+          outputs: { ...cur.outputs, ...data.outputs },
+          inputs: { ...cur.inputs, ...(data.inputs || {}) },
+          insert: { ...cur.insert, ...(data.insert || {}) },
+        };
         localStorage.setItem(SETTINGS_LS_KEY, JSON.stringify(merged));
       }
     })
@@ -724,6 +1024,9 @@ function initSettings() {
       }
     })
     .catch(() => {});
+  document.getElementById("btn-proc-fm")?.addEventListener("click", () => applyProcessingTemplate("FM"));
+  document.getElementById("btn-proc-digital")?.addEventListener("click", () => applyProcessingTemplate("DIGITAL"));
+  loadProcessingSettings();
 }
 
 document.getElementById("log-date").value = todayISO();
@@ -748,7 +1051,7 @@ document.addEventListener("keydown", (ev) => {
       closeVtStudio();
       return;
     }
-    for (const id of ["lib-backdrop", "segue-backdrop", "hk-edit-backdrop", "settings-backdrop"]) {
+    for (const id of ["lib-backdrop", "segue-backdrop", "segment-backdrop", "hk-edit-backdrop", "settings-backdrop"]) {
       const el = document.getElementById(id);
       if (el && el.classList.contains("open")) {
         el.classList.remove("open");

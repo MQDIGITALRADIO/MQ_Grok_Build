@@ -13,6 +13,8 @@
   let recordedBlob = null;
   let recordedUrl = null;
   let waveData = [];
+  let lastVtTakeTrackId = null;
+  let lastVtTakeEventId = null;
 
   function dateVal() {
     const el = document.getElementById("log-date");
@@ -330,8 +332,63 @@
         script_text: script,
       }),
     }).then((r) => r.json());
-    msg(res.ok ? `Saved VT audio → ${res.audio_path}` : res.error || "Save failed");
-    if (res.ok) await refresh();
+    if (res.ok) {
+      lastVtTakeTrackId = res.track_id || null;
+      lastVtTakeEventId = eventId;
+      const cleaned = res.cleaned ? " · cleaned cut" : "";
+      const cart = res.track_id ? ` · cart #${res.track_id}` : "";
+      msg(`Saved VT take → ${res.audio_path}${cleaned}${cart}`);
+      document.getElementById("vt-record-status").textContent =
+        `Saved${cleaned || ""} — ready for Segment Editor`;
+      await refresh();
+    } else {
+      msg(res.error || "Save failed");
+    }
+  }
+
+  /** Record → Segment Editor on this take (manual announcer path). */
+  async function openSegmentEditorForVtTake() {
+    let eventId = window.mqVtEventId || window.mqSelectedEventId;
+    // Ensure take is saved first so we have a library cart to segment
+    if (recordedBlob && !lastVtTakeTrackId) {
+      msg("Saving take before Segment Editor…");
+      await saveRecording();
+    }
+    if (!lastVtTakeTrackId) {
+      // Fall back: open Segment Editor filtered to VOICE_TRACK
+      openSegmentEditor();
+      const search = document.getElementById("seg-track-search");
+      if (search) {
+        search.value = "VOICE_TRACK";
+        loadSegLibrary("VOICE_TRACK");
+      }
+      msg("Pick your VT take in Segment Editor (save a take first for auto-select)");
+      return;
+    }
+    openSegmentEditor();
+    // Pre-select the take cart
+    const data = await fetch(`/api/library/track?id=${lastVtTakeTrackId}`).then((r) => r.json());
+    if (data && data.ok && data.track) {
+      const t = data.track;
+      segSelected = t;
+      document.getElementById("seg-selected").textContent =
+        `VT TAKE #${t.id} ${t.artist} — ${t.title} (${fmtDur(t.duration_ms)})`;
+      const tin = Number(document.getElementById("vt-trim-in")?.value || 0);
+      const tout = document.getElementById("vt-trim-out")?.value;
+      document.getElementById("seg-in-ms").value = String(tin);
+      document.getElementById("seg-out-ms").value = String(
+        tout !== "" && tout != null ? Number(tout) : t.duration_ms || 0
+      );
+      document.getElementById("seg-title").value = (document.getElementById("vt-script")?.value || t.title || "Voice Track").slice(0, 80);
+      document.getElementById("seg-artist").value = t.artist || "Announcer";
+      const et = document.getElementById("seg-event-type");
+      if (et) et.value = "VOICE_TRACK";
+      if (typeof updateSegLen === "function") updateSegLen();
+      document.getElementById("seg-msg").textContent =
+        "VT take loaded — adjust IN/OUT, then Save segment cart (attaches to log VT).";
+    }
+    // Also list library with this track highlighted via search
+    loadSegLibrary(String(lastVtTakeTrackId));
   }
 
   /* —— Segue Editor —— */
@@ -489,7 +546,7 @@
     else renderHotkeyBank();
   };
 
-  function fireHotkeySlot(item, btn) {
+  async function fireHotkeySlot(item, btn) {
     if (item.empty) {
       msg(`Hotkey slot ${item.slot + 1} empty`);
       return;
@@ -498,7 +555,21 @@
       btn.classList.add("fired");
       setTimeout(() => btn.classList.remove("fired"), 180);
     }
-    msg(`HOTKEY ${item.key || "#" + (item.slot + 1)}: ${item.label} [${item.type}]`);
+    try {
+      const res = await fetch("/api/hotkey/fire", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label: item.label,
+          type: item.type,
+          target: item.target,
+          path: item.path || null,
+        }),
+      }).then((r) => r.json());
+      msg(res.message || `HOTKEY ${item.key || "#" + (item.slot + 1)}: ${item.label}`);
+    } catch (e) {
+      msg(`HOTKEY ${item.key || "#" + (item.slot + 1)}: ${item.label} [${item.type}]`);
+    }
   }
 
   function swapHotkeys(a, b) {
@@ -537,6 +608,8 @@
     document.getElementById("hk-edit-label").value = item.label || "";
     document.getElementById("hk-edit-type").value = item.type || "";
     document.getElementById("hk-edit-target").value = item.target || "";
+    const pathEl = document.getElementById("hk-edit-path");
+    if (pathEl) pathEl.value = item.path || "";
     document.getElementById("hk-edit-macro").value = item.macro || "";
     const bd = document.getElementById("hk-edit-backdrop");
     bd.classList.add("open");
@@ -555,8 +628,9 @@
     const label = document.getElementById("hk-edit-label").value.trim();
     const type = document.getElementById("hk-edit-type").value;
     const target = document.getElementById("hk-edit-target").value.trim() || null;
+    const pathRef = document.getElementById("hk-edit-path")?.value.trim() || null;
     const macro = document.getElementById("hk-edit-macro").value.trim() || null;
-    const empty = !label && !type && !target && !macro;
+    const empty = !label && !type && !target && !pathRef && !macro;
     const key = hkEditSlot < 12 ? `F${hkEditSlot + 1}` : "";
     hotkeysState.hotkeys[hkEditSlot] = {
       slot: hkEditSlot,
@@ -564,6 +638,7 @@
       label,
       type,
       target,
+      path: pathRef, // one-shot absolute path — no library ingest
       macro,
       empty,
     };
@@ -576,6 +651,8 @@
     document.getElementById("hk-edit-label").value = "";
     document.getElementById("hk-edit-type").value = "";
     document.getElementById("hk-edit-target").value = "";
+    const hp = document.getElementById("hk-edit-path");
+    if (hp) hp.value = "";
     document.getElementById("hk-edit-macro").value = "";
   }
 
@@ -586,6 +663,259 @@
     swapHotkeys(hkEditSlot, to);
     hkEditSlot = to;
     document.getElementById("hk-edit-slot").textContent = String(to);
+  }
+
+
+  /* —— Library ingest (drag-drop wav/mp3/flac/mp4) —— */
+  const INGEST_EXTS = new Set([".wav", ".mp3", ".flac", ".mp4", ".m4a", ".ogg", ".aac", ".mov", ".mkv", ".webm"]);
+  let segSelected = null;
+
+  function ingestStatus(t) {
+    const el = document.getElementById("ingest-status");
+    if (el) el.textContent = t || "";
+    msg(t || "");
+  }
+
+  function fileExt(name) {
+    const i = String(name || "").lastIndexOf(".");
+    return i >= 0 ? String(name).slice(i).toLowerCase() : "";
+  }
+
+  async function ingestFileBlob(file) {
+    const ext = fileExt(file.name);
+    if (!INGEST_EXTS.has(ext)) {
+      return { ok: false, error: `unsupported ${ext || "type"} — use wav/mp3/flac/mp4` };
+    }
+    const fd = new FormData();
+    fd.append("file", file, file.name);
+    fd.append("title", file.name.replace(/\.[^.]+$/, ""));
+    fd.append("artist", "Imported");
+    // Long concerts / interviews stay MUSIC; VT-ish names → VOICE_TRACK
+    const lower = file.name.toLowerCase();
+    const et =
+      /vocloner|voice.?track|\bvt[_-]|\bvt\b/.test(lower) ? "VOICE_TRACK" : "MUSIC";
+    fd.append("event_type", et);
+    const res = await fetch("/api/library/ingest", { method: "POST", body: fd }).then((r) => r.json());
+    return res;
+  }
+
+  async function ingestFiles(fileList) {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    ingestStatus(`Ingesting ${files.length} file(s)…`);
+    let ok = 0;
+    const errors = [];
+    for (const f of files) {
+      try {
+        const res = await ingestFileBlob(f);
+        if (res && res.ok) ok += 1;
+        else errors.push((res && res.error) || f.name);
+      } catch (e) {
+        errors.push(String(e));
+      }
+    }
+    ingestStatus(
+      errors.length
+        ? `Ingested ${ok}; errors: ${errors.slice(0, 2).join("; ")}`
+        : `Ingested ${ok} cart(s) into library`
+    );
+    await refresh();
+  }
+
+  function wireDropZone() {
+    const zone = document.getElementById("drop-zone");
+    const overlay = document.getElementById("desk-drop-overlay");
+    const desk = document.getElementById("desk-root") || document.querySelector(".desk");
+    const input = document.getElementById("ingest-file-input");
+    const browse = document.getElementById("btn-ingest-browse");
+
+    function showOverlay(on) {
+      if (!overlay) return;
+      if (on) overlay.hidden = false;
+      else overlay.hidden = true;
+    }
+
+    function hasFiles(ev) {
+      const dt = ev.dataTransfer;
+      if (!dt) return false;
+      if (dt.types && Array.from(dt.types).includes("Files")) return true;
+      return dt.files && dt.files.length > 0;
+    }
+
+    if (browse && input) {
+      browse.onclick = () => input.click();
+      input.onchange = () => {
+        ingestFiles(input.files);
+        input.value = "";
+      };
+    }
+
+    let dragDepth = 0;
+    const targets = [desk, zone].filter(Boolean);
+    targets.forEach((el) => {
+      el.addEventListener("dragenter", (ev) => {
+        if (!hasFiles(ev)) return;
+        ev.preventDefault();
+        dragDepth += 1;
+        showOverlay(true);
+        zone && zone.classList.add("dragover");
+      });
+      el.addEventListener("dragover", (ev) => {
+        if (!hasFiles(ev)) return;
+        ev.preventDefault();
+        ev.dataTransfer.dropEffect = "copy";
+        zone && zone.classList.add("dragover");
+      });
+      el.addEventListener("dragleave", (ev) => {
+        dragDepth = Math.max(0, dragDepth - 1);
+        if (dragDepth === 0) {
+          showOverlay(false);
+          zone && zone.classList.remove("dragover");
+        }
+      });
+      el.addEventListener("drop", (ev) => {
+        if (!hasFiles(ev)) return;
+        ev.preventDefault();
+        dragDepth = 0;
+        showOverlay(false);
+        zone && zone.classList.remove("dragover");
+        ingestFiles(ev.dataTransfer.files);
+      });
+    });
+  }
+
+  /* —— Segment Editor —— */
+
+  function updateSegLen() {
+    const a = Number(document.getElementById("seg-in-ms")?.value || 0);
+    const b = Number(document.getElementById("seg-out-ms")?.value || 0);
+    const el = document.getElementById("seg-len");
+    if (el) el.textContent = `LEN ${fmtDur(Math.max(0, b - a))}`;
+  }
+
+  function openSegmentEditor() {
+    segSelected = null;
+    document.getElementById("seg-selected").textContent = "No source selected";
+    document.getElementById("seg-in-ms").value = "0";
+    document.getElementById("seg-out-ms").value = "0";
+    document.getElementById("seg-title").value = "";
+    document.getElementById("seg-artist").value = "";
+    document.getElementById("seg-msg").textContent = "";
+    document.getElementById("seg-track-search").value = "";
+    const bd = document.getElementById("segment-backdrop");
+    bd.classList.add("open");
+    bd.setAttribute("aria-hidden", "false");
+    loadSegLibrary("");
+  }
+
+  function closeSegmentEditor() {
+    const bd = document.getElementById("segment-backdrop");
+    bd.classList.remove("open");
+    bd.setAttribute("aria-hidden", "true");
+  }
+
+  async function loadSegLibrary(q) {
+    const data = await fetch(`/api/library?q=${encodeURIComponent(q || "")}`).then((r) => r.json());
+    const list = document.getElementById("seg-track-list");
+    list.innerHTML = "";
+    (data.tracks || []).forEach((t) => {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "lib-item";
+      row.innerHTML = `<span class="lib-cat">${escapeHtml(t.event_type || "")}</span>
+        <span class="lib-main">${escapeHtml(t.artist || "")} — ${escapeHtml(t.title || "")}</span>
+        <span class="lib-dur">${fmtDur(t.duration_ms)}</span>`;
+      row.onclick = () => {
+        list.querySelectorAll(".lib-item.selected").forEach((x) => x.classList.remove("selected"));
+        row.classList.add("selected");
+        segSelected = t;
+        document.getElementById("seg-selected").textContent =
+          `#${t.id} ${t.artist} — ${t.title} (${fmtDur(t.duration_ms)}) · markers ready`;
+        document.getElementById("seg-out-ms").value = String(t.duration_ms || 0);
+        document.getElementById("seg-in-ms").value = "0";
+        document.getElementById("seg-title").value = `${t.title} (part)`;
+        document.getElementById("seg-artist").value = t.artist || "";
+        const et = document.getElementById("seg-event-type");
+        if (et) et.value = t.event_type || "MUSIC";
+        updateSegLen();
+      };
+      list.appendChild(row);
+    });
+    if (!(data.tracks || []).length) {
+      list.innerHTML = `<div class="lib-empty">No tracks — drop audio onto the desk first</div>`;
+    }
+  }
+
+  async function saveSegmentCart() {
+    if (!segSelected) {
+      document.getElementById("seg-msg").textContent = "Select a source cart first";
+      return;
+    }
+    const inMs = Number(document.getElementById("seg-in-ms").value || 0);
+    const outMs = Number(document.getElementById("seg-out-ms").value || 0);
+    const title = document.getElementById("seg-title").value.trim();
+    const artist = document.getElementById("seg-artist").value.trim();
+    document.getElementById("seg-msg").textContent = "Cutting segment (ffmpeg)…";
+    const res = await fetch("/api/library/segment", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        track_id: segSelected.id,
+        in_ms: inMs,
+        out_ms: outMs,
+        title: title || undefined,
+        artist: artist || undefined,
+        event_type: document.getElementById("seg-event-type")?.value || "MUSIC",
+      }),
+    }).then((r) => r.json());
+    if (res.ok) {
+      let attachMsg = "";
+      if (lastVtTakeEventId) {
+        try {
+          const attach = await fetch("/api/vt/attach-cart", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              event_id: lastVtTakeEventId,
+              track_id: res.track_id,
+            }),
+          }).then((r) => r.json());
+          if (attach && attach.ok) {
+            attachMsg = ` · attached to VT event ${lastVtTakeEventId}`;
+          }
+        } catch (e) {
+          attachMsg = "";
+        }
+      }
+      document.getElementById("seg-msg").textContent =
+        `Saved cart #${res.track_id}: ${res.artist} — ${res.title} (${fmtDur(res.duration_ms)})${attachMsg}`;
+      ingestStatus(`Segment cart #${res.track_id} saved${attachMsg}`);
+      await refresh();
+    } else {
+      document.getElementById("seg-msg").textContent = res.error || "Segment save failed";
+    }
+  }
+
+  async function importVtInbox() {
+    const ev = selectedEvent();
+    const attach =
+      ev && (ev.event_type === "VOICE_TRACK" || (ev.title || "").toLowerCase().includes("vt"))
+        ? ev.id
+        : null;
+    ingestStatus("Importing from Downloads / VT inbox…");
+    const res = await fetch("/api/vt/import-inbox", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event_id: attach, move: false }),
+    }).then((r) => r.json());
+    if (!res.ok) {
+      ingestStatus(res.error || "VT inbox import failed");
+      return;
+    }
+    const n = res.count || 0;
+    const att = res.attached && res.attached.ok ? ` · attached to event ${res.attached.log_event_id}` : "";
+    ingestStatus(`Imported ${n} from ${res.inbox || "inbox"}${att}`);
+    await refresh();
   }
 
   /* —— Wire UI —— */
@@ -629,6 +959,7 @@
     }
     document.getElementById("btn-vt-stop-rec")?.addEventListener("click", stopRecord);
     document.getElementById("btn-vt-save-rec")?.addEventListener("click", saveRecording);
+    document.getElementById("btn-vt-segment")?.addEventListener("click", openSegmentEditorForVtTake);
     ["vt-trim-in", "vt-trim-out"].forEach((id) => {
       document.getElementById(id)?.addEventListener("change", () => drawWave(waveData));
     });
@@ -684,6 +1015,83 @@
       const btn = document.querySelectorAll("#hotkey-grid .hotkey")[idx];
       if (item) fireHotkeySlot(item, btn);
     });
+
+
+    // Ingest / Segment / VT inbox
+    wireDropZone();
+    document.getElementById("btn-segment-editor")?.addEventListener("click", openSegmentEditor);
+    document.getElementById("btn-segment-close")?.addEventListener("click", closeSegmentEditor);
+    document.getElementById("btn-segment-cancel")?.addEventListener("click", closeSegmentEditor);
+    document.getElementById("btn-segment-save")?.addEventListener("click", saveSegmentCart);
+    document.getElementById("segment-backdrop")?.addEventListener("click", (ev) => {
+      if (ev.target.id === "segment-backdrop") closeSegmentEditor();
+    });
+    let segSearchTimer = null;
+    document.getElementById("seg-track-search")?.addEventListener("input", (ev) => {
+      clearTimeout(segSearchTimer);
+      segSearchTimer = setTimeout(() => loadSegLibrary(ev.target.value), 200);
+    });
+    document.getElementById("btn-import-vt-inbox")?.addEventListener("click", importVtInbox);
+    // Drop file onto hotkey grid → assign absolute path as-is (NO library copy)
+    const hkGrid = document.getElementById("hotkey-grid");
+    if (hkGrid) {
+      hkGrid.addEventListener("dragover", (ev) => {
+        if (ev.dataTransfer && ev.dataTransfer.types.includes("Files")) {
+          ev.preventDefault();
+          ev.dataTransfer.dropEffect = "link";
+        }
+      });
+      hkGrid.addEventListener("drop", async (ev) => {
+        const files = ev.dataTransfer && ev.dataTransfer.files;
+        if (!files || !files.length) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        const f = files[0];
+        // Browser cannot expose real absolute path for security — store name +
+        // instruct operator to paste full path, OR use webkitRelativePath hint.
+        // Prefer File.path when Electron/desktop provides it.
+        const abs = f.path || f.webkitRelativePath || "";
+        const slot = hotkeysState.page * (hotkeysState.slots_per_page || 16);
+        const item = hotkeysState.hotkeys[slot] || { slot, label: "", type: "", target: null, path: null };
+        item.label = item.label || f.name.replace(/\.[^.]+$/, "");
+        item.type = item.type || "ID";
+        item.path = abs || null; // Electron: real path; browser: null → open edit
+        item.empty = false;
+        hotkeysState.hotkeys[slot] = item;
+        await persistHotkeys();
+        renderHotkeyBank();
+        if (abs) {
+          msg(`Hotkey slot ${slot + 1}: path ref ${abs} (no library copy)`);
+        } else {
+          openHkEdit(slot);
+          const pe = document.getElementById("hk-edit-path");
+          if (pe) pe.placeholder = `Paste full path for ${f.name} (plays in place)`;
+          msg("Paste absolute file path for one-shot hotkey (web cannot see disk path)");
+        }
+      });
+    }
+
+    document.getElementById("seg-in-ms")?.addEventListener("input", updateSegLen);
+    document.getElementById("seg-out-ms")?.addEventListener("input", updateSegLen);
+    document.getElementById("btn-seg-in-here")?.addEventListener("click", () => {
+      document.getElementById("seg-in-ms").value = "0";
+      updateSegLen();
+    });
+    document.getElementById("btn-seg-out-end")?.addEventListener("click", () => {
+      if (segSelected) document.getElementById("seg-out-ms").value = String(segSelected.duration_ms || 0);
+      updateSegLen();
+    });
+    document.getElementById("btn-seg-plus-30")?.addEventListener("click", () => {
+      const el = document.getElementById("seg-out-ms");
+      el.value = String(Number(el.value || 0) + 30000);
+      updateSegLen();
+    });
+    document.getElementById("btn-seg-plus-60")?.addEventListener("click", () => {
+      const el = document.getElementById("seg-out-ms");
+      el.value = String(Number(el.value || 0) + 60000);
+      updateSegLen();
+    });
+
 
     loadHotkeys();
     drawWave([]);

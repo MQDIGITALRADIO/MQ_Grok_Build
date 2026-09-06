@@ -11,6 +11,16 @@ from typing import Optional
 
 from mq_radio.config import DATA_DIR, DB_PATH
 from mq_radio.engine.mock_engine import MockEngine
+from mq_radio.engine.session import SESSION
+from mq_radio.library.ingest import (
+    ffmpeg_available,
+    get_track,
+    import_vt_inbox,
+    ingest_bytes,
+    save_segment_as_cart,
+    save_vt_inbox_path,
+    vt_inbox_dir,
+)
 from mq_radio.living_log.service import (
     delete_event,
     insert_event,
@@ -22,7 +32,7 @@ from mq_radio.living_log.service import (
 )
 from mq_radio.segue.service import get_segue, save_segue, segue_context_for_event
 from mq_radio.voice_tracker.inserter import generate_ai_breaks
-from mq_radio.voice_tracker.recording import save_vt_recording
+from mq_radio.voice_tracker.recording import attach_vt_cart, save_vt_recording
 from mq_radio.voice_tracker.script_generator import daypart_for_hour
 from mq_radio.voice_tracker.service import (
     approve_ai_breaks,
@@ -30,6 +40,12 @@ from mq_radio.voice_tracker.service import (
     script_for_transition,
 )
 from mq_radio.web.hotkeys_store import load_hotkeys, save_hotkeys
+from mq_radio.web.multipart import parse_multipart
+from mq_radio.production.processing import (
+    load_processing,
+    processing_summary,
+    save_processing,
+)
 from mq_radio.web.settings_store import (
     load_audio_outputs,
     load_vocloner,
@@ -67,9 +83,44 @@ def _json_response(handler: BaseHTTPRequestHandler, data, status: int = 200) -> 
 def _read_json(handler: BaseHTTPRequestHandler, body: bytes) -> dict:
     try:
         payload = json.loads(body.decode("utf-8") or "{}")
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, UnicodeDecodeError):
         return {}
     return payload if isinstance(payload, dict) else {}
+
+
+def _synthetic_vu() -> dict:
+    """Classic stereo VU levels driven by MockEngine play session (synthetic analyser)."""
+    import math
+    import time as _time
+
+    with SESSION.lock:
+        running = SESSION.running
+        started = SESSION.started_at
+        dur = SESSION.duration_ms or 0
+        etype = SESSION.event_type or ""
+    if not running or started is None:
+        return {"playing": False, "left": 0.02, "right": 0.02, "peak_left": 0.02, "peak_right": 0.02}
+    elapsed = max(0.0, _time.time() - started)
+    # Pseudo programme energy: mid-cart louder, soft intro/outro
+    progress = (elapsed * 1000 / dur) if dur > 0 else 0.5
+    envelope = 0.55 + 0.35 * math.sin(progress * math.pi)
+    if etype in ("ID", "SWEEPER", "PROMO"):
+        envelope *= 0.85
+    t = _time.time()
+    left = max(0.0, min(1.0, envelope * (0.72 + 0.28 * math.sin(t * 9.3))))
+    right = max(0.0, min(1.0, envelope * (0.70 + 0.30 * math.sin(t * 11.1 + 0.7))))
+    # Occasional transient peaks
+    if math.sin(t * 3.7) > 0.92:
+        left = min(1.0, left * 1.15)
+        right = min(1.0, right * 1.12)
+    return {
+        "playing": True,
+        "left": round(left, 3),
+        "right": round(right, 3),
+        "peak_left": round(min(1.0, left * 1.05), 3),
+        "peak_right": round(min(1.0, right * 1.05), 3),
+    }
+
 
 
 def make_handler(db_path: Path):
@@ -120,9 +171,25 @@ def make_handler(db_path: Path):
                 engine = MockEngine(log_date, db_path=db_path)
                 engine.finish_if_due()
                 data = now_and_upcoming(log_date, db_path=db_path)
-                from mq_radio.engine.session import SESSION
                 timing = SESSION.timing()
-                _json_response(self, {"date": log_date, **data, "timing": timing, "running": SESSION.running})
+                proc = load_processing(DATA_DIR)
+                _json_response(self, {
+                    "date": log_date,
+                    **data,
+                    "timing": timing,
+                    "running": SESSION.running,
+                    "vu": _synthetic_vu(),
+                    "processing": {
+                        "enabled": proc.get("enabled"),
+                        "template": proc.get("template"),
+                        "summary": processing_summary(proc),
+                        "topology": proc.get("topology"),
+                    },
+                })
+                return
+
+            if path == "/api/vu":
+                _json_response(self, _synthetic_vu())
                 return
 
             if path == "/api/log":
@@ -175,6 +242,42 @@ def make_handler(db_path: Path):
                 _json_response(self, {"ok": True, "segue": row})
                 return
 
+            if path == "/api/library/track":
+                try:
+                    tid = int((qs.get("id") or ["0"])[0])
+                except ValueError:
+                    _json_response(self, {"ok": False, "error": "id required"}, status=400)
+                    return
+                row = get_track(tid, db_path=db_path)
+                if not row:
+                    _json_response(self, {"ok": False, "error": "not found"}, status=404)
+                    return
+                _json_response(self, {
+                    "ok": True,
+                    "track": {
+                        "id": int(row["id"]),
+                        "title": row["title"],
+                        "artist": row["artist"],
+                        "duration_ms": int(row["duration_ms"] or 0),
+                        "event_type": row["event_type"] or "MUSIC",
+                        "file_path": row["file_path"] or "",
+                    },
+                })
+                return
+
+            if path == "/api/settings/vt-inbox":
+                inbox = vt_inbox_dir(DATA_DIR)
+                _json_response(self, {
+                    "ok": True,
+                    "path": str(inbox),
+                    "ffmpeg": ffmpeg_available(),
+                })
+                return
+
+            if path == "/api/settings/processing":
+                _json_response(self, load_processing(DATA_DIR))
+                return
+
             self.send_error(404)
 
         def do_POST(self):
@@ -184,13 +287,16 @@ def make_handler(db_path: Path):
             log_date = (qs.get("date") or [date.today().isoformat()])[0]
             length = int(self.headers.get("Content-Length") or 0)
             body = self.rfile.read(length) if length else b""
-            payload = _read_json(self, body)
+            ctype = (self.headers.get("Content-Type") or "").lower()
+            if "multipart/form-data" in ctype:
+                payload = {}
+            else:
+                payload = _read_json(self, body)
 
             if path == "/api/settings/audio":
-                outputs = payload.get("outputs") if isinstance(payload.get("outputs"), dict) else payload
-                if not isinstance(outputs, dict):
-                    outputs = {}
-                _json_response(self, save_audio_outputs(outputs, DATA_DIR))
+                # Full routing matrix: outputs + inputs + AU insert stub
+                body = payload if isinstance(payload, dict) else {}
+                _json_response(self, save_audio_outputs(body, DATA_DIR))
                 return
 
             if path == "/api/settings/vocloner":
@@ -203,6 +309,52 @@ def make_handler(db_path: Path):
                     _json_response(self, {"ok": False, "error": "hotkeys list required"}, status=400)
                     return
                 _json_response(self, save_hotkeys(items, DATA_DIR))
+                return
+
+            if path == "/api/hotkey/fire":
+                # One-shot / hotkey: play from absolute path or track id — NEVER force library copy
+                from pathlib import Path as _P
+                target = payload.get("target")
+                file_path = payload.get("path") or payload.get("file_path")
+                label = payload.get("label") or "Hotkey"
+                resolved = None
+                kind = None
+                if file_path:
+                    p = _P(str(file_path)).expanduser()
+                    resolved = str(p)
+                    kind = "path"
+                    exists = p.is_file()
+                elif target is not None and str(target).isdigit():
+                    row = get_track(int(target), db_path=db_path)
+                    if row:
+                        resolved = row.get("file_path") or ""
+                        kind = "track"
+                        exists = bool(resolved and _P(resolved).is_file())
+                    else:
+                        exists = False
+                elif target and ("/" in str(target) or str(target).startswith("~")):
+                    p = _P(str(target)).expanduser()
+                    resolved = str(p)
+                    kind = "path"
+                    exists = p.is_file()
+                else:
+                    exists = False
+                    resolved = str(target) if target else None
+                    kind = "label"
+                _json_response(self, {
+                    "ok": True,
+                    "fired": True,
+                    "label": label,
+                    "kind": kind,
+                    "path": resolved,
+                    "exists": exists,
+                    "copied_to_library": False,
+                    "message": (
+                        f"ONE-SHOT {label}: {resolved or '(no path)'}"
+                        + (" [missing file]" if resolved and not exists else "")
+                        + " — path reference only, not ingested"
+                    ),
+                })
                 return
 
             if path == "/api/log/delete":
@@ -247,6 +399,21 @@ def make_handler(db_path: Path):
                 hour = int(payload.get("hour") if payload.get("hour") is not None else 12)
                 clear = payload.get("clear_day", True)
                 result = load_sample_hour(d, db_path=db_path, hour=hour, clear_day=bool(clear))
+                _json_response(self, result, status=200 if result.get("ok") else 400)
+                return
+
+            if path == "/api/vt/attach-cart":
+                eid = payload.get("event_id") or payload.get("log_event_id")
+                tid = payload.get("track_id")
+                if eid is None or tid is None:
+                    _json_response(self, {"ok": False, "error": "event_id and track_id required"}, status=400)
+                    return
+                result = attach_vt_cart(
+                    int(eid),
+                    int(tid),
+                    db_path=db_path,
+                    data_dir=DATA_DIR,
+                )
                 _json_response(self, result, status=200 if result.get("ok") else 400)
                 return
 
@@ -310,6 +477,99 @@ def make_handler(db_path: Path):
                     variation=payload.get("variation"),
                 )
                 _json_response(self, result)
+                return
+
+            if path == "/api/settings/processing":
+                _json_response(self, save_processing(payload, DATA_DIR))
+                return
+
+            if path == "/api/settings/vt-inbox":
+                raw_path = payload.get("path") or ""
+                if not raw_path:
+                    _json_response(self, {"ok": False, "error": "path required"}, status=400)
+                    return
+                _json_response(self, save_vt_inbox_path(raw_path, DATA_DIR))
+                return
+
+            if path == "/api/library/ingest":
+                ctype = (self.headers.get("Content-Type") or "").lower()
+                title = payload.get("title")
+                artist = payload.get("artist")
+                event_type = payload.get("event_type") or "MUSIC"
+                if "multipart/form-data" in ctype:
+                    parts = parse_multipart(self.headers.get("Content-Type") or "", body)
+                    file_part = parts.get("file") or parts.get("audio") or parts.get("upload")
+                    if not isinstance(file_part, dict) or not file_part.get("data"):
+                        _json_response(self, {"ok": False, "error": "file field required"}, status=400)
+                        return
+                    title = parts.get("title") or title
+                    artist = parts.get("artist") or artist
+                    event_type = parts.get("event_type") or event_type
+                    result = ingest_bytes(
+                        file_part.get("filename") or "upload.bin",
+                        file_part["data"],
+                        title=title if isinstance(title, str) else None,
+                        artist=artist if isinstance(artist, str) else None,
+                        event_type=str(event_type or "MUSIC"),
+                        db_path=db_path,
+                        data_dir=DATA_DIR,
+                    )
+                else:
+                    import base64
+                    b64 = payload.get("audio_b64") or payload.get("data_b64") or ""
+                    filename = payload.get("filename") or payload.get("name") or "upload.bin"
+                    if not b64:
+                        _json_response(self, {"ok": False, "error": "file or audio_b64 required"}, status=400)
+                        return
+                    raw = b64
+                    if "," in raw and str(raw).strip().startswith("data:"):
+                        raw = str(raw).split(",", 1)[1]
+                    try:
+                        blob = base64.b64decode(raw)
+                    except Exception as exc:
+                        _json_response(self, {"ok": False, "error": f"invalid base64: {exc}"}, status=400)
+                        return
+                    result = ingest_bytes(
+                        filename,
+                        blob,
+                        title=title,
+                        artist=artist,
+                        event_type=str(event_type or "MUSIC"),
+                        db_path=db_path,
+                        data_dir=DATA_DIR,
+                    )
+                _json_response(self, result, status=200 if result.get("ok") else 400)
+                return
+
+            if path == "/api/library/segment":
+                tid = payload.get("track_id")
+                if tid is None:
+                    _json_response(self, {"ok": False, "error": "track_id required"}, status=400)
+                    return
+                result = save_segment_as_cart(
+                    int(tid),
+                    in_ms=int(payload.get("in_ms") or 0),
+                    out_ms=int(payload.get("out_ms") or 0),
+                    title=payload.get("title"),
+                    artist=payload.get("artist"),
+                    event_type=payload.get("event_type") or "MUSIC",
+                    db_path=db_path,
+                    data_dir=DATA_DIR,
+                )
+                _json_response(self, result, status=200 if result.get("ok") else 400)
+                return
+
+            if path == "/api/vt/import-inbox":
+                attach = payload.get("event_id") or payload.get("log_event_id")
+                inbox = payload.get("path") or None
+                result = import_vt_inbox(
+                    db_path=db_path,
+                    data_dir=DATA_DIR,
+                    inbox=Path(inbox) if inbox else None,
+                    attach_event_id=int(attach) if attach is not None else None,
+                    move=bool(payload.get("move")),
+                )
+                _json_response(self, result, status=200 if result.get("ok") else 400)
                 return
 
             engine = MockEngine(log_date, db_path=db_path)
