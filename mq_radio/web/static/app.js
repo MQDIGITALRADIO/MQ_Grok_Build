@@ -2145,8 +2145,56 @@ async function approveAiBreaksUi() {
     method: "POST",
   }).then((r) => r.json());
   document.getElementById("engine-msg").textContent = res.ok
-    ? `Approved ${res.approved} VT draft(s) — next: open VT → Render in Vocloner → drop WAV into library/VT slot`
+    ? `Approved ${res.approved} VT draft(s) — next: Placeholder → Log (playable) or Render in Vocloner → drop WAV`
     : res.error || "Approve failed";
+  await refresh();
+}
+
+async function renderPlaceholderFromLog() {
+  const date = document.getElementById("log-date").value || todayISO();
+  const eid = window.mqVtEventId;
+  document.getElementById("engine-msg").textContent = eid
+    ? `Placeholder render for event ${eid}…`
+    : "Placeholder render for approved VTs…";
+  const body = eid ? { event_id: eid } : { date };
+  const res = await fetch(`/api/vt/render-placeholder?date=${date}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }).then((r) => r.json()).catch((e) => ({ ok: false, error: String(e) }));
+  if (res.ok) {
+    const n = res.rendered != null ? res.rendered : res.skipped ? 0 : 1;
+    const skip = res.skipped ? ` (skipped: ${res.reason || res.skipped})` : "";
+    document.getElementById("engine-msg").textContent =
+      res.message ||
+      `Placeholder → Log: ${n} attached${skip}. Replace with Vocloner WAV when ready.`;
+  } else {
+    document.getElementById("engine-msg").textContent =
+      res.error || "Placeholder render failed — approve drafts first";
+  }
+  await refresh();
+}
+
+async function runPdAssistPathUi() {
+  const date = document.getElementById("log-date").value || todayISO();
+  document.getElementById("engine-msg").textContent =
+    "PD assist path (AI upstairs only): generate → approve → placeholder…";
+  const res = await fetch(`/api/ai-breaks/operator-path?date=${date}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      station_name: "MQ Digital",
+      style: "warm",
+      approve: true,
+      render_placeholders: true,
+    }),
+  }).then((r) => r.json()).catch((e) => ({ ok: false, error: String(e) }));
+  document.getElementById("engine-msg").textContent = res.ok
+    ? res.message ||
+      `PD assist ok — placeholders ${
+        (res.placeholder_render && res.placeholder_render.rendered) || 0
+      }. Vocloner still the real voice.`
+    : res.error || "PD assist path failed";
   await refresh();
 }
 
@@ -2177,17 +2225,23 @@ async function renderVoclonerFromLog() {
 function initVtStudio() {
   const gen = document.getElementById("btn-gen-ai");
   const appr = document.getElementById("btn-approve-ai");
+  const phLog = document.getElementById("btn-render-placeholder");
+  const pd = document.getElementById("btn-pd-assist");
   const renderLog = document.getElementById("btn-render-vocloner");
   if (gen) gen.onclick = generateAiBreaksUi;
   if (appr) appr.onclick = approveAiBreaksUi;
+  if (phLog) phLog.onclick = renderPlaceholderFromLog;
+  if (pd) pd.onclick = runPdAssistPathUi;
   if (renderLog) renderLog.onclick = renderVoclonerFromLog;
   const close = document.getElementById("btn-vt-close");
   const done = document.getElementById("btn-vt-done");
   const ai = document.getElementById("btn-vt-ai");
   const voc = document.getElementById("btn-vt-vocloner");
+  const phStudio = document.getElementById("btn-vt-placeholder");
   if (close) close.onclick = closeVtStudio;
   if (done) done.onclick = closeVtStudio;
   if (ai) ai.onclick = vtGenerateScript;
+  if (phStudio) phStudio.onclick = renderPlaceholderFromLog;
   if (voc) {
     voc.onclick = () =>
       renderInVocloner(document.getElementById("vt-script").value || "");

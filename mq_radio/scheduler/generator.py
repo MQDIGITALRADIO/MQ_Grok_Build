@@ -231,15 +231,32 @@ def _restore_vt_script(conn, new_event_id: int, snap: dict) -> int:
             snap.get("next_artist"),
         ),
     )
-    # Best-effort restore of audio_path if column exists (003 migration)
+    # Best-effort restore of audio/trim columns if present (003 migration)
     try:
-        if snap.get("audio_path"):
-            conn.execute(
-                "UPDATE vt_scripts SET audio_path=? WHERE id=?",
-                (snap["audio_path"], cur.lastrowid),
-            )
+        conn.execute(
+            """UPDATE vt_scripts SET
+                audio_path=COALESCE(?, audio_path),
+                trim_in_ms=COALESCE(?, trim_in_ms),
+                trim_out_ms=COALESCE(?, trim_out_ms),
+                recorded_at=COALESCE(?, recorded_at)
+               WHERE id=?""",
+            (
+                snap.get("audio_path"),
+                snap.get("trim_in_ms"),
+                snap.get("trim_out_ms"),
+                snap.get("recorded_at"),
+                cur.lastrowid,
+            ),
+        )
     except Exception:
-        pass
+        try:
+            if snap.get("audio_path"):
+                conn.execute(
+                    "UPDATE vt_scripts SET audio_path=? WHERE id=?",
+                    (snap["audio_path"], cur.lastrowid),
+                )
+        except Exception:
+            pass
     return int(cur.lastrowid)
 
 
@@ -688,6 +705,18 @@ def generate_log(
            WHERE daily_log_id=? AND event_type='VOICE_TRACK'""",
         (daily_log_id,),
     ).fetchone()["c"]
+    # Hour coverage — operator/CI hardening for deterministic 24h generate
+    hour_rows = conn.execute(
+        """SELECT CAST(substr(scheduled_at, 12, 2) AS INTEGER) AS h, COUNT(*) AS c
+           FROM log_events WHERE daily_log_id=?
+           GROUP BY h ORDER BY h""",
+        (daily_log_id,),
+    ).fetchall()
+    events_per_hour = {int(r["h"]): int(r["c"]) for r in hour_rows if r["h"] is not None}
+    hours_present = sorted(events_per_hour.keys())
+    expected_hours = list(range(24)) if selected is None else list(hours_to_build)
+    missing_hours = [h for h in expected_hours if h not in events_per_hour]
+    empty_hours = [h for h in expected_hours if events_per_hour.get(h, 0) <= 0]
     conn.close()
 
     return {
@@ -700,6 +729,11 @@ def generate_log(
         "ruleset_id": rules_id,
         "hours": hours_to_build,
         "voice_tracks": vt_count,
+        "hours_covered": hours_present,
+        "missing_hours": missing_hours,
+        "empty_hours": empty_hours,
+        "events_per_hour": {str(k): v for k, v in sorted(events_per_hour.items())},
+        "coverage_complete": len(missing_hours) == 0 and len(empty_hours) == 0,
         "constraints": {
             "music_categories": list(constraints.music_categories)
             if constraints.music_categories

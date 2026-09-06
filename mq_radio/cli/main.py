@@ -17,6 +17,11 @@ from mq_radio.music_director.seed import seed_demo
 from mq_radio.scheduler.clocks import OVERNIGHT_HOURS, describe_daypart_grid, list_clock_defs
 from mq_radio.scheduler.generator import GenerateConstraints, generate_hour, generate_log
 from mq_radio.voice_tracker.inserter import generate_ai_breaks
+from mq_radio.voice_tracker.placeholder_render import (
+    render_placeholder_vt,
+    render_placeholders_for_date,
+    run_pd_assist_operator_path,
+)
 from mq_radio.voice_tracker.service import approve_ai_breaks, list_vt
 
 
@@ -124,7 +129,7 @@ def cmd_show_clocks(args: argparse.Namespace) -> int:
     if line:
         print("  " + "  ".join(line))
     print()
-    print("AI never picks MUSIC live. VT placeholders → generate-ai-breaks → approve.")
+    print("AI never picks MUSIC live. VT placeholders → generate-ai-breaks → approve → Vocloner or render-placeholder-vt / pd-assist.")
     print("Clock Editor + Daypart Designer (On-Air CLOCKS) saves DB + data/clocks.json; ETM/HIT get fills.")
     return 0
 
@@ -237,6 +242,43 @@ def cmd_list_vt(args: argparse.Namespace) -> int:
     return 0
 
 
+
+def cmd_render_placeholder(args: argparse.Namespace) -> int:
+    init_db(Path(args.db) if args.db else None)
+    db = Path(args.db) if args.db else None
+    if args.event_id is not None:
+        result = render_placeholder_vt(
+            int(args.event_id), db_path=db, force=bool(args.force)
+        )
+    else:
+        log_date = args.date or date.today().isoformat()
+        result = render_placeholders_for_date(
+            log_date, db_path=db, force=bool(args.force)
+        )
+    print(json.dumps(result, indent=2))
+    return 0 if result.get("ok") else 1
+
+
+def cmd_pd_assist(args: argparse.Namespace) -> int:
+    """Overnight / PD assist: AI scripts → approve → placeholder attach (AI upstairs only)."""
+    init_db(Path(args.db) if args.db else None)
+    log_date = args.date or date.today().isoformat()
+    result = run_pd_assist_operator_path(
+        log_date,
+        db_path=Path(args.db) if args.db else None,
+        station_name=args.station,
+        style=args.style,
+        insert_gaps=not args.no_insert,
+        approve=not args.no_approve,
+        render_placeholders=not args.no_placeholder,
+        force_placeholder=bool(args.force_placeholder),
+        max_per_hour=args.max_per_hour,
+        stride=args.stride,
+    )
+    print(json.dumps(result, indent=2))
+    return 0 if result.get("ok") else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="mq-radio", description="MQ Radio Automation CLI (M2)")
     p.add_argument("--db", default=None, help="SQLite DB path (default: data/mq_radio.db)")
@@ -304,6 +346,30 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--hour", type=int, default=12, help="Hour start 0-23 (default 12)")
     s.add_argument("--no-clear", action="store_true", help="Do not clear existing day events")
     s.set_defaults(func=cmd_load_sample_hour)
+
+    s = sub.add_parser(
+        "render-placeholder-vt",
+        help="Attach PCM placeholder WAV to approved VT(s) on Living Log (not Vocloner voice)",
+    )
+    s.add_argument("--date", default=None, help="YYYY-MM-DD (default: today)")
+    s.add_argument("--event-id", type=int, default=None, help="Single log_event id")
+    s.add_argument("--force", action="store_true", help="Replace existing placeholder audio")
+    s.set_defaults(func=cmd_render_placeholder)
+
+    s = sub.add_parser(
+        "pd-assist",
+        help="PD assist overnight path: generate AI breaks → approve → placeholder attach (AI upstairs only)",
+    )
+    s.add_argument("--date", default=None, help="YYYY-MM-DD (default: today)")
+    s.add_argument("--station", default="MQ Digital")
+    s.add_argument("--style", default="warm")
+    s.add_argument("--no-insert", action="store_true")
+    s.add_argument("--no-approve", action="store_true")
+    s.add_argument("--no-placeholder", action="store_true")
+    s.add_argument("--force-placeholder", action="store_true")
+    s.add_argument("--max-per-hour", type=int, default=2)
+    s.add_argument("--stride", type=int, default=2)
+    s.set_defaults(func=cmd_pd_assist)
 
     s = sub.add_parser("serve", help="Start On-Air web prototype")
     s.add_argument("--host", default="127.0.0.1")

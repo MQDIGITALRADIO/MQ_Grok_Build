@@ -2,6 +2,20 @@
 
 Lean build log for Matt. SHAs are on `main` (`MQDIGITALRADIO/MQ_Grok_Build`).
 
+## Overnight grind 2026-09-06 (AI/PD assist operator path + 24h coverage)
+
+| SHA | Theme |
+|-----|--------|
+| *(this commit)* | Script approve → Vocloner/placeholder → Living Log VT attach; 24h coverage harden |
+
+**PD assist / AI upstairs only:** `placeholder_render` writes honest PCM beds (not Vocloner voice), attaches to APPROVED VT rows on the Living Log (`PLACEHOLDER_RENDER`). Full path: `generate-ai-breaks` → `approve-ai-breaks` → `render-placeholder-vt` / `pd-assist`. APIs: `POST /api/vt/render-placeholder`, `POST /api/ai-breaks/operator-path`. Desk: **Placeholder → Log** + **PD assist path**. Refuses drafts; skips silence; will not overwrite mic/Vocloner takes.
+
+**Scheduler 24h:** `generate_log` returns `hours_covered` / `missing_hours` / `events_per_hour` / `coverage_complete`. Soft regenerate restores VT audio/trim columns; MANUAL placeholder carts survive.
+
+**Acceptance:** P1 AI overnight/PD assist **Partial** (Vocloner external + Mac mic still open). Hard blockers stay Missing: real AU host, live Harbor, CoreAudio PCM, notarization, Mac hear-through/mic. No fake live song picker.
+
+**Tests:** `tests/test_ai_pd_assist_operator_path.py`; full suite green.
+
 ## Desk grind 2026-09-06 (Master Control operator path + AU/Gatekeeper polish)
 
 | SHA | Theme |
@@ -17,8 +31,6 @@ Lean build log for Matt. SHAs are on `main` (`MQDIGITALRADIO/MQ_Grok_Build`).
 **Acceptance:** P2 AU / live Liquidsoap / notarization remain **Missing** (honest matrix update only).
 
 **Tests:** `tests/test_master_control_operator.py`; AU scaffold expansions; full suite green.
-
-Lean build log for Matt. SHAs are on `main` (`MQDIGITALRADIO/MQ_Grok_Build`).
 
 ## Desk grind 2026-09-06 (hotkey fire + VT/segment depth · no Mac audio)
 

@@ -23,7 +23,7 @@ Cross-check vs Maestro / early Zetta / Netia Radio-Assist / mAirList / StationPl
 - [x] Categories + library manager; FILLER pool for ETM/HIT/HARD
 - [x] TO TIME / ETM / HIT fill stretch
 - [ ] Intro / outro / end-pulse markers editable; defaults on ingest
-- [ ] Voice tracking (manual + AI script/approve path); Downloads/VT inbox ingest
+- [ ] Voice tracking (manual + AI script/approve/placeholder→Log path); Downloads/VT inbox ingest — Vocloner real voice still external; Mac mic Partial
 - [x] Multi-bus: Program, Monitor, Headphones, Aux, Mix-minus↔Aux in, Stream, Record
 - [x] Mix-minus Program−Aux subtract when Aux live
 - [x] Native FM / Digital processing templates + transmission mode
@@ -67,6 +67,7 @@ Cross-check vs Maestro / early Zetta / Netia Radio-Assist / mAirList / StationPl
 | P0 VT record / Segment Editor | **Partial** | Deeper API e2e: record→segment(+source markers)→attach→log cart; invalid trim OUT≤IN + empty decode rejected; segment returns source_markers_saved; operator UX trim checks + status polish. **Mac mic device pass stays Partial** |
 | P0 Segue Editor audition + dual-deck | **Partial** | Dual-deck engine crossfade **Done** without Mac audio. Segue context/save e2e + desk audition messaging (browser media / tone fallback). Audition/hear-through still Mac device verify — keep Partial |
 | P1 Decks A/B/C readable | **Partial** | Hybrid cards; ending/timers in |
+| P1 AI overnight / PD assist (script→approve→placeholder→Log) | **Partial** | Operator path Done in code: `generate_ai_breaks` → `approve_ai_breaks` → `render_placeholder_vt` / `pd-assist` + `/api/ai-breaks/operator-path` + `/api/vt/render-placeholder`; Living Log attach + soft-regen preserve. Vocloner remains clipboard/open URL (no API). Mac mic / real Vocloner WAV still verify — keep Partial (do not claim Done) |
 | P1 Cartwall multi-page | **Done** | `set_pages`/`clear_slot`/`move_hotkey` + `/api/hotkeys/{pages,clear,move}`; ui_page persist; color chips; desk `loadHotkeys`/`persistHotkeys` fixed; `tests/test_broadcast_partials_depth.py` |
 | P1 Clocks + daypart packs | **Done** | Clock editor + daypart packs; clone/save/daypart HTTP e2e; generate_hour uses map; `tests/test_daypart_designer.py` + `tests/test_p1_library_clocks_etm_deck.py` |
 | P1 Categories / FILLER | **Done** | Library manager categories HTTP; FL filler pool; pick/insert toward ETM; ingest edges; `tests/test_categories_and_filler_pool.py` + `tests/test_p1_library_clocks_etm_deck.py` |

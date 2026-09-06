@@ -58,6 +58,11 @@ from mq_radio.scheduler.clocks import (
 from mq_radio.scheduler.generator import generate_hour, generate_log
 from mq_radio.segue.service import get_segue, save_segue, segue_context_for_event
 from mq_radio.voice_tracker.inserter import generate_ai_breaks
+from mq_radio.voice_tracker.placeholder_render import (
+    render_placeholder_vt,
+    render_placeholders_for_date,
+    run_pd_assist_operator_path,
+)
 from mq_radio.voice_tracker.recording import attach_vt_cart, save_vt_recording
 from mq_radio.voice_tracker.script_generator import daypart_for_hour
 from mq_radio.voice_tracker.service import (
@@ -1152,6 +1157,57 @@ def make_handler(db_path: Path):
 
             if path == "/api/ai-breaks/approve":
                 result = approve_ai_breaks(log_date, db_path=db_path)
+                status = 200 if result.get("ok") else 400
+                _json_response(self, result, status=status)
+                return
+
+            if path == "/api/vt/render-placeholder":
+                # Placeholder PCM → Living Log attach (Vocloner still real voice path)
+                eid = payload.get("event_id") or payload.get("log_event_id")
+                force = bool(payload.get("force"))
+                if eid is not None:
+                    result = render_placeholder_vt(
+                        int(eid),
+                        db_path=db_path,
+                        data_dir=DATA_DIR,
+                        force=force,
+                        duration_ms=payload.get("duration_ms"),
+                    )
+                else:
+                    d = payload.get("date") or log_date
+                    if d in ("today", "Today"):
+                        d = date.today().isoformat()
+                    result = render_placeholders_for_date(
+                        d,
+                        db_path=db_path,
+                        data_dir=DATA_DIR,
+                        force=force,
+                        only_approved=not bool(payload.get("include_drafts")),
+                        limit=payload.get("limit"),
+                    )
+                status = 200 if result.get("ok") else 400
+                _json_response(self, result, status=status)
+                return
+
+            if path == "/api/ai-breaks/operator-path":
+                # PD assist overnight: generate → approve → placeholder attach
+                # AI upstairs only — never live song pick
+                d = payload.get("date") or log_date
+                if d in ("today", "Today"):
+                    d = date.today().isoformat()
+                result = run_pd_assist_operator_path(
+                    d,
+                    db_path=db_path,
+                    data_dir=DATA_DIR,
+                    station_name=payload.get("station_name") or "MQ Digital",
+                    style=payload.get("style") or "warm",
+                    insert_gaps=not payload.get("no_insert"),
+                    approve=payload.get("approve", True) is not False,
+                    render_placeholders=payload.get("render_placeholders", True) is not False,
+                    force_placeholder=bool(payload.get("force_placeholder")),
+                    max_per_hour=int(payload.get("max_per_hour") or 2),
+                    stride=int(payload.get("stride") or 2),
+                )
                 status = 200 if result.get("ok") else 400
                 _json_response(self, result, status=status)
                 return

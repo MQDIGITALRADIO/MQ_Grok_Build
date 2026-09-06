@@ -119,8 +119,9 @@ Matt’s locked vision: automated 24/7 playout he can jump into whenever inspire
 
 1. Generate AI breaks → review scripts on the Living Log / VT Studio.
 2. **Approve drafts** (CLI `approve-ai-breaks` or On-Air **Approve drafts**).
-3. **Render in Vocloner** (VT Studio or Living Log toolbar): copies the script to the clipboard and opens [vocloner.com](https://vocloner.com/). Prefer your saved model/voice name from Settings.
-4. In Vocloner: paste → generate → export **WAV**.
+3. **Placeholder → Log** (optional, overnight/PD assist): attaches honest PCM placeholder carts so AUTO can play VTs until real voice lands (`render-placeholder-vt` / `pd-assist` / desk buttons). Not Vocloner voice.
+4. **Render in Vocloner** (VT Studio or Living Log toolbar): copies the script to the clipboard and opens [vocloner.com](https://vocloner.com/). Prefer your saved model/voice name from Settings.
+5. In Vocloner: paste → generate → export **WAV** → drop into library/VT slot or Import VT inbox (replaces placeholder).
 5. Drop the WAV into the library / VT slot for that break.
 
 Settings ⚙ → **Voice renderer: Vocloner (default)** + notes / preferred model field. Persists to `localStorage` and `data/vocloner.json` (`voice_renderer: vocloner`) via `/api/settings/vocloner`. Audio bus routing stays in `data/audio_outputs.json`.
@@ -207,7 +208,7 @@ python -m mq_radio generate-log --date 2026-09-06 --music-categories B,C --enfor
 
 **MANUAL survive regenerate:** operator-held rows (including overnight VT + `vt_scripts`) are merged back by `scheduled_at` when regenerating without `--force`.
 
-**Overnight VT path:** clock places VT stubs → `generate-ai-breaks` fills scripts (DRAFT) → `approve-ai-breaks` → Vocloner/render. In AUTO, AI DJ **ramp** profiles apply to overnight carts and to music adjacent to VT.
+**Overnight VT path:** clock places VT stubs → `generate-ai-breaks` fills scripts (DRAFT) → `approve-ai-breaks` → `pd-assist` / Placeholder→Log **or** Vocloner WAV. AI never picks MUSIC live. In AUTO, AI DJ **ramp** profiles apply to overnight carts and to music adjacent to VT.
 
 ## M1 vs roadmap
 
