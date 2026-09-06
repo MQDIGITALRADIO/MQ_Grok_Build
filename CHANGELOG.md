@@ -7,7 +7,7 @@ Lean build log for Matt. SHAs are on `main` (`MQDIGITALRADIO/MQ_Grok_Build`).
 | SHA | Theme |
 |-----|--------|
 | `3463637` | Desktop **0.1.4**; Matt bank through 36; mid-cart SKIP fix; ASSIST/crossfade/STOP/skip/hotkey e2e |
-| *(follow-up)* | Carts 37–47 + WAV beds/VT live-sim; full bank 47 (~184MB); suite 251 green |
+| `139c540` | Carts 37–47 + WAV beds/VT live-sim; full bank 47 (~184MB); suite 251 green |
 
 **Version:** Desktop packaging **0.1.4** (`desktop/package.json`, `build_info.DESKTOP_VERSION`, titlebar badge, preload fallback) for next Mac preview (idle meters/VU/import from `f7816c1` + tonight's grind).
 
