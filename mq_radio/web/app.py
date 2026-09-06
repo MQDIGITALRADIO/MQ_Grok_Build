@@ -624,10 +624,13 @@ def make_handler(db_path: Path):
             if path == "/api/hotkey/fire":
                 # One-shot / hotkey: play from absolute path or track id — NEVER force library copy.
                 # Optionally inject into MockEngine (over_program | queue_next) without breaking AUTO.
+                # Body `date` selects Living Log day for queue_next (desk must send log-date).
                 from pathlib import Path as _P
+                from mq_radio.library.ingest import probe_duration_ms as _probe_dur
+
                 target = payload.get("target")
                 file_path = payload.get("path") or payload.get("file_path")
-                label = payload.get("label") or "Hotkey"
+                label = (payload.get("label") or "Hotkey").strip() or "Hotkey"
                 etype = (payload.get("type") or payload.get("event_type") or "SWEEPER")
                 raw_mode = payload.get("inject_mode")
                 if raw_mode is None or raw_mode is True or raw_mode is False:
@@ -639,7 +642,10 @@ def make_handler(db_path: Path):
                     do_inject = do_inject.strip().lower() not in ("0", "false", "no", "off")
                 resolved = None
                 kind = None
-                duration_ms = int(payload.get("duration_ms") or 0)
+                try:
+                    duration_ms = int(payload.get("duration_ms") or 0)
+                except (TypeError, ValueError):
+                    duration_ms = 0
                 if file_path:
                     p = _P(str(file_path)).expanduser()
                     resolved = str(p)
@@ -653,10 +659,13 @@ def make_handler(db_path: Path):
                         exists = bool(resolved and _P(resolved).is_file())
                         if duration_ms <= 0:
                             duration_ms = int(row.get("duration_ms") or 0)
-                        if not payload.get("type") and row.get("event_type"):
+                        if not payload.get("type") and not payload.get("event_type") and row.get("event_type"):
                             etype = row.get("event_type")
+                        if label == "Hotkey" and row.get("title"):
+                            label = row["title"]
                     else:
                         exists = False
+                        kind = "track"
                 elif target and ("/" in str(target) or str(target).startswith("~")):
                     p = _P(str(target)).expanduser()
                     resolved = str(p)
@@ -665,15 +674,37 @@ def make_handler(db_path: Path):
                 else:
                     exists = False
                     resolved = str(target) if target else None
-                    kind = "label"
+                    kind = "label" if (target or label != "Hotkey") else "empty"
                 track_id = None
                 if kind == "track" and target is not None and str(target).isdigit():
                     track_id = int(target)
+                # Probe duration from real file when unknown (oneshot expiry + desk UI)
+                if exists and resolved and duration_ms <= 0:
+                    try:
+                        duration_ms = int(_probe_dur(_P(resolved)) or 0)
+                    except Exception:
+                        duration_ms = 0
                 url = None
                 if exists and resolved:
                     url = playable_url(resolved, track_id)
                 elif track_id is not None:
                     url = playable_url(None, track_id)
+
+                # Empty bank fire: no path / track / usable target
+                if kind == "empty" and not resolved and track_id is None:
+                    _json_response(
+                        self,
+                        {
+                            "ok": False,
+                            "fired": False,
+                            "exists": False,
+                            "copied_to_library": False,
+                            "error": "Hotkey has no path or track — Edit slot to assign audio",
+                            "message": "Hotkey empty — Edit mode to assign path/track",
+                        },
+                        status=400,
+                    )
+                    return
 
                 inject_result = None
                 if do_inject:
@@ -687,16 +718,40 @@ def make_handler(db_path: Path):
                         mode=inject_mode,
                         log_date=log_date,
                     )
+                    # Enrich oneshot with playable_url for status-driven desk backup
+                    if (
+                        inject_result
+                        and inject_result.get("ok")
+                        and inject_result.get("mode") == "over_program"
+                        and url
+                    ):
+                        shot = inject_result.get("oneshot")
+                        if isinstance(shot, dict):
+                            shot = dict(shot)
+                            shot["playable_url"] = url
+                            inject_result = {**inject_result, "oneshot": shot}
+                        with SESSION.lock:
+                            if SESSION.oneshot and isinstance(SESSION.oneshot, dict):
+                                SESSION.oneshot["playable_url"] = url
 
                 mode_used = (inject_result or {}).get("mode") or inject_mode
+                inj_ok = bool(inject_result and inject_result.get("ok"))
                 desk_msg = (inject_result or {}).get("message") or (
                     f"ONE-SHOT {label}: {resolved or '(no path)'}"
                     + (" [missing file]" if resolved and not exists else "")
                 )
+                if not do_inject:
+                    desk_msg = f"HOTKEY DESK-ONLY: {label}" + (
+                        f" · {resolved}" if resolved else ""
+                    )
                 if url and exists and mode_used == "over_program":
-                    desk_msg = desk_msg + " · desk audio"
+                    desk_msg = desk_msg + " · desk audio ready"
                 elif not exists and resolved:
                     desk_msg = desk_msg + " · missing file (path ref only)"
+                if do_inject and inject_result and not inj_ok:
+                    desk_msg = desk_msg + f" · inject failed: {inject_result.get('error') or 'unknown'}"
+                if mode_used == "queue_next" and inj_ok:
+                    desk_msg = desk_msg + f" · log {log_date}"
 
                 _json_response(self, {
                     "ok": True,
@@ -704,12 +759,16 @@ def make_handler(db_path: Path):
                     "label": label,
                     "kind": kind,
                     "path": resolved,
-                    "exists": exists,
+                    "exists": bool(exists),
                     "playable_url": url,
                     "track_id": track_id,
+                    "duration_ms": int(
+                        (inject_result or {}).get("duration_ms") or duration_ms or 0
+                    ),
+                    "date": log_date,
                     "copied_to_library": False,
                     "inject_mode": mode_used,
-                    "injected": bool(inject_result and inject_result.get("ok")),
+                    "injected": inj_ok,
                     "inject": inject_result,
                     "message": desk_msg,
                 })
@@ -1288,7 +1347,7 @@ def make_handler(db_path: Path):
                         result["end_pulse_ms"] = marked["outro_ms"]
                 # Optional: also update SOURCE cart markers when save_source_markers
                 if result.get("ok") and payload.get("save_source_markers"):
-                    update_track_markers(
+                    src_marked = update_track_markers(
                         int(tid),
                         intro_ms=payload.get("source_intro_ms", payload.get("intro_ms")),
                         outro_ms=payload.get(
@@ -1297,6 +1356,15 @@ def make_handler(db_path: Path):
                         ),
                         db_path=db_path,
                     )
+                    if src_marked.get("ok"):
+                        result["source_track_id"] = int(tid)
+                        result["source_intro_ms"] = src_marked["intro_ms"]
+                        result["source_outro_ms"] = src_marked["outro_ms"]
+                        result["source_end_pulse_ms"] = src_marked["outro_ms"]
+                        result["source_markers_saved"] = True
+                    else:
+                        result["source_markers_saved"] = False
+                        result["source_markers_error"] = src_marked.get("error")
                 _json_response(self, result, status=200 if result.get("ok") else 400)
                 return
 

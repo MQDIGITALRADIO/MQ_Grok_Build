@@ -366,7 +366,8 @@
 
   async function saveRecording() {
     if (!recordedBlob) {
-      msg("Nothing recorded yet");
+      msg("Nothing recorded yet — press ● Record first");
+      document.getElementById("vt-record-status").textContent = "Nothing recorded";
       return;
     }
     const ev = (window.vtContext && window.vtContext.event) || selectedEvent();
@@ -378,34 +379,49 @@
       msg("Open/select a VT log row first");
       return;
     }
+    const tin = Number(document.getElementById("vt-trim-in").value || 0);
+    const toutRaw = document.getElementById("vt-trim-out").value;
+    const tout = toutRaw !== "" && toutRaw != null ? Number(toutRaw) : null;
+    if (Number.isFinite(tin) && tin < 0) {
+      msg("VT trim IN cannot be negative");
+      return;
+    }
+    if (tout != null && Number.isFinite(tout) && tout <= tin) {
+      msg(`VT trim OUT (${tout}ms) must be after IN (${tin}ms)`);
+      document.getElementById("vt-record-status").textContent = "Invalid trim window";
+      return;
+    }
+    document.getElementById("vt-record-status").textContent = "Saving take…";
     const b64 = await blobToBase64(recordedBlob);
     const script = document.getElementById("vt-script")?.value || "";
-    const res = await fetch("/api/vt/record", {
+    const http = await fetch("/api/vt/record", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         event_id: eventId,
         audio_b64: b64,
         mime: recordedBlob.type || "audio/webm",
-        trim_in_ms: Number(document.getElementById("vt-trim-in").value || 0),
-        trim_out_ms: document.getElementById("vt-trim-out").value
-          ? Number(document.getElementById("vt-trim-out").value)
-          : null,
+        trim_in_ms: tin,
+        trim_out_ms: tout,
         script_text: script,
       }),
-    }).then((r) => r.json());
+    });
+    const res = await http.json();
     if (res.ok) {
       lastVtTakeTrackId = res.track_id || null;
       lastVtTakeEventId = eventId;
       const mode = res.trim_mode || (res.cleaned ? "cut" : "raw");
       const cleaned = mode === "cut" ? " · cleaned cut (ffmpeg)" : mode === "markers_only" ? " · markers-only (no ffmpeg cut)" : "";
       const cart = res.track_id ? ` · cart #${res.track_id}` : "";
+      const trimNote =
+        tout != null ? ` · trim ${tin}–${tout}ms` : tin ? ` · trim in ${tin}ms` : "";
       msg(res.message || `Saved VT take → ${res.audio_path}${cleaned}${cart}`);
       document.getElementById("vt-record-status").textContent =
-        `Saved (${mode})${cleaned || ""} — ready for Segment Editor`;
+        `Saved (${mode})${trimNote}${cleaned || ""}${cart} — Segment Editor ready`;
       await refresh();
     } else {
       msg(res.error || "Save failed");
+      document.getElementById("vt-record-status").textContent = res.error || "Save failed";
     }
   }
 
@@ -531,9 +547,9 @@
     const inUrl = inn && inn.playable_url;
     const vtUrl = vt && vt.playable_url;
     const srcNote = outUrl || inUrl
-      ? `media ${outUrl ? "OUT" : ""}${outUrl && inUrl ? "+" : ""}${inUrl ? "IN" : ""}${vtUrl ? "+VT" : ""}`
-      : "tone fallback";
-    el.textContent = `Audition: ${xfade || 1500}ms · duck ${duck} dB · ${srcNote}`;
+      ? `browser media ${outUrl ? "OUT" : ""}${outUrl && inUrl ? "+" : ""}${inUrl ? "IN" : ""}${vtUrl ? "+VT" : ""}`
+      : "tone fallback (no playable media on carts)";
+    el.textContent = `Audition… ${xfade || 1500}ms · duck ${duck} dB · ${srcNote}`;
     try {
       if (window.MQProgramAudio && window.MQProgramAudio.auditionSegue) {
         await window.MQProgramAudio.auditionSegue({
@@ -546,7 +562,10 @@
           introMarkMs: introMark,
           vtInMs: vtIn,
         });
-        el.textContent = `Auditioned ${xfade || 1500}ms · duck ${duck} dB · ${srcNote}`;
+        el.textContent =
+          `Auditioned ${xfade || 1500}ms · duck ${duck} dB · ${srcNote} · desk bus (Mac device hear-through still verify)`;
+      } else {
+        el.textContent = "Audition unavailable — program audio module not loaded";
       }
     } catch (err) {
       el.textContent = `Audition failed: ${err && err.message ? err.message : err}`;
@@ -613,6 +632,10 @@
       msg(`Hotkey slot ${item.slot + 1} empty — Edit mode to assign path/track`);
       return;
     }
+    if (!item.path && !item.target && !(item.label || "").trim()) {
+      msg(`Hotkey slot ${item.slot + 1} has no path/track — Edit to assign`);
+      return;
+    }
     if (btn) {
       btn.classList.remove("fired", "hk-ended");
       void btn.offsetWidth;
@@ -621,21 +644,33 @@
     const keyLab = item.key || "#" + (item.slot + 1);
     try {
       if (window.MQProgramAudio) await window.MQProgramAudio.resume();
-      const res = await fetch("/api/hotkey/fire", {
+      const payload = {
+        date: dateVal(),
+        label: item.label,
+        type: item.type,
+        target: item.target,
+        path: item.path || null,
+        inject_mode: item.inject_mode || "over_program",
+        inject: true,
+      };
+      if (item.duration_ms) payload.duration_ms = Number(item.duration_ms);
+      const http = await fetch("/api/hotkey/fire", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          label: item.label,
-          type: item.type,
-          target: item.target,
-          path: item.path || null,
-          inject_mode: item.inject_mode || "over_program",
-          inject: true,
-        }),
-      }).then((r) => r.json());
+        body: JSON.stringify(payload),
+      });
+      const res = await http.json();
+      if (!http.ok || (res && res.ok === false && !res.fired)) {
+        if (btn) setTimeout(() => btn.classList.remove("fired"), 220);
+        msg((res && (res.message || res.error)) || `HOTKEY ${keyLab} fire failed`);
+        return;
+      }
       let played = false;
       const url = res && res.playable_url;
-      if (url && window.MQProgramAudio && window.MQProgramAudio.playOneShot) {
+      const wantDesk =
+        url &&
+        ((res.inject_mode || item.inject_mode || "over_program") === "over_program");
+      if (wantDesk && window.MQProgramAudio && window.MQProgramAudio.playOneShot) {
         played = await window.MQProgramAudio.playOneShot(url, res.label || item.label);
         if (!played) {
           // One retry after resume (autoplay / AudioContext quirks)
@@ -647,10 +682,18 @@
         }
       }
       if (btn) {
-        if (played) {
+        if (played || (res && res.injected)) {
           const durGuess = Math.max(
             900,
-            Math.min(20000, Number((res.inject && res.inject.duration_ms) || res.duration_ms || 4000))
+            Math.min(
+              20000,
+              Number(
+                res.duration_ms ||
+                  (res.inject && res.inject.duration_ms) ||
+                  item.duration_ms ||
+                  4000
+              )
+            )
           );
           setTimeout(() => {
             btn.classList.remove("fired");
@@ -675,15 +718,20 @@
         ? " · PLAYING"
         : res && res.exists === false
           ? " · missing file (paste path / Electron drop)"
-          : url
-            ? " · url unresolved"
-            : " · no audio path";
+          : url && wantDesk
+            ? " · desk audio pending (engine inject OK)"
+            : url
+              ? ""
+              : " · no audio path";
       msg(res.message || `HOTKEY ${keyLab}: ${item.label}${note}${injectTag}`);
       if (res && res.injected) {
         const panel = document.getElementById("hotkey-panel");
         if (panel) {
           panel.classList.add("hk-firing");
           setTimeout(() => panel.classList.remove("hk-firing"), 700);
+        }
+        if (injectMode === "queue_next") {
+          await refresh();
         }
       }
     } catch (e) {
@@ -1134,10 +1182,19 @@
     }
     const inMs = Number(document.getElementById("seg-in-ms").value || 0);
     const outMs = Number(document.getElementById("seg-out-ms").value || 0);
+    if (!Number.isFinite(inMs) || !Number.isFinite(outMs) || outMs <= inMs) {
+      document.getElementById("seg-msg").textContent =
+        `OUT (${outMs}ms) must be after IN (${inMs}ms)`;
+      return;
+    }
     const title = document.getElementById("seg-title").value.trim();
     const artist = document.getElementById("seg-artist").value.trim();
-    document.getElementById("seg-msg").textContent = "Saving segment (ffmpeg cut or markers-only)…";
-    const res = await fetch("/api/library/segment", {
+    const introMs = Number(document.getElementById("seg-intro-ms")?.value || 0);
+    const pulseMs = Number(document.getElementById("seg-pulse-ms")?.value || 0);
+    const saveSrc = !!document.getElementById("seg-save-source-pulse")?.checked;
+    document.getElementById("seg-msg").textContent =
+      `Saving segment ${inMs}–${outMs}ms (ffmpeg cut or markers-only)…`;
+    const http = await fetch("/api/library/segment", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1147,14 +1204,15 @@
         title: title || undefined,
         artist: artist || undefined,
         event_type: document.getElementById("seg-event-type")?.value || "MUSIC",
-        intro_ms: Number(document.getElementById("seg-intro-ms")?.value || 0),
-        end_pulse_ms: Number(document.getElementById("seg-pulse-ms")?.value || 0),
-        outro_ms: Number(document.getElementById("seg-pulse-ms")?.value || 0),
-        save_source_markers: !!document.getElementById("seg-save-source-pulse")?.checked,
-        source_intro_ms: Number(document.getElementById("seg-intro-ms")?.value || 0),
-        source_outro_ms: Number(document.getElementById("seg-pulse-ms")?.value || 0),
+        intro_ms: introMs,
+        end_pulse_ms: pulseMs,
+        outro_ms: pulseMs,
+        save_source_markers: saveSrc,
+        source_intro_ms: introMs,
+        source_outro_ms: pulseMs,
       }),
-    }).then((r) => r.json());
+    });
+    const res = await http.json();
     if (res.ok) {
       let attachMsg = "";
       if (lastVtTakeEventId) {
@@ -1177,8 +1235,17 @@
         }
       }
       const trimTag = res.trim_mode === "markers_only" ? " · markers-only" : res.trim_mode === "cut" ? " · ffmpeg cut" : "";
+      const markTag =
+        res.intro_ms != null || res.outro_ms != null
+          ? ` · intro ${res.intro_ms || 0}ms · pulse ${res.outro_ms || res.end_pulse_ms || 0}ms`
+          : "";
+      const srcTag = res.source_markers_saved
+        ? ` · source #${res.source_track_id} markers saved`
+        : saveSrc && res.source_markers_saved === false
+          ? ` · source markers failed`
+          : "";
       document.getElementById("seg-msg").textContent =
-        `Saved cart #${res.track_id}: ${res.artist} — ${res.title} (${fmtDur(res.duration_ms)})${trimTag}${attachMsg}`;
+        `Saved cart #${res.track_id}: ${res.artist} — ${res.title} (${fmtDur(res.duration_ms)})${trimTag}${markTag}${srcTag}${attachMsg}`;
       ingestStatus(`Segment cart #${res.track_id} saved${attachMsg}`);
       await refresh();
     } else {

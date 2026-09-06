@@ -2,6 +2,20 @@
 
 Lean build log for Matt. SHAs are on `main` (`MQDIGITALRADIO/MQ_Grok_Build`).
 
+## Desk grind 2026-09-06 (hotkey fire + VT/segment depth · no Mac audio)
+
+| SHA | Theme |
+|-----|--------|
+| *(this commit)* | Hotkey fire path reliability; VT/segment deeper API e2e + operator UX; acceptance triple-check |
+
+**Hotkeys fire (still Partial — Mac hear-through):** `/api/hotkey/fire` probes duration, returns top-level `duration_ms` + `date`, enriches oneshot `playable_url`, rejects empty slots, desk-only `inject=false`, honors body date for `queue_next`. Desk `fireHotkeySlot` sends log-date, refreshes Living Log on queue, clearer missing/fail messages. pytest: existing path→media serve, track_id, queue_next date, boolean inject_mode safety.
+
+**VT / Segment (still Partial — Mac mic device):** invalid trim OUT≤IN + empty decode rejected; segment API returns `source_markers_saved` / source intro·pulse; round-trip record→segment(+source markers)→attach→log cart e2e; operator trim validation + status polish in VT Studio / Segment Editor.
+
+**Segue audition:** stays Partial (browser audition messaging only; dual-deck Done separately). No fake AU / live Harbor / CoreAudio PCM / notarization.
+
+**Tests:** `tests/test_hotkey_vt_segment_depth.py` (+7); full suite green.
+
 ## Desk grind 2026-09-06 (Partial→Done depth · no Mac audio required)
 
 | SHA | Theme |

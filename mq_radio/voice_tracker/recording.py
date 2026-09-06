@@ -32,7 +32,25 @@ def save_vt_recording(
 ) -> dict:
     """Decode base64 audio, write under data/vt/, attach path to vt_scripts + log notes."""
     if not audio_b64:
-        return {"ok": False, "error": "audio_b64 required"}
+        return {"ok": False, "error": "audio_b64 required — record a take first"}
+
+    # Operator-clear trim window check before writing any files
+    try:
+        tin_chk = int(trim_in_ms or 0)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "trim_in_ms must be an integer"}
+    if tin_chk < 0:
+        return {"ok": False, "error": "trim_in_ms cannot be negative"}
+    if trim_out_ms is not None and str(trim_out_ms).strip() != "":
+        try:
+            tout_chk = int(trim_out_ms)
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "trim_out_ms must be an integer"}
+        if tout_chk <= tin_chk:
+            return {
+                "ok": False,
+                "error": f"trim OUT ({tout_chk}ms) must be after IN ({tin_chk}ms)",
+            }
 
     conn = get_connection(db_path)
     ev = conn.execute("SELECT * FROM log_events WHERE id = ?", (log_event_id,)).fetchone()
@@ -48,6 +66,9 @@ def save_vt_recording(
     except Exception as exc:
         conn.close()
         return {"ok": False, "error": f"invalid base64: {exc}"}
+    if not blob:
+        conn.close()
+        return {"ok": False, "error": "decoded audio is empty — re-record the take"}
 
     ext = "webm"
     mime_l = (mime or "").lower()
