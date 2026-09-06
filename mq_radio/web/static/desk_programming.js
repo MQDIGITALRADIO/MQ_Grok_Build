@@ -6,6 +6,68 @@
   let libMode = null; // insert | replace
   let libSelectedTrack = null;
   let hotkeysState = { hotkeys: [], pages: 2, slots_per_page: 16, page: 0, editMode: false };
+
+  async function loadHotkeys() {
+    try {
+      const res = await fetch("/api/hotkeys").then((r) => r.json());
+      hotkeysState.hotkeys = res.hotkeys || [];
+      hotkeysState.pages = res.pages || 2;
+      hotkeysState.slots_per_page = res.slots_per_page || 16;
+      if (typeof res.ui_page === "number") {
+        hotkeysState.page = Math.max(0, Math.min(hotkeysState.pages - 1, res.ui_page));
+      }
+      renderHotkeyBank();
+    } catch (e) {
+      msg("Hotkeys load failed: " + (e && e.message ? e.message : e));
+    }
+  }
+
+  async function persistHotkeys() {
+    try {
+      const res = await fetch("/api/hotkeys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          hotkeys: hotkeysState.hotkeys,
+          ui_page: hotkeysState.page || 0,
+        }),
+      }).then((r) => r.json());
+      if (res && res.ok) {
+        hotkeysState.hotkeys = res.hotkeys || hotkeysState.hotkeys;
+        hotkeysState.pages = res.pages || hotkeysState.pages;
+        if (typeof res.ui_page === "number") hotkeysState.page = res.ui_page;
+      } else {
+        msg((res && res.error) || "Hotkeys save failed");
+      }
+      renderHotkeyBank();
+      return res;
+    } catch (e) {
+      msg("Hotkeys save failed: " + (e && e.message ? e.message : e));
+      return { ok: false };
+    }
+  }
+
+  async function expandHotkeyPages() {
+    const next = Math.min(8, (hotkeysState.pages || 2) + 1);
+    try {
+      const res = await fetch("/api/hotkeys/pages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pages: next, ui_page: hotkeysState.page || 0 }),
+      }).then((r) => r.json());
+      if (res && res.ok) {
+        hotkeysState.hotkeys = res.hotkeys || hotkeysState.hotkeys;
+        hotkeysState.pages = res.pages || next;
+        msg(res.message || `Hotkey bank ${hotkeysState.pages} pages`);
+        renderHotkeyBank();
+      } else {
+        msg((res && res.error) || "Could not add page");
+      }
+    } catch (e) {
+      msg("Add page failed: " + (e && e.message ? e.message : e));
+    }
+  }
+
   let hkEditSlot = null;
   let segueCtx = null;
   let mediaRecorder = null;
@@ -507,6 +569,13 @@
       btn.className = "hotkey" + (item.empty ? " empty" : "");
       btn.dataset.hkSlot = String(item.slot);
       btn.draggable = !!hotkeysState.editMode;
+      if (item.color) {
+        btn.style.borderColor = item.color;
+        btn.style.boxShadow = `inset 0 0 0 1px ${item.color}55`;
+      } else {
+        btn.style.borderColor = "";
+        btn.style.boxShadow = "";
+      }
       const keyLabel = item.key || `#${item.slot + 1}`;
       btn.innerHTML = `
         <span class="hk-key">${escapeHtml(keyLabel)}</span>
@@ -623,17 +692,39 @@
     }
   }
 
-  function swapHotkeys(a, b) {
+  async function swapHotkeys(a, b) {
     if (a === b) return;
-    const ha = hotkeysState.hotkeys[a];
-    const hb = hotkeysState.hotkeys[b];
-    if (!ha || !hb) return;
-    const tmp = { ...ha, slot: b };
-    hotkeysState.hotkeys[b] = { ...hb, slot: a };
-    hotkeysState.hotkeys[a] = tmp;
-    // fix keys for page 0 F-keys
-    rekeyPage0();
-    persistHotkeys();
+    try {
+      const res = await fetch("/api/hotkeys/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ from_slot: a, to_slot: b }),
+      }).then((r) => r.json());
+      if (res && res.ok) {
+        hotkeysState.hotkeys = res.hotkeys || hotkeysState.hotkeys;
+        hotkeysState.pages = res.pages || hotkeysState.pages;
+        renderHotkeyBank();
+      } else {
+        // Local fallback
+        const ha = hotkeysState.hotkeys[a];
+        const hb = hotkeysState.hotkeys[b];
+        if (!ha || !hb) return;
+        const tmp = { ...ha, slot: b };
+        hotkeysState.hotkeys[b] = { ...hb, slot: a };
+        hotkeysState.hotkeys[a] = tmp;
+        rekeyPage0();
+        await persistHotkeys();
+      }
+    } catch (_) {
+      const ha = hotkeysState.hotkeys[a];
+      const hb = hotkeysState.hotkeys[b];
+      if (!ha || !hb) return;
+      const tmp = { ...ha, slot: b };
+      hotkeysState.hotkeys[b] = { ...hb, slot: a };
+      hotkeysState.hotkeys[a] = tmp;
+      rekeyPage0();
+      await persistHotkeys();
+    }
   }
 
   function rekeyPage0() {
@@ -662,6 +753,8 @@
     const pathEl = document.getElementById("hk-edit-path");
     if (pathEl) pathEl.value = item.path || "";
     document.getElementById("hk-edit-macro").value = item.macro || "";
+    const col = document.getElementById("hk-edit-color");
+    if (col) col.value = item.color || "";
     const inj = document.getElementById("hk-edit-inject");
     if (inj) inj.value = item.inject_mode || "over_program";
     const bd = document.getElementById("hk-edit-backdrop");
@@ -684,6 +777,7 @@
     const pathRef = document.getElementById("hk-edit-path")?.value.trim() || null;
     const macro = document.getElementById("hk-edit-macro").value.trim() || null;
     const injectMode = document.getElementById("hk-edit-inject")?.value || "over_program";
+    const color = (document.getElementById("hk-edit-color")?.value || "").trim();
     const empty = !label && !type && !target && !pathRef && !macro;
     const key = hkEditSlot < 12 ? `F${hkEditSlot + 1}` : "";
     hotkeysState.hotkeys[hkEditSlot] = {
@@ -691,6 +785,7 @@
       key: hkEditSlot < hotkeysState.slots_per_page ? key : "",
       label,
       type,
+      color,
       target,
       path: pathRef, // one-shot absolute path — no library ingest
       macro,
@@ -701,16 +796,26 @@
     persistHotkeys();
   }
 
-  function clearHkSlot() {
+  async function clearHkSlot() {
     if (hkEditSlot == null) return;
-    document.getElementById("hk-edit-label").value = "";
-    document.getElementById("hk-edit-type").value = "";
-    document.getElementById("hk-edit-target").value = "";
-    const hp = document.getElementById("hk-edit-path");
-    if (hp) hp.value = "";
-    document.getElementById("hk-edit-macro").value = "";
-    const inj = document.getElementById("hk-edit-inject");
-    if (inj) inj.value = "over_program";
+    const slot = hkEditSlot;
+    try {
+      const res = await fetch("/api/hotkeys/clear", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slot }),
+      }).then((r) => r.json());
+      if (res && res.ok) {
+        hotkeysState.hotkeys = res.hotkeys || hotkeysState.hotkeys;
+        closeHkEdit();
+        renderHotkeyBank();
+        msg(res.message || `Hotkey slot ${slot + 1} cleared`);
+      } else {
+        msg((res && res.error) || "Clear failed");
+      }
+    } catch (e) {
+      msg("Clear failed: " + (e && e.message ? e.message : e));
+    }
   }
 
   function moveHk(dir) {
@@ -1166,11 +1271,14 @@
     // Hotkeys
     document.getElementById("btn-hk-page-prev")?.addEventListener("click", () => {
       hotkeysState.page = Math.max(0, hotkeysState.page - 1);
-      renderHotkeyBank();
+      persistHotkeys();
     });
     document.getElementById("btn-hk-page-next")?.addEventListener("click", () => {
       hotkeysState.page = Math.min(hotkeysState.pages - 1, hotkeysState.page + 1);
-      renderHotkeyBank();
+      persistHotkeys();
+    });
+    document.getElementById("btn-hk-page-add")?.addEventListener("click", () => {
+      expandHotkeyPages();
     });
     document.getElementById("btn-hk-edit")?.addEventListener("click", () => {
       hotkeysState.editMode = !hotkeysState.editMode;

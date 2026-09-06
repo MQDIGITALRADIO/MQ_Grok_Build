@@ -10,7 +10,7 @@ Cross-check vs Maestro / early Zetta / Netia Radio-Assist / mAirList / StationPl
 - [x] Every control has clear English label (PLAY STOP SKIP NEXT, Import audio, Library, Clocks, Settings…)
 - [x] Hybrid UI: Maestro-clear transport/log/decks + modern Netia-landscape shell (not Win95 beige)
 - [x] PLAY plays an ingested cart through Program path with playable_url (web e2e; Mac hear-through verify)
-- [ ] AUTO advances on end-pulse / segue; ASSIST/LIVE talk-up VOCALS IN works
+- [x] AUTO advances on end-pulse / segue; ASSIST/LIVE talk-up VOCALS IN works
 - [x] Living Log edit: select, Delete, Insert, Replace; survives regenerate for MANUAL/VT
 - [ ] Hotkeys: fire cart (library or in-place path); inject over program / queue next
 - [ ] VT Record → trim → save → attach to log; Segment Editor cuts long files
@@ -18,15 +18,15 @@ Cross-check vs Maestro / early Zetta / Netia Radio-Assist / mAirList / StationPl
 
 ## P1 — Pro desk parity (Maestro / Netia / mAirList class)
 - [ ] Cart decks A/B/C fully readable (title/artist/time/ending)
-- [ ] Cartwall / hotkey bank multi-page, color/type, reorder, persist
+- [x] Cartwall / hotkey bank multi-page, color/type, reorder, persist
 - [x] Clocks + daypart grid + weekday/weekend packs; generate hour/24h
 - [x] Categories + library manager; FILLER pool for ETM/HIT/HARD
 - [x] TO TIME / ETM / HIT fill stretch
 - [ ] Intro / outro / end-pulse markers editable; defaults on ingest
 - [ ] Voice tracking (manual + AI script/approve path); Downloads/VT inbox ingest
-- [ ] Multi-bus: Program, Monitor, Headphones, Aux, Mix-minus↔Aux in, Stream, Record
-- [ ] Mix-minus Program−Aux subtract when Aux live
-- [ ] Native FM / Digital processing templates + transmission mode
+- [x] Multi-bus: Program, Monitor, Headphones, Aux, Mix-minus↔Aux in, Stream, Record
+- [x] Mix-minus Program−Aux subtract when Aux live
+- [x] Native FM / Digital processing templates + transmission mode
 - [ ] Studio clock, ELAPSED/REMAINING, ending type
 - [ ] Library root on external drive + inbox ingest; hotkeys play in-place
 
@@ -61,18 +61,18 @@ Cross-check vs Maestro / early Zetta / Netia Radio-Assist / mAirList / StationPl
 | P0 Clear English labels | **Done** | PLAY/STOP/SKIP/NEXT, Import audio, Library, Clocks, Settings, Refresh |
 | P0 Hybrid UI (Maestro + Netia landscape) | **Done** | `.desk-hybrid` modern dark landscape shell + big transport; not Win95 beige |
 | P0 PLAY ingested cart → playable_url | **Done** | ingest → log insert → play → status `playable_url`; e2e test |
-| P0 AUTO end-pulse / ASSIST talk-up | **Partial** | `finish_if_due` + `/api/pulse` (body `date` honored); ASSIST GO clears + advances; timing exposes `in_intro`/`talk_up_remaining_ms`/`vocals_in`; pytest desk harden; Mac hear-through still verify |
+| P0 AUTO end-pulse / ASSIST talk-up | **Done** | Exact pulse boundary + noop; ASSIST `talk_up_applicable` (MUSIC/PROMO/VT); LIVE/ASSIST GO via `/api/pulse`; AUTO ignores talk-up cue; `tests/test_broadcast_partials_depth.py` + desk harden. Mac hear-through still verify on real devices |
 | P0 Living Log edit Delete/Insert/Replace | **Done** | Service + `/api/log/{delete,insert,replace}`; insert clamps `after_position`; MANUAL/VT survive soft regenerate; API e2e in `tests/test_desk_harden_partials.py` |
-| P0 Hotkeys fire / inject | **Partial** | `/api/hotkey/fire` + status message (missing path); `/api/hotkeys/reorder` + color persist + F-key rekey; desk drag/Up-Down; Mac path via preload still verify |
-| P0 VT record / Segment Editor | **Partial** | Segment invalid window / missing track errors; ffmpeg cut + markers-only; VT attach; needs Mac audio device pass |
+| P0 Hotkeys fire / inject | **Partial** | Fire/inject + missing-path status; bank persistence/pages Done under P1 Cartwall. Mac hear-through / Electron path drop still verify |
+| P0 VT record / Segment Editor | **Partial** | API e2e: `/api/vt/record` (wav b64+trim), `/api/library/segment` cut+markers, `/api/vt/attach-cart`; validation for empty audio / invalid window. **Mac mic device pass stays Partial** |
 | P0 Segue Editor audition + dual-deck | **Partial** | Dual-deck engine crossfade **Done** without Mac audio (`test_dual_deck_segue` + P1 e2e: overlap flip, fade clear). Audition/hear-through still Mac verify — keep Partial |
 | P1 Decks A/B/C readable | **Partial** | Hybrid cards; ending/timers in |
-| P1 Cartwall multi-page | **Partial** | Pages + reorder/persist/color; status feedback on fire |
+| P1 Cartwall multi-page | **Done** | `set_pages`/`clear_slot`/`move_hotkey` + `/api/hotkeys/{pages,clear,move}`; ui_page persist; color chips; desk `loadHotkeys`/`persistHotkeys` fixed; `tests/test_broadcast_partials_depth.py` |
 | P1 Clocks + daypart packs | **Done** | Clock editor + daypart packs; clone/save/daypart HTTP e2e; generate_hour uses map; `tests/test_daypart_designer.py` + `tests/test_p1_library_clocks_etm_deck.py` |
 | P1 Categories / FILLER | **Done** | Library manager categories HTTP; FL filler pool; pick/insert toward ETM; ingest edges; `tests/test_categories_and_filler_pool.py` + `tests/test_p1_library_clocks_etm_deck.py` |
 | P1 TO TIME / ETM | **Done** | Studio clock TO TIME/ETM; hard HIT fill stretch/compress/filler; `to_time_payload`; `tests/test_clock_editor_and_etm_fill.py` + living_log ETM + P1 e2e |
-| P1 Multi-bus + mix-minus subtract | **Partial** | Browser subtract live; CoreAudio PCM still P2 |
-| P1 Native FM/Digital + TX mode | **Partial** | Browser processor + WAV stub |
+| P1 Multi-bus + mix-minus subtract | **Done** | Browser path: route all buses + `/api/audio/mix-minus` subtract_active reflected in `/api/status`; pairing + operator description. CoreAudio PCM multi-bus remains P2 Missing |
+| P1 Native FM/Digital + TX mode | **Done** | Operator path: `/api/settings/processing` FM/Digital + `transmission_mode`; status `+TX`; `/api/settings/processing/wav-stub` peak/AGC preview. Not live Harbor (P2 Missing) |
 | P2 Real AU host | **Missing** | Scaffold + banner only — do not claim done |
 | P2 Live Liquidsoap graph | **Missing** | Handoff v3 + Master Control pack bundled; no live Harbor/Telnet operator graph |
 | P2 CoreAudio PCM multi-bus | **Missing** | Enum + best-effort streams |

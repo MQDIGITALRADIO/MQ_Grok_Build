@@ -142,7 +142,9 @@ class PlayoutSession:
                 "in_intro": False,
                 "talk_up_remaining_ms": 0,
                 "vocals_in": False,
+                "talk_up_applicable": False,
                 "event_type": etype,
+                "playout_mode": self.playout_mode,
                 "active_deck": self.active_deck,
                 "overlap_active": self.overlap_active,
                 "assist_go_ready": self.assist_go_ready,
@@ -164,6 +166,11 @@ class PlayoutSession:
         in_intro = intro > 0 and elapsed < intro
         talk_up_remaining_ms = max(0, intro - elapsed) if in_intro else 0
         vocals_in = intro > 0 and elapsed >= intro
+        mode = (self.playout_mode or "AUTO").upper()
+        talk_types = {"MUSIC", "PROMO", "VOICE_TRACK", "VT"}
+        talk_up_applicable = (
+            intro > 0 and mode in ("ASSIST", "LIVE") and etype in talk_types
+        )
         return {
             "playing": True,
             "elapsed_ms": elapsed,
@@ -178,6 +185,7 @@ class PlayoutSession:
             "in_intro": in_intro,
             "talk_up_remaining_ms": talk_up_remaining_ms,
             "vocals_in": vocals_in,
+            "talk_up_applicable": talk_up_applicable,
             "event_type": etype,
             "track_id": self.track_id,
             "file_path": self.file_path or "",

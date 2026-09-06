@@ -455,6 +455,7 @@ function syncTimingFromStatus(st) {
     in_intro: !!t.in_intro,
     talk_up_remaining_ms: Number(t.talk_up_remaining_ms || 0),
     vocals_in: !!t.vocals_in,
+    talk_up_applicable: t.talk_up_applicable !== undefined ? !!t.talk_up_applicable : undefined,
     syncedAt: Date.now(),
     _pulseSent: sameCart ? !!timingSnap._pulseSent : false,
   };
@@ -499,7 +500,12 @@ function updateVocalsInPopup(live) {
   const assistLike = playoutMode === "ASSIST" || playoutMode === "LIVE";
   const introMs = Number(timingSnap.intro_ms || 0);
   const et = (timingSnap.event_type || "").toUpperCase();
-  const talkUpTypes = et === "MUSIC" || et === "PROMO" || et === "";
+  const talkUpTypes =
+    timingSnap.talk_up_applicable === true
+      ? true
+      : timingSnap.talk_up_applicable === false
+        ? false
+        : et === "MUSIC" || et === "PROMO" || et === "VOICE_TRACK" || et === "VT" || et === "";
   const inIntro =
     assistLike &&
     timingSnap.playing &&

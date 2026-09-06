@@ -253,13 +253,14 @@
             <button type="button" id="btn-hk-page-prev" class="btn-chrome btn-ai" title="Previous page">◀</button>
             <span id="hk-page-label" class="panel-hint">Page 1/2</span>
             <button type="button" id="btn-hk-page-next" class="btn-chrome btn-ai" title="Next page">▶</button>
+            <button type="button" id="btn-hk-page-add" class="btn-chrome btn-ai" title="Add cartwall page (up to 8)">+ Page</button>
             <button type="button" id="btn-hk-edit" class="btn-chrome btn-ai" title="Edit hotkey bank">Edit</button>
             <button type="button" id="btn-hk-expand" class="btn-chrome btn-ai" title="Expand hotkey rail">▣</button>
           </div>
         </div>
         <div class="hotkey-grid" id="hotkey-grid"></div>
         <div class="hotkey-footer">
-          F1–F12 fire page 1 · click any slot · Edit to add/reorder
+          F1–F12 fire page 1 · pages persist · Edit to color/reorder · + Page expands bank
         </div>
       </aside>
     </div>
@@ -840,6 +841,17 @@
         </div>
         <div class="audio-route-row"><label for="hk-edit-target">Track id (library)</label><input type="text" id="hk-edit-target" placeholder="optional library track id" /></div>
         <div class="audio-route-row"><label for="hk-edit-path">File path (one-shot)</label><input type="text" id="hk-edit-path" placeholder="/absolute/path/to/cart.wav — plays in place, no library copy" /></div>
+        <div class="audio-route-row"><label for="hk-edit-color">Color</label>
+          <select id="hk-edit-color" title="Cartwall color chip">
+            <option value="">(default)</option>
+            <option value="#ff6600">Orange ID</option>
+            <option value="#00aaff">Blue sweeper</option>
+            <option value="#33cc66">Green promo</option>
+            <option value="#cc44ff">Purple VT</option>
+            <option value="#ff3355">Red emergency</option>
+            <option value="#ffcc00">Gold music</option>
+          </select>
+        </div>
         <div class="audio-route-row"><label for="hk-edit-inject">Engine inject</label>
           <select id="hk-edit-inject" title="How firing hits the playout engine">
             <option value="over_program">Over program (one-shot)</option>

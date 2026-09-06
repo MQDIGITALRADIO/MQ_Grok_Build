@@ -65,7 +65,14 @@ from mq_radio.voice_tracker.service import (
     list_vt,
     script_for_transition,
 )
-from mq_radio.web.hotkeys_store import load_hotkeys, reorder_hotkeys, save_hotkeys
+from mq_radio.web.hotkeys_store import (
+    clear_slot,
+    load_hotkeys,
+    move_hotkey,
+    reorder_hotkeys,
+    save_hotkeys,
+    set_pages,
+)
 from mq_radio.web.multipart import parse_multipart
 from mq_radio.production.processing import (
     load_processing,
@@ -578,7 +585,8 @@ def make_handler(db_path: Path):
                 if not isinstance(items, list):
                     _json_response(self, {"ok": False, "error": "hotkeys list required"}, status=400)
                     return
-                _json_response(self, save_hotkeys(items, DATA_DIR))
+                ui_page = payload.get("ui_page") if isinstance(payload, dict) else None
+                _json_response(self, save_hotkeys(items, DATA_DIR, ui_page=ui_page))
                 return
 
             if path == "/api/hotkeys/reorder":
@@ -587,6 +595,29 @@ def make_handler(db_path: Path):
                     payload.get("to_slot"),
                     DATA_DIR,
                 )
+                _json_response(self, result, status=200 if result.get("ok") else 400)
+                return
+
+            if path == "/api/hotkeys/move":
+                result = move_hotkey(
+                    payload.get("from_slot"),
+                    payload.get("to_slot"),
+                    DATA_DIR,
+                )
+                _json_response(self, result, status=200 if result.get("ok") else 400)
+                return
+
+            if path == "/api/hotkeys/pages":
+                result = set_pages(
+                    payload.get("pages"),
+                    DATA_DIR,
+                    ui_page=payload.get("ui_page"),
+                )
+                _json_response(self, result, status=200 if result.get("ok") else 400)
+                return
+
+            if path == "/api/hotkeys/clear":
+                result = clear_slot(payload.get("slot"), DATA_DIR)
                 _json_response(self, result, status=200 if result.get("ok") else 400)
                 return
 

@@ -2,6 +2,24 @@
 
 Lean build log for Matt. SHAs are on `main` (`MQDIGITALRADIO/MQ_Grok_Build`).
 
+## Desk grind 2026-09-06 (Partial→Done depth · no Mac audio required)
+
+| SHA | Theme |
+|-----|--------|
+| *(this commit)* | Cartwall/pages Done; AUTO/talk-up Done; mix-minus + TX operator Done; VT API e2e (device Partial) |
+
+**Partial → Done (pytest + HTTP e2e):**
+- **P1 Cartwall multi-page** — `set_pages` / `clear_slot` / `move_hotkey`; `/api/hotkeys/{pages,clear,move}`; ui_page persist; color chips; fixed missing desk `loadHotkeys`/`persistHotkeys`
+- **P0 AUTO end-pulse / ASSIST talk-up** — exact pulse boundary + noop; `talk_up_applicable` for MUSIC/PROMO/VT in ASSIST/LIVE; AUTO ignores VOCALS IN cue
+- **P1 Multi-bus + mix-minus** — browser subtract path e2e via `/api/audio/mix-minus` → status (CoreAudio PCM stays P2)
+- **P1 Native FM/Digital + TX mode** — operator processing + wav-stub e2e (not live Harbor)
+
+**Still Partial:** P0 Hotkeys fire hear-through (Mac); P0 VT **device pass** (API e2e added); P0 Segue audition; P1 decks readability.
+
+**Never Done (unchanged):** Real AU host, live Liquidsoap Harbor, CoreAudio PCM multi-bus, notarization.
+
+**Tests:** `tests/test_broadcast_partials_depth.py` (+9); full suite green.
+
 ## Desk grind 2026-09-06 (0.1.2 · P1 Done + first-run empty harden)
 
 | SHA | Theme |
