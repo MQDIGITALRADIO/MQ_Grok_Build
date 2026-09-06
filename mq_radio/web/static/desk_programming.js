@@ -505,6 +505,7 @@
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "hotkey" + (item.empty ? " empty" : "");
+      btn.dataset.hkSlot = String(item.slot);
       btn.draggable = !!hotkeysState.editMode;
       const keyLabel = item.key || `#${item.slot + 1}`;
       btn.innerHTML = `
@@ -521,6 +522,8 @@
         };
         btn.ondragover = (ev) => ev.preventDefault();
         btn.ondrop = (ev) => {
+          // File drops are handled by the grid listener (absolute path / paste dialog).
+          if (ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files.length) return;
           ev.preventDefault();
           const from = Number(ev.dataTransfer.getData("text/plain"));
           const to = item.slot;
@@ -1125,6 +1128,34 @@
     });
     document.getElementById("btn-import-vt-inbox")?.addEventListener("click", importVtInbox);
     // Drop file onto hotkey grid → assign absolute path as-is (NO library copy)
+    function resolveDroppedFilePath(file) {
+      if (!file) return "";
+      try {
+        if (window.mqDesktop && typeof window.mqDesktop.getPathForFile === "function") {
+          const p = window.mqDesktop.getPathForFile(file);
+          if (p && typeof p === "string" && p.trim()) return p.trim();
+        }
+      } catch (_) { /* ignore */ }
+      // Legacy Electron / some shells still expose File.path
+      try {
+        if (file.path && typeof file.path === "string" && file.path.trim()) return file.path.trim();
+      } catch (_) { /* ignore */ }
+      return "";
+    }
+
+    function hotkeySlotFromDropEvent(ev) {
+      const spp = hotkeysState.slots_per_page || 16;
+      const pageStart = (hotkeysState.page || 0) * spp;
+      const el =
+        (ev.target && ev.target.closest && ev.target.closest(".hotkey[data-hk-slot]")) ||
+        (ev.target && ev.target.closest && ev.target.closest(".hotkey"));
+      if (el && el.dataset && el.dataset.hkSlot != null && el.dataset.hkSlot !== "") {
+        const n = Number(el.dataset.hkSlot);
+        if (Number.isFinite(n) && n >= 0) return n;
+      }
+      return pageStart; // fallback: first slot on current page
+    }
+
     const hkGrid = document.getElementById("hotkey-grid");
     if (hkGrid) {
       hkGrid.addEventListener("dragover", (ev) => {
@@ -1139,16 +1170,24 @@
         ev.preventDefault();
         ev.stopPropagation();
         const f = files[0];
-        // Browser cannot expose real absolute path for security — store name +
-        // instruct operator to paste full path, OR use webkitRelativePath hint.
-        // Prefer File.path when Electron/desktop provides it.
-        const abs = f.path || f.webkitRelativePath || "";
-        const slot = hotkeysState.page * (hotkeysState.slots_per_page || 16);
-        const item = hotkeysState.hotkeys[slot] || { slot, label: "", type: "", target: null, path: null };
+        // Electron/Mac app: mqDesktop.getPathForFile (webUtils) or legacy File.path.
+        // Browser (web): no absolute path — open edit dialog for paste.
+        const abs = resolveDroppedFilePath(f);
+        const slot = hotkeySlotFromDropEvent(ev);
+        const item = hotkeysState.hotkeys[slot] || {
+          slot,
+          label: "",
+          type: "",
+          target: null,
+          path: null,
+          inject_mode: "over_program",
+        };
         item.label = item.label || f.name.replace(/\.[^.]+$/, "");
         item.type = item.type || "ID";
-        item.path = abs || null; // Electron: real path; browser: null → open edit
+        item.path = abs || null;
+        item.inject_mode = item.inject_mode || "over_program";
         item.empty = false;
+        item.slot = slot;
         hotkeysState.hotkeys[slot] = item;
         await persistHotkeys();
         renderHotkeyBank();
@@ -1158,7 +1197,12 @@
           openHkEdit(slot);
           const pe = document.getElementById("hk-edit-path");
           if (pe) pe.placeholder = `Paste full path for ${f.name} (plays in place)`;
-          msg("Paste absolute file path for one-shot hotkey (web cannot see disk path)");
+          const shell = window.mqDesktop && window.mqDesktop.isElectron ? "Electron" : "web";
+          msg(
+            shell === "Electron"
+              ? "Could not resolve file path — paste absolute path for one-shot hotkey"
+              : "Paste absolute file path for one-shot hotkey (web cannot see disk path)"
+          );
         }
       });
     }

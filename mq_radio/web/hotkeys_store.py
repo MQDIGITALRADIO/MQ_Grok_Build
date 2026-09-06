@@ -98,13 +98,12 @@ def _normalize(items: list[dict]) -> list[dict]:
 def load_hotkeys(data_dir: Optional[Path] = None) -> dict:
     path = _path(data_dir)
     if not path.exists():
-        slots = [_empty_slot(s) for s in range(SLOTS_PER_PAGE * DEFAULT_PAGES)]
-        for d in DEFAULT_HOTKEYS:
-            slots[d["slot"]] = {**d, "empty": False}
+        # Run defaults through _normalize so path/inject_mode match persisted shape.
+        slots = _normalize(list(DEFAULT_HOTKEYS))
         return {
             "version": 1,
             "slots_per_page": SLOTS_PER_PAGE,
-            "pages": DEFAULT_PAGES,
+            "pages": max(DEFAULT_PAGES, len(slots) // SLOTS_PER_PAGE),
             "hotkeys": slots,
             "source": "default",
         }

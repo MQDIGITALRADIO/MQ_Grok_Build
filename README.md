@@ -366,7 +366,7 @@ Matt’s release bar: next DMG must meet **broadcast-ready specs**, not a thin s
 - **AU/AAX hosting**: insert slot + config only — **not** hosting plugins on-air; optional AU remains later Mac *production-bus* feature
 - **True multiband DSP / hardware chain**: browser On-Air graph approximates AGC/EQ/multiband/exciter/limiter so FM vs Digital is audible; Liquidsoap/Mac engine still owns transmission-path processing (handoff stub exported under `packaging/liquidsoap/`)
 - **Hotkey engine inject on real Liquidsoap**: MockEngine inject works now; Liquidsoap telnet/harbor inject remains later
-- **Hotkey path on pure web**: browsers hide absolute paths — Electron/desktop provides `File.path`; web UI asks operator to paste path
+- **Hotkey path on pure web**: browsers hide absolute paths — Electron/Mac app resolves via `webUtils.getPathForFile` (preload); web UI asks operator to paste path
 
 
 ## Operator desk guide (broadcast-ready)
@@ -376,7 +376,7 @@ Quick reference for the On-Air surface — what to use when.
 ### DROP AUDIO vs hotkeys
 - **DROP AUDIO / Browse / Import from Downloads** → copies into the **library** (`data/library/` or configured MQ Digital library root) and registers a cart with sensible **intro / end-pulse** defaults.
 - **Hotkey grid drop / path field** → stores an **absolute path reference** and plays **in place** (no library copy).
-  - **Electron / Mac app:** drop a file on a hotkey slot — `File.path` is captured automatically.
+  - **Electron / Mac app:** drop a file on a hotkey slot — absolute path via `webUtils.getPathForFile` (preload `mqDesktop`; Electron 32+ removed legacy `File.path`).
   - **Browser (web paste):** browsers hide disk paths — Edit the slot and paste the full path (e.g. `/Users/matt/Audio/Sweeper.wav`).
 
 ### Segment Editor vs Segue Editor
@@ -410,6 +410,21 @@ After installing from the CI ZIP/DMG, prefer **Open MQ Radio.command** (ships ne
 
 ### Local demo beds + FILLER pool
 `python -m mq_radio seed-demo` writes richer harmonic fixtures under `fixtures/demo_audio/`, slightly longer beds under **`data/demo_beds/`**, and short **FILLER / ID / SWEEPER** carts under **`data/filler/`** (both gitignored — keeps the installer lean). ETM under-fills prefer that pool.
+
+## Away session 2026-09-06
+
+Matt return brief — major SHAs this wave (see `CHANGELOG.md` for the table):
+
+- **Ingest / VU / processing** — `5dd4629`, `957e4bb`
+- **Dual-deck segue** — `28199cd`
+- **VT trim + hotkey inject + Liquidsoap handoff** — `8f926dd`
+- **ASSIST VOCALS IN / Living Log polish** — `815303a`
+- **Clocks / daypart / weekday packs** — `e1eb135`, `c5a2813`, `4283ec6`, `35c686c`
+- **Library Manager + FILLER / ETM fills** — `b79b683`, `c5a2813`
+- **Gatekeeper helper** — `639b2b4`
+- **Electron hotkey absolute-path drop** — preload `webUtils` (this polish); web still pastes path
+
+**Still deferred — do not claim DMG bar met:** CoreAudio device enum, AU/AAX hosting, transmission-path DSP (Web Audio approx + Liquidsoap stub only).
 
 ## Mac install (DMG)
 

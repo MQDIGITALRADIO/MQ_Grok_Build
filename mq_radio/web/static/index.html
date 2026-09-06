@@ -810,7 +810,7 @@
         </div>
         <p class="settings-intro">
           Hotkeys play <strong>in place</strong> (no library copy). 
-          <strong>Electron / Mac app:</strong> drop a file on the hotkey grid — <code>File.path</code> is stored automatically.
+          <strong>Electron / Mac app:</strong> drop a file on the hotkey grid — absolute path via <code>webUtils.getPathForFile</code> (no paste).
           <strong>Browser (web):</strong> drop opens this dialog — paste the absolute path (browsers hide disk paths).
           Library ingest only on DROP AUDIO / Import from Downloads.
         </p>

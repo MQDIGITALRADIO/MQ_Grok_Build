@@ -66,3 +66,18 @@ def test_hotkey_stores_absolute_path_without_ingest(tmp_path: Path):
     assert hit["empty"] is False
     # Ensure we did not invent a library copy path under data/
     assert not str(hit["path"]).startswith(str(data))
+
+def test_default_hotkeys_include_path_and_inject(tmp_path: Path):
+    """Fresh defaults must match persisted slot shape (path + inject_mode)."""
+    data = tmp_path / "data"
+    data.mkdir()
+    loaded = load_hotkeys(data)
+    assert loaded["source"] == "default"
+    hit = loaded["hotkeys"][0]
+    assert hit["label"] == "Top of Hour ID"
+    assert "path" in hit
+    assert hit.get("inject_mode") == "over_program"
+    empty = loaded["hotkeys"][8]
+    assert empty["empty"] is True
+    assert empty.get("inject_mode") == "over_program"
+
