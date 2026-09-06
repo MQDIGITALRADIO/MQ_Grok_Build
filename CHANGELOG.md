@@ -2,11 +2,31 @@
 
 Lean build log for Matt. SHAs are on `main` (`MQDIGITALRADIO/MQ_Grok_Build`).
 
+## Overnight grind 2026-09-06 (0.1.3 · P1 desk readable + acceptance audit)
+
+| SHA | Theme |
+|-----|--------|
+| *(this commit)* | Desktop **0.1.3**; decks/markers/studio-clock/library-root Partial→Done; CHANGELOG SHA accuracy |
+
+**Version:** Desktop packaging **0.1.3** (`desktop/package.json`, `build_info.DESKTOP_VERSION`, titlebar badge, preload fallback). Aligns badge with post-0.1.2 operator-path grind (cartwall/AUTO/mix-minus/TX/AI-PD/Vocloner/Master Control).
+
+**Partial → Done (pytest + HTTP e2e, no Mac audio):**
+- **P1 Decks A/B/C readable** — `/api/status` deck slots now carry `ending_type`/`ending_label` (not only on Living Log events); desk `classifyEndingType` fallback when slot omits ending
+- **P1 Intro/outro/end-pulse markers** — editable via `/api/library/track/markers` + Segment Editor; ingest defaults; GET track returns ending; invalid track_id → 400 (no 500)
+- **P1 Studio clock / ELAPSED / ending** — timing elapsed/remaining + `studio_clock` (TO TIME/ETM) on status; COLD/SOFT/FADE ending on decks
+- **P1 Library root + VT inbox + hotkey in-place** — external library root redirects ingest; VT inbox import; hotkey absolute path `copied_to_library: false`
+
+**Harden:** markers API int coercion; deck ending enrichment; CHANGELOG backfilled real SHAs for `9c9d6ed`…`080860d`.
+
+**Still Partial / Missing (Mac/Apple only):** P0 Hotkeys hear-through; P0 VT mic device; P0 Segue audition hear-through; P1 AI/PD Vocloner real voice; P2 real AU host; live Harbor; CoreAudio PCM; notarization.
+
+**Tests:** `tests/test_acceptance_p1_desk_readable.py`; full suite green.
+
 ## Desk grind 2026-09-06 (Vocloner operator path polish)
 
 | SHA | Theme |
 |-----|--------|
-| *(this commit)* | Vocloner clipboard/script export + paste→WAV→Import desk flow; Settings empty-state clarity |
+| `9c9d6ed` | Vocloner clipboard/script export + paste→WAV→Import desk flow; Settings empty-state clarity |
 
 **Vocloner (still no public API):** `mq_radio.voice_tracker.vocloner_export` builds clipboard-ready paste bodies + optional `data/vocloner-export/*.txt` packages. Desk: **Copy script** / **Export .txt** / **Render in Vocloner** with numbered paste → WAV → **Import VT folder** flow. CLI `export-vocloner-script`. APIs: `GET /api/vocloner/operator-flow`, `POST /api/vocloner/export-script` (alias `/api/vt/vocloner-export`). VT inbox import tags `VOCLONER` when filenames look like Vocloner renders.
 
@@ -18,7 +38,7 @@ Lean build log for Matt. SHAs are on `main` (`MQDIGITALRADIO/MQ_Grok_Build`).
 
 | SHA | Theme |
 |-----|--------|
-| *(this commit)* | Script approve → Vocloner/placeholder → Living Log VT attach; 24h coverage harden |
+| `b4803a6` | Script approve → Vocloner/placeholder → Living Log VT attach; 24h coverage harden |
 
 **PD assist / AI upstairs only:** `placeholder_render` writes honest PCM beds (not Vocloner voice), attaches to APPROVED VT rows on the Living Log (`PLACEHOLDER_RENDER`). Full path: `generate-ai-breaks` → `approve-ai-breaks` → `render-placeholder-vt` / `pd-assist`. APIs: `POST /api/vt/render-placeholder`, `POST /api/ai-breaks/operator-path`. Desk: **Placeholder → Log** + **PD assist path**. Refuses drafts; skips silence; will not overwrite mic/Vocloner takes.
 
@@ -32,7 +52,7 @@ Lean build log for Matt. SHAs are on `main` (`MQDIGITALRADIO/MQ_Grok_Build`).
 
 | SHA | Theme |
 |-----|--------|
-| *(this commit)* | Liquidsoap Master Control operator path; AU unavailable messaging; first-run/Gatekeeper polish |
+| `1904f15` | Liquidsoap Master Control operator path; AU unavailable messaging; first-run/Gatekeeper polish |
 
 **Master Control (still Missing live Harbor):** `mq_radio.production.master_control` — bundled templates + `mq_master_control_operator.liq` dry-run markers, `OPERATOR.md`, binary probe, dry-run validation, start/stop stubs that fail clearly when binary missing or graph not wired. `LiquidsoapEngine` uses those stubs. Settings UI: Dry-run / Refresh templates / Start(stub) / Stop(stub) + export handoff. APIs: `GET/POST /api/settings/master-control…`. Never claims live Harbor Done.
 
@@ -48,7 +68,7 @@ Lean build log for Matt. SHAs are on `main` (`MQDIGITALRADIO/MQ_Grok_Build`).
 
 | SHA | Theme |
 |-----|--------|
-| *(this commit)* | Hotkey fire path reliability; VT/segment deeper API e2e + operator UX; acceptance triple-check |
+| `e477ab1` | Hotkey fire path reliability; VT/segment deeper API e2e + operator UX; acceptance triple-check |
 
 **Hotkeys fire (still Partial — Mac hear-through):** `/api/hotkey/fire` probes duration, returns top-level `duration_ms` + `date`, enriches oneshot `playable_url`, rejects empty slots, desk-only `inject=false`, honors body date for `queue_next`. Desk `fireHotkeySlot` sends log-date, refreshes Living Log on queue, clearer missing/fail messages. pytest: existing path→media serve, track_id, queue_next date, boolean inject_mode safety.
 
@@ -62,7 +82,7 @@ Lean build log for Matt. SHAs are on `main` (`MQDIGITALRADIO/MQ_Grok_Build`).
 
 | SHA | Theme |
 |-----|--------|
-| *(this commit)* | Cartwall/pages Done; AUTO/talk-up Done; mix-minus + TX operator Done; VT API e2e (device Partial) |
+| `d73c38d` | Cartwall/pages Done; AUTO/talk-up Done; mix-minus + TX operator Done; VT API e2e (device Partial) |
 
 **Partial → Done (pytest + HTTP e2e):**
 - **P1 Cartwall multi-page** — `set_pages` / `clear_slot` / `move_hotkey`; `/api/hotkeys/{pages,clear,move}`; ui_page persist; color chips; fixed missing desk `loadHotkeys`/`persistHotkeys`
@@ -70,7 +90,7 @@ Lean build log for Matt. SHAs are on `main` (`MQDIGITALRADIO/MQ_Grok_Build`).
 - **P1 Multi-bus + mix-minus** — browser subtract path e2e via `/api/audio/mix-minus` → status (CoreAudio PCM stays P2)
 - **P1 Native FM/Digital + TX mode** — operator processing + wav-stub e2e (not live Harbor)
 
-**Still Partial:** P0 Hotkeys fire hear-through (Mac); P0 VT **device pass** (API e2e added); P0 Segue audition; P1 decks readability.
+**Still Partial (at ship):** P0 Hotkeys fire hear-through (Mac); P0 VT **device pass** (API e2e added); P0 Segue audition; P1 decks readability (later Done in 0.1.3 acceptance grind).
 
 **Never Done (unchanged):** Real AU host, live Liquidsoap Harbor, CoreAudio PCM multi-bus, notarization.
 
@@ -80,7 +100,7 @@ Lean build log for Matt. SHAs are on `main` (`MQDIGITALRADIO/MQ_Grok_Build`).
 
 | SHA | Theme |
 |-----|--------|
-| *(this commit)* | Desktop **0.1.2**; P1 library/clocks/FILLER/ETM Done; On-Air empty/error harden; ~637MB package notes |
+| `080860d` | Desktop **0.1.2**; P1 library/clocks/FILLER/ETM Done; On-Air empty/error harden; ~637MB package notes |
 
 **Version:** Desktop packaging **0.1.2** (`desktop/package.json`, `build_info.DESKTOP_VERSION`, titlebar badge, preload fallback). Release notes: Mac package **~637MB** substance class (bundled **ffmpeg** + noise-textured **demo beds** + Master Control + engine — not junk; sine pads that ZIP to nothing forbidden). CI soft floor **≥500MB** ZIP/DMG; beds staged at `MQ_DEMO_BED_MB=850`. Music library stays external.
 

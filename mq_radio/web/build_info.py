@@ -1,6 +1,6 @@
 """Desktop/market build label for the On-Air titlebar.
 
-Packaging (Electron) is the market version operators see (0.1.2).
+Packaging (Electron) is the market version operators see (0.1.3).
 Python package version may differ; this module is intentionally packaging-aligned.
 """
 
@@ -12,7 +12,7 @@ from functools import lru_cache
 from typing import Any
 
 # Align with desktop/package.json — what operators download
-DESKTOP_VERSION = "0.1.2"
+DESKTOP_VERSION = "0.1.3"
 
 
 @lru_cache(maxsize=1)

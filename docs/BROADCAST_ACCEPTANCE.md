@@ -17,18 +17,18 @@ Cross-check vs Maestro / early Zetta / Netia Radio-Assist / mAirList / StationPl
 - [ ] Segue Editor: markers + duck + real audition + dual-deck crossfade
 
 ## P1 — Pro desk parity (Maestro / Netia / mAirList class)
-- [ ] Cart decks A/B/C fully readable (title/artist/time/ending)
+- [x] Cart decks A/B/C fully readable (title/artist/time/ending)
 - [x] Cartwall / hotkey bank multi-page, color/type, reorder, persist
 - [x] Clocks + daypart grid + weekday/weekend packs; generate hour/24h
 - [x] Categories + library manager; FILLER pool for ETM/HIT/HARD
 - [x] TO TIME / ETM / HIT fill stretch
-- [ ] Intro / outro / end-pulse markers editable; defaults on ingest
+- [x] Intro / outro / end-pulse markers editable; defaults on ingest
 - [ ] Voice tracking (manual + AI script/approve/placeholder→Log path); Downloads/VT inbox ingest — Vocloner real voice still external; Mac mic Partial
 - [x] Multi-bus: Program, Monitor, Headphones, Aux, Mix-minus↔Aux in, Stream, Record
 - [x] Mix-minus Program−Aux subtract when Aux live
 - [x] Native FM / Digital processing templates + transmission mode
-- [ ] Studio clock, ELAPSED/REMAINING, ending type
-- [ ] Library root on external drive + inbox ingest; hotkeys play in-place
+- [x] Studio clock, ELAPSED/REMAINING, ending type
+- [x] Library root on external drive + inbox ingest; hotkeys play in-place
 
 ## P2 — Above comparable / market package
 - [ ] Real AU insert host (empty = native); not scaffold-only — messaging/scaffold only
@@ -48,7 +48,7 @@ Cross-check vs Maestro / early Zetta / Netia Radio-Assist / mAirList / StationPl
 3. Manual Mac ZIP: Gatekeeper helper → same path on real devices
 
 ## Package size (Matt)
-- Target Mac ZIP/DMG **≥ ~500 MB**, aiming **~1 GB** class with *real* bundled substance (ffmpeg, Liquidsoap/Master Control bits, engine, sample beds, processing assets, docs). Desktop **0.1.2** stages **~637MB** substance class (ffmpeg + demo beds + Master Control + engine — not junk padding).
+- Target Mac ZIP/DMG **≥ ~500 MB**, aiming **~1 GB** class with *real* bundled substance (ffmpeg, Liquidsoap/Master Control bits, engine, sample beds, processing assets, docs). Desktop **0.1.3** stages **~637MB** substance class (ffmpeg + demo beds + Master Control + engine — not junk padding).
 - Do **not** pad with empty/junk files.
 - Primary music/VT library remains on external **MQ Digital** drive (not forced inside .app).
 
@@ -66,8 +66,11 @@ Cross-check vs Maestro / early Zetta / Netia Radio-Assist / mAirList / StationPl
 | P0 Hotkeys fire / inject | **Partial** | Fire path hardened: real path → playable_url + media serve + status oneshot; track_id resolve; body `date` for queue_next; desk-only inject=false; empty reject; boolean inject_mode safe; duration probe. Desk passes log-date + refresh on queue. Mac hear-through / Electron path drop still verify — keep Partial |
 | P0 VT record / Segment Editor | **Partial** | Deeper API e2e: record→segment(+source markers)→attach→log cart; invalid trim OUT≤IN + empty decode rejected; segment returns source_markers_saved; operator UX trim checks + status polish. **Mac mic device pass stays Partial** |
 | P0 Segue Editor audition + dual-deck | **Partial** | Dual-deck engine crossfade **Done** without Mac audio. Segue context/save e2e + desk audition messaging (browser media / tone fallback). Audition/hear-through still Mac device verify — keep Partial |
-| P1 Decks A/B/C readable | **Partial** | Hybrid cards; ending/timers in |
+| P1 Decks A/B/C readable | **Done** | Status `decks.program/a/b` carry title/artist/duration/elapsed/remaining + `ending_type`/`ending_label` (classify_ending); desk fillDeck + classifyEndingType fallback; studio_clock on `/api/status`; `tests/test_acceptance_p1_desk_readable.py` |
 | P1 AI overnight / PD assist (script→approve→placeholder→Log) | **Partial** | Operator path Done in code: `generate_ai_breaks` → `approve_ai_breaks` → `render_placeholder_vt` / `pd-assist` + `/api/ai-breaks/operator-path` + `/api/vt/render-placeholder`; Living Log attach + soft-regen preserve. Vocloner remains clipboard/open URL (no API). Mac mic / real Vocloner WAV still verify — keep Partial (do not claim Done) |
+| P1 Intro/outro/end-pulse markers | **Done** | `default_markers_for` on ingest; `/api/library/track/markers` + Segment Editor Save pulse; GET track returns ending; clamp ≤45%; bad id → 400; `tests/test_track_markers_and_segue_media.py` + acceptance e2e |
+| P1 Studio clock / ELAPSED / ending | **Done** | Wallclock + TO TIME/ETM panel; `/api/status` timing elapsed/remaining + `studio_clock` payload; deck ending COLD/SOFT/FADE; Living Log `ending_label`; acceptance e2e |
+| P1 Library root + VT inbox + hotkey in-place | **Done** | `/api/settings/library-root` redirect ingest; VT inbox import; hotkey absolute path no library copy (`copied_to_library: false`); `tests/test_end_pulse_and_ramps.py` + `test_routing_and_hotkeys.py` + acceptance e2e. Mac hear-through still P0 Partial |
 | P1 Cartwall multi-page | **Done** | `set_pages`/`clear_slot`/`move_hotkey` + `/api/hotkeys/{pages,clear,move}`; ui_page persist; color chips; desk `loadHotkeys`/`persistHotkeys` fixed; `tests/test_broadcast_partials_depth.py` |
 | P1 Clocks + daypart packs | **Done** | Clock editor + daypart packs; clone/save/daypart HTTP e2e; generate_hour uses map; `tests/test_daypart_designer.py` + `tests/test_p1_library_clocks_etm_deck.py` |
 | P1 Categories / FILLER | **Done** | Library manager categories HTTP; FL filler pool; pick/insert toward ETM; ingest edges; `tests/test_categories_and_filler_pool.py` + `tests/test_p1_library_clocks_etm_deck.py` |

@@ -80,13 +80,13 @@ def httpd(desk):
         t.join(timeout=2)
 
 
-def test_desktop_version_012_in_api(httpd):
-    assert DESKTOP_VERSION == "0.1.2"
+def test_desktop_version_013_in_api(httpd):
+    assert DESKTOP_VERSION == "0.1.3"
     code, res = _http_json("GET", f"{httpd['base']}/api/version")
     assert code == 200
-    assert res["version"] == "0.1.2"
-    assert "0.1.2" in res["label"]
-    assert version_payload()["version"] == "0.1.2"
+    assert res["version"] == "0.1.3"
+    assert "0.1.3" in res["label"]
+    assert version_payload()["version"] == "0.1.3"
 
 
 def test_library_manager_categories_http(httpd):

@@ -48,7 +48,7 @@ const AUDIO_ROLES = [
 const AUDIO_INPUT_ROLES = ["aux_in", "mic"];
 const SETTINGS_LS_KEY = "mq_radio_audio_outputs_v2";
 const WELCOME_LS_KEY = "mq_radio_welcome_dismissed_v1";
-const DESKTOP_VERSION_FALLBACK = "0.1.2";
+const DESKTOP_VERSION_FALLBACK = "0.1.3";
 const VOCLONER_LS_KEY = "mq_radio_vocloner_v1";
 const VOCLONER_URL = "https://vocloner.com/";
 
@@ -162,12 +162,25 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
+function classifyEndingType(outroMs, durationMs) {
+  const o = Number(outroMs || 0);
+  if (o > 0) {
+    if (o < 2500) return "COLD";
+    if (o >= 5000) return "FADE";
+    return "SOFT";
+  }
+  const dur = Number(durationMs || 0);
+  if (dur > 0 && dur < 8000) return "COLD";
+  return "FADE";
+}
+
 function endingDisplay(event) {
   if (!event) return "—";
   if (event.ending_label) return event.ending_label;
-  const et = event.ending_type || "";
-  const outro = Number(event.outro_ms || 0);
+  let et = event.ending_type || "";
+  const outro = Number(event.outro_ms || event.end_pulse_ms || 0);
   const intro = Number(event.intro_ms || 0);
+  if (!et) et = classifyEndingType(outro, event.duration_ms);
   const parts = [];
   if (intro > 0) parts.push(`INTRO ${(intro / 1000).toFixed(1)}s`);
   if (et && outro > 0) parts.push(`${et} · ${(outro / 1000).toFixed(1)}s`);
@@ -771,16 +784,28 @@ async function refresh() {
     // Build display events for A/B from dual-deck session when present
     function deckEventFromSlot(slot, fallback) {
       if (!slot) return fallback;
+      const outro = Number(
+        slot.outro_ms != null ? slot.outro_ms : (slot.end_pulse_ms != null ? slot.end_pulse_ms : 0)
+      );
+      const intro = Number(slot.intro_ms || 0);
+      let endingType = slot.ending_type;
+      let endingLabel = slot.ending_label;
+      if (slot.role === "fading") {
+        endingType = endingType || "FADE";
+        endingLabel = endingLabel || "SEGUE FADE";
+      } else if (!endingType) {
+        endingType = classifyEndingType(outro, slot.duration_ms);
+      }
       return {
         id: slot.event_id,
         title: slot.title,
         artist: slot.artist,
         event_type: slot.event_type,
         duration_ms: slot.duration_ms,
-        intro_ms: slot.intro_ms,
-        outro_ms: slot.end_pulse_ms,
-        ending_type: slot.role === "fading" ? "FADE" : undefined,
-        ending_label: slot.role === "fading" ? "SEGUE FADE" : undefined,
+        intro_ms: intro,
+        outro_ms: outro,
+        ending_type: endingType,
+        ending_label: endingLabel,
         chain_mode: slot.role === "fading" ? "XFADE" : "SEQ",
         timing_mode: overlap ? "OVERLAP" : "AUTO",
         status: slot.role === "program" ? "ON_AIR" : slot.role === "fading" ? "FADING" : "",

@@ -29,13 +29,16 @@ from mq_radio.production.ramps import load_ramps, profile_for_context, save_ramp
 from mq_radio.web.media import content_type_for, playable_url, resolve_media_path
 from mq_radio.web.build_info import version_payload
 from mq_radio.living_log.service import (
+    classify_ending,
     delete_event,
+    ending_label,
     insert_event,
     list_events,
     list_library,
     load_sample_hour,
     now_and_upcoming,
     replace_event,
+    to_time_payload,
 )
 from mq_radio.library.categories import (
     add_category,
@@ -287,7 +290,7 @@ def make_handler(db_path: Path):
                     ourl = playable_url(oneshot.get("path") or "", oneshot.get("track_id"))
                     if ourl:
                         oneshot["playable_url"] = ourl
-                # Enrich deck playable URLs
+                # Enrich deck playable URLs + ending classification (title/artist/time/ending)
                 def _enrich_deck(slot):
                     if not slot:
                         return None
@@ -295,11 +298,50 @@ def make_handler(db_path: Path):
                     url = playable_url(out.get("file_path") or "", out.get("track_id"))
                     if url:
                         out["playable_url"] = url
+                    # Prefer explicit outro; end_pulse_ms is the session alias
+                    outro = out.get("outro_ms")
+                    if outro is None:
+                        outro = out.get("end_pulse_ms")
+                    outro_i = int(outro or 0)
+                    intro_i = int(out.get("intro_ms") or 0)
+                    has_track = out.get("track_id") is not None and out.get("track_id") != ""
+                    if out.get("role") == "fading":
+                        ending = "FADE"
+                        label = "SEGUE FADE"
+                    else:
+                        ending = classify_ending(
+                            outro_i if (has_track or outro_i > 0) else None,
+                            duration_ms=out.get("duration_ms"),
+                            has_track=bool(has_track),
+                        )
+                        label = ending_label(
+                            ending,
+                            outro_i if (has_track or outro_i > 0) else None,
+                            intro_i,
+                        )
+                    out["outro_ms"] = outro_i
+                    out["intro_ms"] = intro_i
+                    out["ending_type"] = ending
+                    out["ending_label"] = label
                     return out
                 decks["a"] = _enrich_deck(decks.get("a"))
                 decks["b"] = _enrich_deck(decks.get("b"))
                 decks["program"] = _enrich_deck(decks.get("program"))
                 decks["fading"] = _enrich_deck(decks.get("fading"))
+                # Studio clock hard-marker readout (same rules as Living Log TO TIME panel)
+                try:
+                    from datetime import datetime as _dt
+                    studio_clock = to_time_payload(
+                        list_events(log_date, db_path=db_path),
+                        _dt.now(),
+                    )
+                except Exception:
+                    studio_clock = {
+                        "to_time": "--:--",
+                        "etm_readout": "NONE",
+                        "kind": None,
+                        "airtime": None,
+                    }
                 play_url = playable_url(sess_path, sess_tid) if (sess_path or sess_tid) else (
                     (now_ev or {}).get("playable_url")
                 )
@@ -323,6 +365,7 @@ def make_handler(db_path: Path):
                     "oneshot": oneshot,
                     "decks": decks,
                     "segue": segue,
+                    "studio_clock": studio_clock,
                     "ramps": {
                         "active_profile": ramps.get("active_profile"),
                         "ai_dj_profile": ramps.get("ai_dj_profile"),
@@ -466,18 +509,22 @@ def make_handler(db_path: Path):
                     return
                 intro = int(row["intro_ms"] or 0)
                 outro = int(row["outro_ms"] or 0)
+                dur = int(row["duration_ms"] or 0)
+                ending = classify_ending(outro, duration_ms=dur, has_track=True)
                 _json_response(self, {
                     "ok": True,
                     "track": {
                         "id": int(row["id"]),
                         "title": row["title"],
                         "artist": row["artist"],
-                        "duration_ms": int(row["duration_ms"] or 0),
+                        "duration_ms": dur,
                         "event_type": row["event_type"] or "MUSIC",
                         "file_path": row["file_path"] or "",
                         "intro_ms": intro,
                         "outro_ms": outro,
                         "end_pulse_ms": outro,
+                        "ending_type": ending,
+                        "ending_label": ending_label(ending, outro, intro),
                         "playable_url": playable_url(row.get("file_path"), int(row["id"])),
                     },
                 })
@@ -1518,15 +1565,32 @@ def make_handler(db_path: Path):
 
             if path == "/api/library/track/markers":
                 tid = payload.get("track_id") or payload.get("id")
-                if tid is None:
+                if tid is None or tid == "":
                     _json_response(self, {"ok": False, "error": "track_id required"}, status=400)
                     return
+                try:
+                    tid_i = int(tid)
+                except (TypeError, ValueError):
+                    _json_response(self, {"ok": False, "error": "track_id must be an integer"}, status=400)
+                    return
                 result = update_track_markers(
-                    int(tid),
+                    tid_i,
                     intro_ms=payload.get("intro_ms"),
                     outro_ms=payload.get("outro_ms") if payload.get("outro_ms") is not None else payload.get("end_pulse_ms"),
                     db_path=db_path,
                 )
+                if result.get("ok"):
+                    ending = classify_ending(
+                        int(result.get("outro_ms") or 0),
+                        duration_ms=result.get("duration_ms"),
+                        has_track=True,
+                    )
+                    result["ending_type"] = ending
+                    result["ending_label"] = ending_label(
+                        ending,
+                        int(result.get("outro_ms") or 0),
+                        int(result.get("intro_ms") or 0),
+                    )
                 _json_response(self, result, status=200 if result.get("ok") else 400)
                 return
 

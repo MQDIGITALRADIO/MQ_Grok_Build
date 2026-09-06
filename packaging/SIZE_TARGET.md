@@ -41,6 +41,6 @@ Beds are **noise-dominant** (pink/white/brown textured pads, sweeper whooshes, l
 | Master Control / Liquidsoap assets (+ brew binary when present) | ~1–50 MB |
 | **ZIP/DMG total** | **~500 MB–1 GB class** (aim ~650–900 MB) |
 
-Desktop **0.1.2** release notes cite **~637MB** package substance class (ffmpeg + noise-textured demo beds + Master Control + engine after ZIP — music library remains external).
+Desktop **0.1.3** release notes cite **~637MB** package substance class (ffmpeg + noise-textured demo beds + Master Control + engine after ZIP — music library remains external).
 
 Music library remains external.
