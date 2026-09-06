@@ -1,4 +1,4 @@
-/* MQ On-Air — mid-90s broadcast desk aesthetics (workflow only; no proprietary marks) */
+/* MQ On-Air — hybrid Maestro clarity + modern landscape (workflow only; no proprietary marks) */
 :root {
   --desk: #c0c0c0;
   --desk-dark: #a0a0a0;
@@ -65,7 +65,7 @@ html, body {
 .titlebar-left { display: flex; align-items: center; gap: 8px; }
 .sys-icon { font-size: 14px; line-height: 1; }
 .sys-title { font-size: 12px; letter-spacing: 0.02em; }
-.sys-build { font-weight: 400; opacity: 0.85; font-size: 11px; }
+.sys-build { font-weight: 400; opacity: 0.85; font-size: 11px; letter-spacing: 0.02em; white-space: nowrap; }
 .titlebar-right { display: flex; align-items: center; gap: 6px; }
 .date-label {
   display: flex; align-items: center; gap: 4px;
@@ -97,6 +97,38 @@ html, body {
   border-left: 1px solid var(--border-dark);
   border-right: 1px solid var(--border-light);
   border-bottom: 1px solid var(--border-light);
+}
+
+
+/* —— First-run welcome tip (On-Air) —— */
+.welcome-tip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  background: #d8e8f8;
+  border-bottom: 2px solid var(--border-mid);
+  color: #102040;
+  flex-shrink: 0;
+  font-size: 11px;
+  line-height: 1.35;
+}
+.welcome-tip[hidden] { display: none !important; }
+.welcome-tip-body {
+  flex: 1;
+  min-width: 0;
+}
+.welcome-tip-body code {
+  font-family: var(--mono);
+  font-size: 10px;
+  background: #c8d8e8;
+  padding: 0 3px;
+}
+.welcome-tip-dismiss {
+  width: 22px;
+  height: 18px;
+  flex-shrink: 0;
+  font-size: 11px;
 }
 
 /* —— Top strip: modes / clock / transport —— */
@@ -2149,4 +2181,353 @@ input { border-radius: 0; }
 }
 .cat-empty-hint {
   margin: 8px;
+}
+
+
+
+/* Base nav buttons — readable English labels (hybrid refines palette) */
+.btn-nav {
+  width: auto !important;
+  min-width: 72px;
+  height: 28px;
+  padding: 0 12px;
+  font-family: var(--ui);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  border-radius: 4px;
+  border: 1px solid var(--border-mid);
+  background: var(--panel);
+  color: var(--text);
+}
+.btn-nav:active { filter: brightness(0.95); }
+
+/* =============================================================================
+   Hybrid desk — Maestro control clarity + modern Netia-landscape shell
+   (workflow aesthetics only — no proprietary marks / branding)
+   ============================================================================= */
+.desk.desk-hybrid {
+  --desk: #1a1f28;
+  --desk-dark: #12161d;
+  --desk-light: #243041;
+  --beige: #1e2530;
+  --beige-dark: #161b24;
+  --panel: #232a36;
+  --panel-inset: #181e28;
+  --border-dark: #0a0c10;
+  --border-mid: #3a4558;
+  --border-light: #4a5870;
+  --text: #e8eef8;
+  --muted: #9aa8bc;
+  --onair: #e03131;
+  --next: #3b82f6;
+  --ready: #2f9e44;
+  --mono: "JetBrains Mono", "SF Mono", "Consolas", "Menlo", monospace;
+  --ui: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  background: var(--desk-dark);
+  color: var(--text);
+  border: 1px solid var(--border-mid);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+}
+
+.desk.desk-hybrid .titlebar {
+  background: linear-gradient(90deg, #0f1724 0%, #1a2740 55%, #152033 100%);
+  border-bottom: 1px solid #2a364c;
+  padding: 6px 10px;
+  color: #f0f4fa;
+}
+
+.desk.desk-hybrid .sys-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.desk.desk-hybrid .sys-build {
+  font-size: 11px;
+  opacity: 0.75;
+  background: rgba(255,255,255,0.08);
+  padding: 2px 7px;
+  border-radius: 3px;
+}
+
+/* Readable nav — not 22px Win95 chrome */
+.desk.desk-hybrid .btn-nav,
+.desk.desk-hybrid .btn-chrome.btn-ai,
+.desk.desk-hybrid #btn-library,
+.desk.desk-hybrid #btn-clocks,
+.desk.desk-hybrid #btn-settings,
+.desk.desk-hybrid #btn-refresh {
+  width: auto;
+  min-width: 72px;
+  height: 28px;
+  padding: 0 12px;
+  font-family: var(--ui);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #e8eef8;
+  background: linear-gradient(180deg, #334155 0%, #1e293b 100%);
+  border: 1px solid #475569;
+  border-radius: 4px;
+  box-shadow: none;
+  cursor: pointer;
+}
+.desk.desk-hybrid .btn-nav:hover,
+.desk.desk-hybrid #btn-library:hover,
+.desk.desk-hybrid #btn-clocks:hover,
+.desk.desk-hybrid #btn-settings:hover,
+.desk.desk-hybrid #btn-refresh:hover {
+  background: linear-gradient(180deg, #3f5168 0%, #273449 100%);
+  border-color: #64748b;
+}
+.desk.desk-hybrid .btn-nav:active {
+  background: #0f172a;
+}
+
+.desk.desk-hybrid .date-label {
+  color: #c5d0e0;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.desk.desk-hybrid .date-label input[type="date"] {
+  background: #0f141c;
+  color: #e8eef8;
+  border: 1px solid #3a4558;
+  border-radius: 3px;
+}
+
+.desk.desk-hybrid .top-strip {
+  background: #161b24;
+  border-bottom: 1px solid #2a364c;
+  grid-template-columns: auto minmax(180px, 1fr) auto auto auto;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+.desk.desk-hybrid .mode-bank,
+.desk.desk-hybrid .studio-clock-panel,
+.desk.desk-hybrid .status-lamp-panel,
+.desk.desk-hybrid .vu-panel {
+  background: #1c2330;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+}
+
+.desk.desk-hybrid .mode-btn {
+  background: #0f141c;
+  color: #94a3b8;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  min-width: 78px;
+  padding: 12px 14px;
+  font-size: 13px;
+}
+.desk.desk-hybrid .mode-btn.active {
+  background: #2563eb;
+  color: #fff;
+  border-color: #3b82f6;
+}
+.desk.desk-hybrid .mode-btn.active[data-mode="LIVE"] {
+  background: var(--onair);
+  border-color: #ff6b6b;
+}
+
+/* Maestro-clear transport */
+.desk.desk-hybrid .transport-bank {
+  display: flex;
+  gap: 8px;
+  padding: 6px;
+  background: #141a24;
+  border: 1px solid #334155;
+  border-radius: 8px;
+}
+.desk.desk-hybrid .btn-transport {
+  min-width: 96px;
+  min-height: 52px;
+  padding: 10px 16px;
+  font-family: var(--ui);
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  border-radius: 6px;
+  border: 1px solid #475569;
+  background: #1e293b;
+  color: #e2e8f0;
+  cursor: pointer;
+}
+.desk.desk-hybrid .btn-transport.go {
+  background: linear-gradient(180deg, #22c55e 0%, #15803d 100%);
+  border-color: #16a34a;
+  color: #04140a;
+  text-shadow: none;
+}
+.desk.desk-hybrid .btn-transport.stop {
+  background: linear-gradient(180deg, #f87171 0%, #b91c1c 100%);
+  border-color: #dc2626;
+  color: #fff;
+}
+.desk.desk-hybrid .btn-transport:hover {
+  filter: brightness(1.08);
+}
+
+.desk.desk-hybrid .studio-clock {
+  font-family: var(--mono);
+  font-size: 28px;
+  color: #7dd3fc;
+  letter-spacing: 0.04em;
+}
+.desk.desk-hybrid .clock-label,
+.desk.desk-hybrid .clock-sub {
+  color: #94a3b8;
+}
+.desk.desk-hybrid .engine-msg {
+  color: #cbd5e1;
+  font-size: 11px;
+}
+.desk.desk-hybrid .lamp.lit {
+  box-shadow: 0 0 8px currentColor;
+}
+
+/* Decks — landscape readable cards */
+.desk.desk-hybrid .decks-row {
+  gap: 10px;
+  padding: 10px 12px;
+  background: #12161d;
+}
+.desk.desk-hybrid .deck {
+  background: #1c2330;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  color: var(--text);
+}
+.desk.desk-hybrid .deck-head {
+  background: #141a24;
+  border-bottom: 1px solid #2a364c;
+  color: #cbd5e1;
+}
+.desk.desk-hybrid .deck-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+.desk.desk-hybrid .deck-artist {
+  color: #94a3b8;
+}
+.desk.desk-hybrid .timer-digits {
+  font-family: var(--mono);
+  color: #e2e8f0;
+}
+
+/* Import strip */
+.desk.desk-hybrid .ingest-strip {
+  background: #0f141c;
+  padding: 8px 12px 10px;
+}
+.desk.desk-hybrid .drop-zone {
+  background: #1a2230;
+  border: 2px dashed #3b82f6;
+  border-radius: 8px;
+  color: #dbeafe;
+  min-height: 44px;
+}
+.desk.desk-hybrid .drop-zone.dragover {
+  background: #12301f;
+  border-color: #22c55e;
+  color: #dcfce7;
+}
+.desk.desk-hybrid .ingest-status {
+  color: #94a3b8;
+  font-size: 11px;
+}
+.desk.desk-hybrid .ingest-status.ingest-error {
+  color: #fca5a5;
+}
+
+/* Living Log — wide landscape */
+.desk.desk-hybrid .main-grid {
+  background: #12161d;
+}
+.desk.desk-hybrid .log-panel,
+.desk.desk-hybrid .side-panel {
+  background: #1a2030;
+  border: 1px solid #2a364c;
+  border-radius: 8px;
+}
+.desk.desk-hybrid .panel-chrome {
+  background: #141a24;
+  color: #e2e8f0;
+  border-bottom: 1px solid #2a364c;
+}
+.desk.desk-hybrid .log-table {
+  color: #e2e8f0;
+  background: #12161d;
+}
+.desk.desk-hybrid .log-table th {
+  background: #1c2433;
+  color: #94a3b8;
+  border-bottom: 1px solid #334155;
+}
+.desk.desk-hybrid .log-table td {
+  border-bottom: 1px solid #243044;
+}
+.desk.desk-hybrid tr.on-air {
+  background: #3f1515 !important;
+}
+.desk.desk-hybrid tr.next-up {
+  background: #14233a !important;
+}
+.desk.desk-hybrid tr:nth-child(even):not(.on-air):not(.next-up):not(.completed) {
+  background: #161c28;
+}
+.desk.desk-hybrid .log-empty {
+  color: #94a3b8;
+}
+
+/* VU idle fully dark */
+.desk.desk-hybrid .vu-led {
+  background: #0a0e14;
+  opacity: 0.35;
+}
+.desk.desk-hybrid .vu-led.on.g { background: #22c55e; opacity: 1; }
+.desk.desk-hybrid .vu-led.on.y { background: #eab308; opacity: 1; }
+.desk.desk-hybrid .vu-led.on.r { background: #ef4444; opacity: 1; }
+.desk.desk-hybrid .vu-panel:not(.playing) .vu-led {
+  background: #0a0e14;
+  opacity: 0.25;
+  box-shadow: none;
+}
+.desk.desk-hybrid .vu-label,
+.desk.desk-hybrid .vu-peak-read,
+.desk.desk-hybrid .vu-ch,
+.desk.desk-hybrid .vu-scale {
+  color: #94a3b8;
+}
+
+.desk.desk-hybrid .welcome-tip {
+  background: #1e3a5f;
+  color: #dbeafe;
+  border-bottom: 1px solid #3b82f6;
+}
+.desk.desk-hybrid .welcome-tip-body code {
+  background: #0f172a;
+  color: #93c5fd;
+}
+
+.desk.desk-hybrid .hotkey-panel,
+.desk.desk-hybrid .hotkey {
+  background: #1c2330;
+  border-color: #334155;
+  color: #e2e8f0;
+}
+
+/* Dialogs inherit readable hybrid chrome */
+.desk.desk-hybrid ~ .settings-backdrop .settings-dialog,
+body:has(.desk-hybrid) .settings-dialog {
+  background: #1c2330;
+  color: #e8eef8;
+  border: 1px solid #334155;
 }

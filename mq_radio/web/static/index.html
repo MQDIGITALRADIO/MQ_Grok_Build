@@ -7,28 +7,40 @@
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
-  <!-- Classic broadcast desk chrome (workflow aesthetics only — not a proprietary clone) -->
-  <div class="desk" id="desk-root">
+  <!-- Hybrid On-Air: Maestro control clarity + modern landscape chrome (not a proprietary clone) -->
+  <div class="desk desk-hybrid" id="desk-root">
   <div class="desk-drop-overlay" id="desk-drop-overlay" hidden>
-    <div class="desk-drop-msg">DROP TO LIBRARY · wav · mp3 · flac · mp4</div>
+    <div class="desk-drop-msg">Drop to import · wav · mp3 · flac · mp4</div>
   </div>
 
     <header class="titlebar">
       <div class="titlebar-left">
         <span class="sys-icon">▣</span>
         <span class="sys-title">MQ Radio Automation — On-Air</span>
-        <span class="sys-build">HOME · Living Log</span>
+        <span class="sys-build" id="sys-build" title="Market package / build">0.1.1</span>
       </div>
       <div class="titlebar-right">
-        <label class="date-label">LOG DATE
+        <label class="date-label">Log date
           <input type="date" id="log-date" />
         </label>
-        <button type="button" id="btn-library" class="btn-chrome" title="Categories / library">LIBRARY</button>
-        <button type="button" id="btn-clocks" class="btn-chrome" title="Category clocks">CLOCKS</button>
-        <button type="button" id="btn-settings" class="btn-chrome" title="Settings">⚙</button>
-        <button type="button" id="btn-refresh" class="btn-chrome" title="Refresh log">↻</button>
+        <button type="button" id="btn-library" class="btn-nav" title="Browse library carts and categories">Library</button>
+        <button type="button" id="btn-clocks" class="btn-nav" title="Hour clocks — build the Living Log">Clocks</button>
+        <button type="button" id="btn-settings" class="btn-nav" title="Audio routes and processing">Settings</button>
+        <button type="button" id="btn-refresh" class="btn-nav btn-nav-icon" title="Refresh Living Log">Refresh</button>
       </div>
     </header>
+
+    <div class="welcome-tip" id="welcome-tip" hidden role="status">
+      <div class="welcome-tip-body">
+        <strong>Welcome</strong> —
+        use <strong>Import audio</strong> (or drop files),
+        build hours in <strong>Clocks</strong>,
+        browse carts in <strong>Library</strong>,
+        set routes in <strong>Settings</strong>.
+        Mac ZIP: run <code>Open MQ Radio.command</code> once if Gatekeeper blocks.
+      </div>
+      <button type="button" class="btn-chrome welcome-tip-dismiss" id="welcome-tip-dismiss" title="Dismiss tip">✕</button>
+    </div>
 
     <div class="top-strip">
       <div class="mode-bank" role="group" aria-label="Playout mode">
@@ -50,10 +62,10 @@
       </div>
 
       <div class="transport-bank">
-        <button type="button" id="btn-play" class="btn-transport go">▶ PLAY</button>
-        <button type="button" id="btn-stop" class="btn-transport stop">■ STOP</button>
-        <button type="button" id="btn-skip" class="btn-transport">⏭ SKIP</button>
-        <button type="button" id="btn-step" class="btn-transport">⚙ STEP</button>
+        <button type="button" id="btn-play" class="btn-transport go" title="Start playout from the cued cart">PLAY</button>
+        <button type="button" id="btn-stop" class="btn-transport stop" title="Stop playout">STOP</button>
+        <button type="button" id="btn-skip" class="btn-transport" title="Skip to the next cart">SKIP</button>
+        <button type="button" id="btn-step" class="btn-transport" title="Advance one cart (manual next)">NEXT</button>
       </div>
 
       <div class="status-lamp-panel">
@@ -63,7 +75,7 @@
         <div class="segue-status" id="segue-status" aria-live="polite"></div>
       </div>
 
-      <div class="vu-panel" id="vu-panel" title="Program VU — AnalyserNode on program bus when audio plays; synthetic fallback idle">
+      <div class="vu-panel" id="vu-panel" title="Program VU — lights only while audio is actually playing">
         <div class="vu-head">
           <span class="vu-label">PROGRAM VU</span>
           <span class="vu-peak-read" id="vu-peak-read">—</span>
@@ -165,13 +177,13 @@
       <div class="drop-zone" id="drop-zone" tabindex="0"
            title="Drop .wav .mp3 .flac .mp4 here to ingest as library carts">
         <span class="drop-icon">⬇</span>
-        <span class="drop-text"><strong>DROP AUDIO</strong> · wav / mp3 / flac / mp4 → Library carts</span>
+        <span class="drop-text"><strong>Import audio</strong> — drop or click · wav / mp3 / flac / mp4 → library carts</span>
         <input type="file" id="ingest-file-input" accept=".wav,.mp3,.flac,.mp4,.m4a,.ogg,.aac,.mov,.mkv,audio/*,video/mp4" multiple hidden />
-        <button type="button" class="btn-chrome btn-ai" id="btn-ingest-browse">Browse…</button>
+        <button type="button" class="btn-nav" id="btn-ingest-browse" title="Choose audio files to import">Import audio</button>
       </div>
       <div class="ingest-actions">
-        <button type="button" id="btn-segment-editor" class="btn-chrome btn-ai" title="Cut long carts into segments">Segment Editor…</button>
-        <button type="button" id="btn-import-vt-inbox" class="btn-chrome btn-ai" title="Import Vocloner / VT renders from Downloads or vt-inbox">Import from Downloads</button>
+        <button type="button" id="btn-segment-editor" class="btn-nav" title="Cut long carts into shorter segments">Cut segment…</button>
+        <button type="button" id="btn-import-vt-inbox" class="btn-nav" title="Import voice-track renders from Downloads">Import VT folder</button>
         <span class="ingest-status" id="ingest-status"></span>
       </div>
     </div>
@@ -182,11 +194,11 @@
           <span class="panel-title">LIVING LOG</span>
           <span class="panel-hint" id="log-count">0 events</span>
           <div class="log-actions">
-            <button type="button" id="btn-sample-hour" class="btn-chrome btn-ai" title="Load editable sample hour">Load sample hour</button>
-            <button type="button" id="btn-log-delete" class="btn-chrome btn-ai" title="Delete selected row">Delete</button>
-            <button type="button" id="btn-log-insert" class="btn-chrome btn-ai" title="Insert after selected">Insert…</button>
-            <button type="button" id="btn-log-replace" class="btn-chrome btn-ai" title="Replace selected cart">Replace…</button>
-            <button type="button" id="btn-segue" class="btn-chrome btn-ai" title="Segue Editor">Segue…</button>
+            <button type="button" id="btn-sample-hour" class="btn-nav" title="Load an editable sample hour into the Living Log">Load sample hour</button>
+            <button type="button" id="btn-log-delete" class="btn-chrome btn-ai" title="Delete the selected Living Log row">Delete row</button>
+            <button type="button" id="btn-log-insert" class="btn-chrome btn-ai" title="Insert a cart after the selected row">Insert cart…</button>
+            <button type="button" id="btn-log-replace" class="btn-chrome btn-ai" title="Replace the selected row with a library cart">Replace cart…</button>
+            <button type="button" id="btn-segue" class="btn-chrome btn-ai" title="Edit segue markers and audition">Segue…</button>
             <button type="button" id="btn-gen-ai" class="btn-chrome btn-ai" title="Generate AI breaks">Generate AI breaks</button>
             <button type="button" id="btn-approve-ai" class="btn-chrome btn-ai" title="Approve draft VTs">Approve drafts</button>
             <button type="button" id="btn-render-vocloner" class="btn-chrome btn-ai" title="Copy selected/approved VT script and open Vocloner">Render in Vocloner</button>

@@ -735,22 +735,86 @@
     return i >= 0 ? String(name).slice(i).toLowerCase() : "";
   }
 
+  function resolveIngestFilePath(file) {
+    if (!file) return "";
+    try {
+      if (window.mqDesktop && typeof window.mqDesktop.getPathForFile === "function") {
+        const p = window.mqDesktop.getPathForFile(file);
+        if (p && typeof p === "string" && p.trim()) return p.trim();
+      }
+    } catch (_) { /* ignore */ }
+    try {
+      if (file.path && typeof file.path === "string" && file.path.trim()) return file.path.trim();
+    } catch (_) { /* ignore */ }
+    return "";
+  }
+
+  async function parseIngestResponse(r) {
+    let res = null;
+    try {
+      res = await r.json();
+    } catch (_) {
+      return {
+        ok: false,
+        error: `Import HTTP ${r.status}${r.statusText ? " " + r.statusText : ""} — server did not return JSON`,
+      };
+    }
+    if (!res) return { ok: false, error: "empty import response" };
+    if (!r.ok && res.ok !== true) {
+      const hint = res.hint ? ` — ${res.hint}` : "";
+      return {
+        ok: false,
+        error: (res.error || `Import HTTP ${r.status}`) + hint,
+      };
+    }
+    return res;
+  }
+
   async function ingestFileBlob(file) {
     const ext = fileExt(file.name);
     if (!INGEST_EXTS.has(ext)) {
       return { ok: false, error: `unsupported ${ext || "type"} — use wav/mp3/flac/mp4` };
     }
     if (!file || !file.size) {
-      return { ok: false, error: `${file && file.name ? file.name : "file"} is empty` };
+      return { ok: false, error: `${file && file.name ? file.name : "file"} is empty (0 bytes)` };
     }
-    const fd = new FormData();
-    fd.append("file", file, file.name);
-    fd.append("title", file.name.replace(/\.[^.]+$/, ""));
-    fd.append("artist", "Imported");
-    // Long concerts / interviews stay MUSIC; VT-ish names → VOICE_TRACK
+    const title = file.name.replace(/\.[^.]+$/, "");
+    const artist = "Imported";
     const lower = file.name.toLowerCase();
     const et =
       /vocloner|voice.?track|\bvt[_-]|\bvt\b/.test(lower) ? "VOICE_TRACK" : "MUSIC";
+
+    // Electron / Mac app: absolute path → server copies (reliable for large carts)
+    const abs = resolveIngestFilePath(file);
+    if (abs) {
+      try {
+        const r = await fetch("/api/library/ingest", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            path: abs,
+            title,
+            artist,
+            event_type: et,
+          }),
+        });
+        const res = await parseIngestResponse(r);
+        if (res && res.ok) return res;
+        // Fall through to multipart blob if path ingest rejected (sandbox / missing file)
+        if (res && /not a file|not found|permission/i.test(String(res.error || ""))) {
+          /* continue to FormData */
+        } else if (res && res.ok === false) {
+          return res;
+        }
+      } catch (e) {
+        /* fall through to FormData */
+      }
+    }
+
+    const fd = new FormData();
+    fd.append("file", file, file.name || `upload${ext || ".bin"}`);
+    fd.append("title", title);
+    fd.append("artist", artist);
     fd.append("event_type", et);
     let r;
     try {
@@ -758,38 +822,28 @@
     } catch (e) {
       return { ok: false, error: `network: ${e && e.message ? e.message : e}` };
     }
-    let res = null;
-    try {
-      res = await r.json();
-    } catch (_) {
-      return {
-        ok: false,
-        error: `ingest HTTP ${r.status}${r.statusText ? " " + r.statusText : ""} — non-JSON response`,
-      };
-    }
-    if (!r.ok && (!res || res.ok !== false)) {
-      return {
-        ok: false,
-        error: (res && res.error) || `ingest HTTP ${r.status}`,
-      };
-    }
-    return res || { ok: false, error: "empty ingest response" };
+    return parseIngestResponse(r);
   }
 
   async function ingestFiles(fileList) {
     const files = Array.from(fileList || []);
     if (!files.length) {
-      ingestStatus("No files selected — drop .wav/.mp3/.flac/.mp4 or Browse…", { error: true });
+      ingestStatus("No files selected — drop .wav/.mp3/.flac/.mp4 or click Import audio", { error: true });
       return;
     }
-    ingestStatus(`Ingesting ${files.length} file(s)…`);
+    ingestStatus(`Importing ${files.length} file(s) into library…`);
     let ok = 0;
     const errors = [];
+    const titles = [];
     for (const f of files) {
       try {
         const res = await ingestFileBlob(f);
-        if (res && res.ok) ok += 1;
-        else errors.push(`${f.name}: ${(res && res.error) || "failed"}`);
+        if (res && res.ok) {
+          ok += 1;
+          if (res.title) titles.push(res.title);
+        } else {
+          errors.push(`${f.name}: ${(res && res.error) || "failed"}`);
+        }
       } catch (e) {
         errors.push(`${f.name}: ${e && e.message ? e.message : e}`);
       }
@@ -797,11 +851,20 @@
     if (errors.length) {
       const shown = errors.slice(0, 3).join(" · ");
       const more = errors.length > 3 ? ` (+${errors.length - 3} more)` : "";
-      ingestStatus(`Ingested ${ok}/${files.length}. Errors: ${shown}${more}`, { error: true });
+      ingestStatus(
+        ok
+          ? `Imported ${ok}/${files.length}. Errors: ${shown}${more}`
+          : `Import failed: ${shown}${more}`,
+        { error: true }
+      );
     } else {
-      ingestStatus(`Ingested ${ok} cart(s) into library — open LIBRARY to assign categories`);
+      const sample = titles.slice(0, 2).join(", ");
+      ingestStatus(
+        `Imported ${ok} cart(s)${sample ? ` — ${sample}` : ""} · open Library to categorise · add to Clocks / Living Log`
+      );
     }
-    await refresh();
+    if (typeof refresh === "function") await refresh();
+    else if (window.mqRefresh) await window.mqRefresh();
   }
 
   function wireDropZone() {
@@ -824,12 +887,25 @@
       return dt.files && dt.files.length > 0;
     }
 
-    if (browse && input) {
-      browse.onclick = () => input.click();
+    if (input) {
+      input.setAttribute("accept", ".wav,.mp3,.flac,.mp4,.m4a,.ogg,.aac,.mov,.mkv,audio/*,video/mp4");
       input.onchange = () => {
-        ingestFiles(input.files);
+        if (input.files && input.files.length) ingestFiles(input.files);
         input.value = "";
       };
+    }
+    if (browse) {
+      browse.onclick = (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (input) input.click();
+      };
+    }
+    if (zone && input) {
+      zone.addEventListener("click", (ev) => {
+        if (ev.target && (ev.target.closest("button") || ev.target.tagName === "INPUT")) return;
+        input.click();
+      });
     }
 
     let dragDepth = 0;

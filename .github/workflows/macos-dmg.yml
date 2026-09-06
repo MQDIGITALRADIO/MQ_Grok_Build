@@ -1,4 +1,6 @@
 name: macOS DMG
+# Size target: 500MB–1GB+ with REAL substance (ffmpeg/Liquidsoap/demo beds).
+# See packaging/SIZE_TARGET.md — never pad with junk. Music library stays external.
 
 on:
   push:

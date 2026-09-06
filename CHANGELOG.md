@@ -2,11 +2,47 @@
 
 Lean build log for Matt. SHAs are on `main` (`MQDIGITALRADIO/MQ_Grok_Build`).
 
+## Market-ready P0 2026-09-06 (import · VU idle · hybrid desk)
+
+| SHA | Theme |
+|-----|--------|
+| *(this commit)* | P0: Import audio fixed, VU idle dark, hybrid Maestro/Netia UI, PLAY+ingest e2e |
+| `0cc10a9` | macos-dmg.yml YAML fix |
+| `b37dc4f` | Packaging 0.1.1 + desk harden + Liquidsoap v3 |
+
+**Import:** DROP / Import audio → `/api/library/ingest` (multipart + `filename*`) and Electron JSON `path` via `/api/ingest`. Clear ffmpeg / library-root errors in the strip.
+
+**VU:** Idle LEDs fully dark (0). Animate only when playing / ON AIR.
+
+**Hybrid UI:** `.desk-hybrid` modern landscape shell + big PLAY/STOP/SKIP/NEXT; plain-English Library / Clocks / Settings / Import audio.
+
+**PLAY:** Ingest → Living Log insert → PLAY yields `playable_url` (pytest e2e).
+
+**Package size target:** grow Mac ZIP/DMG toward **500MB–1GB+** with real ffmpeg / Liquidsoap / demo beds (see `packaging/SIZE_TARGET.md`) — no junk padding; music library stays external.
+
+**AU host:** Still scaffold only.
+
+## Market-ready pass 2026-09-06 (first-run UX + status harden)
+
+| SHA | Theme |
+|-----|--------|
+| (folded) | Welcome tip + version badge + status null-guards |
+| `0cc10a9` | Fix macos-dmg.yml YAML (heredoc) |
+| `b37dc4f` | Packaging 0.1.1 + desk harden + Liquidsoap v3 |
+
+**First-run / market UX:** Dismissible On-Air welcome tip (localStorage) pointing to DROP AUDIO, CLOCKS, LIBRARY, Settings, and Mac Gatekeeper `Open MQ Radio.command` ZIP tip.
+
+**Stability:** `/api/status` poll null-guards (partial/offline); Living Log fetch failure no longer blank the desk; play continues when media is missing (clear `engine-msg`).
+
+**Version badge:** Titlebar shows packaging **0.1.1** · short build SHA via `/api/version`.
+
+**AU host:** Still scaffold only — no fake host (**market preview**).
+
 ## Market-ready pass 2026-09-06 (packaging + desk harden + Liquidsoap v3)
 
 | SHA | Theme |
 |-----|--------|
-| *(this commit)* | Packaging 0.1.1 + Gatekeeper README; desk empty/error harden; Liquidsoap handoff v3 operator install |
+| `b37dc4f` | Packaging 0.1.1 + Gatekeeper README; desk empty/error harden; Liquidsoap handoff v3 operator install |
 | `39f2081` | AU insert load/process scaffold + Settings inactive banner |
 | `c5c48a3` | Mix-minus Program−Aux subtract + transmission DSP depth |
 

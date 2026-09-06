@@ -3,6 +3,30 @@
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import unquote
+
+
+def _parse_disposition(disp: str) -> tuple[str | None, str | None]:
+    """Extract name and filename from Content-Disposition (incl. filename*)."""
+    name = None
+    filename = None
+    for token in disp.split(";"):
+        token = token.strip()
+        low = token.lower()
+        if low.startswith("name="):
+            name = token.split("=", 1)[1].strip().strip('"')
+        elif low.startswith("filename*="):
+            # RFC 5987: filename*=UTF-8''encoded%20name.wav
+            raw = token.split("=", 1)[1].strip().strip('"')
+            if "''" in raw:
+                raw = raw.split("''", 1)[1]
+            try:
+                filename = unquote(raw)
+            except Exception:
+                filename = raw
+        elif low.startswith("filename=") and filename is None:
+            filename = token.split("=", 1)[1].strip().strip('"')
+    return name, filename
 
 
 def parse_multipart(content_type: str, body: bytes) -> dict[str, Any]:
@@ -40,20 +64,22 @@ def parse_multipart(content_type: str, body: bytes) -> dict[str, Any]:
                 k, v = line.split(b":", 1)
                 headers[k.decode("latin-1").strip().lower()] = v.decode("latin-1").strip()
         disp = headers.get("content-disposition", "")
-        name = None
-        filename = None
-        for token in disp.split(";"):
-            token = token.strip()
-            if token.lower().startswith("name="):
-                name = token.split("=", 1)[1].strip().strip('"')
-            elif token.lower().startswith("filename="):
-                filename = token.split("=", 1)[1].strip().strip('"')
+        name, filename = _parse_disposition(disp)
         if not name:
             continue
-        if filename is not None:
+        # Treat as file when filename present OR content-type is clearly binary audio/video
+        ctype = headers.get("content-type", "application/octet-stream")
+        looks_file = filename is not None or (
+            ctype.startswith("audio/")
+            or ctype.startswith("video/")
+            or ctype == "application/octet-stream"
+            and len(data) > 64
+            and b"\x00" in data[:64]
+        )
+        if looks_file:
             result[name] = {
-                "filename": filename,
-                "content_type": headers.get("content-type", "application/octet-stream"),
+                "filename": filename or "upload.bin",
+                "content_type": ctype,
                 "data": data,
             }
         else:

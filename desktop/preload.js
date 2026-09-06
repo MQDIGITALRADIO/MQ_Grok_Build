@@ -7,6 +7,14 @@ const { contextBridge, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('mqDesktop', {
   isElectron: true,
+  /** Packaging version string (Electron package.json). */
+  appVersion: (() => {
+    try {
+      return require('./package.json').version || '0.1.1';
+    } catch (_) {
+      return '0.1.1';
+    }
+  })(),
   /**
    * Absolute filesystem path for a dropped File (Electron only).
    * Returns "" when unavailable.

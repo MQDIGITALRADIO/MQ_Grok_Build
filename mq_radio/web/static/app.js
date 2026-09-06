@@ -47,6 +47,8 @@ const AUDIO_ROLES = [
 ];
 const AUDIO_INPUT_ROLES = ["aux_in", "mic"];
 const SETTINGS_LS_KEY = "mq_radio_audio_outputs_v2";
+const WELCOME_LS_KEY = "mq_radio_welcome_dismissed_v1";
+const DESKTOP_VERSION_FALLBACK = "0.1.1";
 const VOCLONER_LS_KEY = "mq_radio_vocloner_v1";
 const VOCLONER_URL = "https://vocloner.com/";
 
@@ -217,39 +219,50 @@ function fillDeck(prefix, event, stateClass, stateText) {
   const endingEl = document.getElementById(`${prefix}-ending`);
   const deckEl = document.getElementById(prefix);
 
-  stateEl.className = `deck-state ${stateClass}`;
-  stateEl.textContent = stateText;
+  if (stateEl) {
+    stateEl.className = `deck-state ${stateClass || ""}`;
+    stateEl.textContent = stateText || "—";
+  }
 
   if (!event) {
-    typeEl.textContent = "—";
-    typeEl.className = "deck-type";
-    titleEl.textContent = "(empty)";
-    artistEl.textContent = "—";
-    chainEl.textContent = "—";
-    durEl.textContent = "0:00";
-    meterEl.className = "meter-bar idle";
+    if (typeEl) { typeEl.textContent = "—"; typeEl.className = "deck-type"; }
+    if (titleEl) titleEl.textContent = "(empty)";
+    if (artistEl) artistEl.textContent = "—";
+    if (chainEl) chainEl.textContent = "—";
+    if (durEl) durEl.textContent = "0:00";
+    if (meterEl) meterEl.className = "meter-bar idle";
     if (endingEl) {
       endingEl.textContent = "—";
       endingEl.className = "timer-ending";
     }
     if (prefix === "deck-a") {
-      document.getElementById("deck-a-elapsed").textContent = "0:00.0";
-      document.getElementById("deck-a-remaining").textContent = "0:00.0";
+      const elE = document.getElementById("deck-a-elapsed");
+      const elR = document.getElementById("deck-a-remaining");
+      if (elE) elE.textContent = "0:00.0";
+      if (elR) elR.textContent = "0:00.0";
     }
     clearEndRamp(deckEl, meterEl);
     return;
   }
 
   const tl = typeLabel(event.event_type);
-  typeEl.textContent = tl;
-  typeEl.className = `deck-type tag-${event.event_type} tag-${tl}`;
-  titleEl.textContent = event.title || "—";
-  titleEl.title = event.title || "";
-  artistEl.textContent = event.artist || "—";
-  artistEl.title = [event.artist, event.title, fmtDur(event.duration_ms)].filter(Boolean).join(" — ");
-  chainEl.textContent = `${event.chain_mode || "—"}/${event.timing_mode || "—"}`;
-  durEl.textContent = fmtDur(event.duration_ms);
-  meterEl.className = (stateClass === "onair" || stateClass === "fading") ? "meter-bar progressing" : "meter-bar idle";
+  if (typeEl) {
+    typeEl.textContent = tl;
+    typeEl.className = `deck-type tag-${event.event_type || ""} tag-${tl}`;
+  }
+  if (titleEl) {
+    titleEl.textContent = event.title || "—";
+    titleEl.title = event.title || "";
+  }
+  if (artistEl) {
+    artistEl.textContent = event.artist || "—";
+    artistEl.title = [event.artist, event.title, fmtDur(event.duration_ms)].filter(Boolean).join(" — ");
+  }
+  if (chainEl) chainEl.textContent = `${event.chain_mode || "—"}/${event.timing_mode || "—"}`;
+  if (durEl) durEl.textContent = fmtDur(event.duration_ms);
+  if (meterEl) {
+    meterEl.className = (stateClass === "onair" || stateClass === "fading") ? "meter-bar progressing" : "meter-bar idle";
+  }
 
   if (endingEl) {
     endingEl.textContent = endingDisplay(event);
@@ -411,6 +424,7 @@ function fireHotkey(btn, item) {
 }
 
 function syncTimingFromStatus(st) {
+  if (!st || typeof st !== "object") return;
   const t = st.timing || {};
   const playing = !!(t.playing || st.running);
   const nowEv = st.now;
@@ -531,7 +545,7 @@ function updateVocalsInPopup(live) {
 }
 
 
-let lastVu = { left: 0.02, right: 0.02, playing: false };
+let lastVu = { left: 0, right: 0, playing: false };
 
 let vuPeakHold = { left: 0, right: 0, at: 0 };
 
@@ -557,10 +571,15 @@ function _paintVuLeds(containerId, level, peak) {
 
 function applyVu(vu) {
   if (!vu) return;
-  lastVu = vu;
+  // Idle must be fully dark — never paint synthetic glow when not playing
+  const playing = !!vu.playing;
+  const normalized = playing
+    ? vu
+    : { playing: false, left: 0, right: 0, peak_left: 0, peak_right: 0 };
+  lastVu = normalized;
   const panel = document.getElementById("vu-panel");
-  const l = Math.max(0, Math.min(1, Number(vu.left) || 0));
-  const r = Math.max(0, Math.min(1, Number(vu.right) || 0));
+  const l = playing ? Math.max(0, Math.min(1, Number(vu.left) || 0)) : 0;
+  const r = playing ? Math.max(0, Math.min(1, Number(vu.right) || 0)) : 0;
   const now = Date.now();
   if (l >= vuPeakHold.left || now - vuPeakHold.at > 1200) vuPeakHold.left = l;
   if (r >= vuPeakHold.right || now - vuPeakHold.at > 1200) vuPeakHold.right = r;
@@ -570,21 +589,25 @@ function applyVu(vu) {
     vuPeakHold.left = Math.max(l, vuPeakHold.left * 0.92);
     vuPeakHold.right = Math.max(r, vuPeakHold.right * 0.92);
   }
-  _paintVuLeds("vu-left-leds", vu.playing ? l : 0.02, vu.playing ? vuPeakHold.left : 0);
-  _paintVuLeds("vu-right-leds", vu.playing ? r : 0.02, vu.playing ? vuPeakHold.right : 0);
+  if (!playing) {
+    vuPeakHold.left = 0;
+    vuPeakHold.right = 0;
+  }
+  _paintVuLeds("vu-left-leds", playing ? l : 0, playing ? vuPeakHold.left : 0);
+  _paintVuLeds("vu-right-leds", playing ? r : 0, playing ? vuPeakHold.right : 0);
   const peakEl = document.getElementById("vu-peak-read");
   if (peakEl) {
     const db = (x) => (x <= 0.001 ? "-∞" : `${(20 * Math.log10(x)).toFixed(1)}dB`);
-    peakEl.textContent = vu.playing
+    peakEl.textContent = playing
       ? `PK ${db(Math.max(vuPeakHold.left, vuPeakHold.right))}`
       : "IDLE";
   }
-  if (panel) panel.classList.toggle("playing", !!vu.playing);
+  if (panel) panel.classList.toggle("playing", playing);
 }
 
 function synthVuLocal(playing) {
   if (!playing) {
-    return { playing: false, left: 0.02, right: 0.02 };
+    return { playing: false, left: 0, right: 0 };
   }
   const t = Date.now() / 1000;
   const env = 0.55 + 0.35 * Math.sin((timingSnap.progress || 0.5) * Math.PI);
@@ -690,177 +713,213 @@ function tickTimers() {
 }
 
 async function refresh() {
-  const date = document.getElementById("log-date").value || todayISO();
-  const st = await fetch(`/api/status?date=${date}`).then((r) => r.json());
-  lastStatus = st;
-  const np = st.now;
-  const up = st.upcoming || [];
-
-  const onAir = np && np.status === "ON_AIR";
-  const decks = st.decks || {};
-  const active = (st.active_deck || decks.active || "A").toUpperCase();
-  const overlap = !!(st.overlap_active || decks.overlap_active);
-  const assistGo = !!(st.assist_go_ready || decks.assist_go_ready);
-  const fading = decks.fading || null;
-
-  // Build display events for A/B from dual-deck session when present
-  function deckEventFromSlot(slot, fallback) {
-    if (!slot) return fallback;
-    return {
-      id: slot.event_id,
-      title: slot.title,
-      artist: slot.artist,
-      event_type: slot.event_type,
-      duration_ms: slot.duration_ms,
-      intro_ms: slot.intro_ms,
-      outro_ms: slot.end_pulse_ms,
-      ending_type: slot.role === "fading" ? "FADE" : undefined,
-      ending_label: slot.role === "fading" ? "SEGUE FADE" : undefined,
-      chain_mode: slot.role === "fading" ? "XFADE" : "SEQ",
-      timing_mode: overlap ? "OVERLAP" : "AUTO",
-      status: slot.role === "program" ? "ON_AIR" : slot.role === "fading" ? "FADING" : "",
-      playable_url: slot.playable_url,
-    };
+  const dateEl = document.getElementById("log-date");
+  const date = (dateEl && dateEl.value) || todayISO();
+  let st = null;
+  try {
+    const r = await fetch(`/api/status?date=${date}`);
+    if (!r.ok) throw new Error(`status HTTP ${r.status}`);
+    st = await r.json();
+  } catch (err) {
+    const msg = document.getElementById("engine-msg");
+    if (msg) msg.textContent = "status poll failed — engine offline?";
+    return;
+  }
+  if (!st || typeof st !== "object") {
+    const msg = document.getElementById("engine-msg");
+    if (msg) msg.textContent = "status incomplete";
+    return;
   }
 
-  let evA;
-  let evB;
-  let stateA;
-  let stateB;
-  let labelA;
-  let labelB;
+  try {
+    lastStatus = st;
+    const np = st.now || null;
+    const up = Array.isArray(st.upcoming) ? st.upcoming : [];
 
-  if (onAir && (decks.a || decks.b || decks.program)) {
-    evA = deckEventFromSlot(decks.a, active === "A" ? np : null);
-    evB = deckEventFromSlot(decks.b, active === "B" ? np : null);
-    if (active === "A") {
-      stateA = "onair"; labelA = "ON AIR";
-      if (overlap && fading && (fading.deck || "").toUpperCase() === "B") {
-        stateB = "fading"; labelB = "FADING";
-      } else if (assistGo) {
-        stateB = "go"; labelB = "GO";
-        evB = evB || up[0] || null;
+    const onAir = !!(np && np.status === "ON_AIR");
+    const decks = st.decks && typeof st.decks === "object" ? st.decks : {};
+    const active = String(st.active_deck || decks.active || "A").toUpperCase();
+    const overlap = !!(st.overlap_active || decks.overlap_active);
+    const assistGo = !!(st.assist_go_ready || decks.assist_go_ready);
+    const fading = decks.fading || null;
+
+    // Build display events for A/B from dual-deck session when present
+    function deckEventFromSlot(slot, fallback) {
+      if (!slot) return fallback;
+      return {
+        id: slot.event_id,
+        title: slot.title,
+        artist: slot.artist,
+        event_type: slot.event_type,
+        duration_ms: slot.duration_ms,
+        intro_ms: slot.intro_ms,
+        outro_ms: slot.end_pulse_ms,
+        ending_type: slot.role === "fading" ? "FADE" : undefined,
+        ending_label: slot.role === "fading" ? "SEGUE FADE" : undefined,
+        chain_mode: slot.role === "fading" ? "XFADE" : "SEQ",
+        timing_mode: overlap ? "OVERLAP" : "AUTO",
+        status: slot.role === "program" ? "ON_AIR" : slot.role === "fading" ? "FADING" : "",
+        playable_url: slot.playable_url,
+      };
+    }
+
+    let evA;
+    let evB;
+    let stateA;
+    let stateB;
+    let labelA;
+    let labelB;
+
+    if (onAir && (decks.a || decks.b || decks.program)) {
+      evA = deckEventFromSlot(decks.a, active === "A" ? np : null);
+      evB = deckEventFromSlot(decks.b, active === "B" ? np : null);
+      if (active === "A") {
+        stateA = "onair"; labelA = "ON AIR";
+        if (overlap && fading && (fading.deck || "").toUpperCase() === "B") {
+          stateB = "fading"; labelB = "FADING";
+        } else if (assistGo) {
+          stateB = "go"; labelB = "GO";
+          evB = evB || up[0] || null;
+        } else {
+          stateB = "next"; labelB = "NEXT";
+          evB = evB || up[0] || null;
+        }
       } else {
-        stateB = "next"; labelB = "NEXT";
-        evB = evB || up[0] || null;
+        stateB = "onair"; labelB = "ON AIR";
+        if (overlap && fading && (fading.deck || "").toUpperCase() === "A") {
+          stateA = "fading"; labelA = "FADING";
+        } else if (assistGo) {
+          stateA = "go"; labelA = "GO";
+          evA = evA || up[0] || null;
+        } else {
+          stateA = "next"; labelA = "NEXT";
+          evA = evA || up[0] || null;
+        }
       }
     } else {
-      stateB = "onair"; labelB = "ON AIR";
-      if (overlap && fading && (fading.deck || "").toUpperCase() === "A") {
-        stateA = "fading"; labelA = "FADING";
-      } else if (assistGo) {
-        stateA = "go"; labelA = "GO";
-        evA = evA || up[0] || null;
-      } else {
-        stateA = "next"; labelA = "NEXT";
-        evA = evA || up[0] || null;
+      evA = np;
+      evB = up[0] || null;
+      stateA = onAir ? "onair" : "onair";
+      labelA = onAir ? "ON AIR" : "CUED";
+      stateB = assistGo ? "go" : "next";
+      labelB = assistGo ? "GO" : "NEXT";
+    }
+
+    fillDeck("deck-a", evA, stateA, labelA);
+    if (!onAir && np && stateA !== "fading") {
+      const aState = document.getElementById("deck-a-state");
+      if (aState) {
+        aState.className = "deck-state next";
+        aState.textContent = "CUED";
       }
     }
-  } else {
-    evA = np;
-    evB = up[0] || null;
-    stateA = onAir ? "onair" : "onair";
-    labelA = onAir ? "ON AIR" : "CUED";
-    stateB = assistGo ? "go" : "next";
-    labelB = assistGo ? "GO" : "NEXT";
-  }
-
-  fillDeck("deck-a", evA, stateA, labelA);
-  if (!onAir && np && stateA !== "fading") {
-    document.getElementById("deck-a-state").className = "deck-state next";
-    document.getElementById("deck-a-state").textContent = "CUED";
-  }
-  fillDeck("deck-b", evB, stateB, labelB);
-  // READY: when B is fading/GO, promote upcoming[0] into C
-  let cEv = up[1] || null;
-  if (overlap && fading) {
-    cEv = up[0] || null;
-  } else if (assistGo) {
-    cEv = up[1] || null;
-  }
-  fillDeck("deck-c", cEv, "ready", "READY");
-
-  // Visual overlap / GO classes
-  const deckAEl = document.getElementById("deck-a");
-  const deckBEl = document.getElementById("deck-b");
-  if (deckAEl) {
-    deckAEl.classList.toggle("is-program", active === "A" && onAir);
-    deckAEl.classList.toggle("is-fading", stateA === "fading");
-    deckAEl.classList.toggle("assist-go", stateA === "go");
-  }
-  if (deckBEl) {
-    deckBEl.classList.toggle("is-program", active === "B" && onAir);
-    deckBEl.classList.toggle("is-fading", stateB === "fading");
-    deckBEl.classList.toggle("assist-go", stateB === "go");
-  }
-
-  const xfadeEl = document.getElementById("segue-status");
-  if (xfadeEl) {
-    if (overlap && st.segue) {
-      const ms = st.segue.crossfade_ms || 0;
-      const duck = st.segue.duck_db;
-      xfadeEl.textContent = `SEGUE ${ms}ms` + (duck != null ? ` · duck ${duck}dB` : "");
+    fillDeck("deck-b", evB, stateB, labelB);
+    // READY: when B is fading/GO, promote upcoming[0] into C
+    let cEv = up[1] || null;
+    if (overlap && fading) {
+      cEv = up[0] || null;
     } else if (assistGo) {
-      xfadeEl.textContent = "ASSIST GO — press NEXT / Space";
-    } else {
-      xfadeEl.textContent = "";
+      cEv = up[1] || null;
     }
-  }
+    fillDeck("deck-c", cEv, "ready", "READY");
 
-  syncTimingFromStatus(st);
-  if (window.MQProgramAudio) {
-    window.MQProgramAudio.syncFromStatus(st).catch(() => {});
-    const av = window.MQProgramAudio.getVu();
-    if (av && av.playing && av.source === "analyser") applyVu(av);
-    else if (st.vu) applyVu(st.vu);
-  } else if (st.vu) {
-    applyVu(st.vu);
-  }
-  tickTimers();
-
-  document.getElementById("lamp-onair").classList.toggle("lit", !!onAir);
-  document.getElementById("lamp-ready").classList.toggle("lit", !!up[0]);
-  const procSt = document.getElementById("proc-status");
-  if (procSt && st.processing) {
-    procSt.textContent = `PROC: ${st.processing.summary || st.processing.template || "—"}`;
-    procSt.title = st.processing.topology || "On-air processing";
-  }
-  // Mix-minus subtract status (from audio_route; browser reports live graph)
-  const mm = (st.audio_route && st.audio_route.mix_minus) || {};
-  const mmHint = document.getElementById("mix-minus-hint");
-  if (mmHint) {
-    if (mm.subtract_active) {
-      mmHint.textContent = "Subtract live (program − aux)";
-    } else if (mm.paired) {
-      mmHint.textContent = "Paired — waiting Aux capture";
-    } else {
-      mmHint.textContent = "Program − Aux when capture live";
+    // Visual overlap / GO classes
+    const deckAEl = document.getElementById("deck-a");
+    const deckBEl = document.getElementById("deck-b");
+    if (deckAEl) {
+      deckAEl.classList.toggle("is-program", active === "A" && onAir);
+      deckAEl.classList.toggle("is-fading", stateA === "fading");
+      deckAEl.classList.toggle("assist-go", stateA === "go");
     }
-  }
-  if (window.MQProgramAudio && window.MQProgramAudio.getMixMinus) {
-    const localMm = window.MQProgramAudio.getMixMinus();
-    if (localMm && localMm.subtract_active && !mm.subtract_active) {
-      // local graph ahead of next status poll — keep honest
-      if (mmHint) mmHint.textContent = "Subtract live (local graph)";
+    if (deckBEl) {
+      deckBEl.classList.toggle("is-program", active === "B" && onAir);
+      deckBEl.classList.toggle("is-fading", stateB === "fading");
+      deckBEl.classList.toggle("assist-go", stateB === "go");
     }
+
+    const xfadeEl = document.getElementById("segue-status");
+    if (xfadeEl) {
+      if (overlap && st.segue) {
+        const ms = st.segue.crossfade_ms || 0;
+        const duck = st.segue.duck_db;
+        xfadeEl.textContent = `SEGUE ${ms}ms` + (duck != null ? ` · duck ${duck}dB` : "");
+      } else if (assistGo) {
+        xfadeEl.textContent = "ASSIST GO — press NEXT / Space";
+      } else {
+        xfadeEl.textContent = "";
+      }
+    }
+
+    syncTimingFromStatus(st);
+    if (window.MQProgramAudio) {
+      window.MQProgramAudio.syncFromStatus(st).catch(() => {});
+      const av = window.MQProgramAudio.getVu && window.MQProgramAudio.getVu();
+      if (av && av.playing && av.source === "analyser") applyVu(av);
+      else if (st.vu) applyVu(st.vu);
+    } else if (st.vu) {
+      applyVu(st.vu);
+    }
+    tickTimers();
+
+    const lampOn = document.getElementById("lamp-onair");
+    const lampReady = document.getElementById("lamp-ready");
+    if (lampOn) lampOn.classList.toggle("lit", !!onAir);
+    if (lampReady) lampReady.classList.toggle("lit", !!up[0]);
+    const procSt = document.getElementById("proc-status");
+    if (procSt && st.processing) {
+      procSt.textContent = `PROC: ${st.processing.summary || st.processing.template || "—"}`;
+      procSt.title = st.processing.topology || "On-air processing";
+    }
+    // Mix-minus subtract status (from audio_route; browser reports live graph)
+    const mm = (st.audio_route && st.audio_route.mix_minus) || {};
+    const mmHint = document.getElementById("mix-minus-hint");
+    if (mmHint) {
+      if (mm.subtract_active) {
+        mmHint.textContent = "Subtract live (program − aux)";
+      } else if (mm.paired) {
+        mmHint.textContent = "Paired — waiting Aux capture";
+      } else {
+        mmHint.textContent = "Program − Aux when capture live";
+      }
+    }
+    if (window.MQProgramAudio && window.MQProgramAudio.getMixMinus) {
+      const localMm = window.MQProgramAudio.getMixMinus();
+      if (localMm && localMm.subtract_active && !mm.subtract_active) {
+        // local graph ahead of next status poll — keep honest
+        if (mmHint) mmHint.textContent = "Subtract live (local graph)";
+      }
+    }
+    const engMsg = document.getElementById("engine-msg");
+    if (st.running && onAir && engMsg) {
+      // Don't clobber media-missing notice; only fill empty idle text
+      const cur = (engMsg.textContent || "").trim();
+      if (!cur || cur === "Engine idle") engMsg.textContent = "playing";
+    }
+
+    let events = [];
+    try {
+      const log = await fetch(`/api/log?date=${date}`).then((r) => r.json());
+      events = (log && Array.isArray(log.events)) ? log.events : [];
+    } catch (_) {
+      events = lastEvents || [];
+    }
+    lastEvents = events;
+    window.mqLastEvents = events;
+    const logCount = document.getElementById("log-count");
+    if (logCount) logCount.textContent = `${events.length} events`;
+
+    updateETM(events, up);
+    if (typeof window.renderHotkeyBank === "function") window.renderHotkeyBank(up);
+    else buildHotkeys(up);
+
+    renderLivingLog(events, np, up);
+  } catch (err) {
+    console.warn("status poll apply failed", err);
+    const msg = document.getElementById("engine-msg");
+    if (msg) msg.textContent = "status partial — desk kept alive";
   }
-  if (st.running && onAir) {
-    document.getElementById("engine-msg").textContent =
-      document.getElementById("engine-msg").textContent || "playing";
-  }
-
-  const log = await fetch(`/api/log?date=${date}`).then((r) => r.json());
-  const events = log.events || [];
-  lastEvents = events;
-  window.mqLastEvents = events;
-  document.getElementById("log-count").textContent = `${events.length} events`;
-
-  updateETM(events, up);
-  if (typeof window.renderHotkeyBank === "function") window.renderHotkeyBank(up);
-  else buildHotkeys(up);
-
-  renderLivingLog(events, np, up);
 }
+
 
 function eventMatchesLogFilter(e) {
   const t = (logFilter.type || "").toUpperCase();
@@ -1020,12 +1079,27 @@ function initLogFilters() {
 
 async function postAction(path) {
   if (window.MQProgramAudio) window.MQProgramAudio.resume();
-  const date = document.getElementById("log-date").value || todayISO();
-  const res = await fetch(`${path}?date=${date}`, { method: "POST" }).then((r) =>
-    r.json()
-  );
-  document.getElementById("engine-msg").textContent = res.message || "";
-  await refresh();
+  const dateEl = document.getElementById("log-date");
+  const date = (dateEl && dateEl.value) || todayISO();
+  let res = {};
+  try {
+    const r = await fetch(`${path}?date=${date}`, { method: "POST" });
+    res = await r.json().catch(() => ({}));
+  } catch (err) {
+    const msg = document.getElementById("engine-msg");
+    if (msg) msg.textContent = "action failed";
+    return;
+  }
+  const msgEl = document.getElementById("engine-msg");
+  if (msgEl) {
+    // Clear stale text when server returns empty; keep play flowing
+    msgEl.textContent = res.message != null ? String(res.message) : "";
+  }
+  try {
+    await refresh();
+  } catch (_) {
+    /* refresh already self-guards */
+  }
 }
 
 function tickClock() {
@@ -1582,9 +1656,69 @@ function initSettings() {
   loadProcessingSettings();
 }
 
+
+function setEngineMsg(text) {
+  const el = document.getElementById("engine-msg");
+  if (el) el.textContent = text == null ? "" : String(text);
+}
+
+function initWelcomeTip() {
+  const tip = document.getElementById("welcome-tip");
+  const btn = document.getElementById("welcome-tip-dismiss");
+  if (!tip) return;
+  try {
+    if (localStorage.getItem(WELCOME_LS_KEY) === "1") {
+      tip.hidden = true;
+      return;
+    }
+  } catch (_) {}
+  tip.hidden = false;
+  if (btn) {
+    btn.onclick = () => {
+      tip.hidden = true;
+      try {
+        localStorage.setItem(WELCOME_LS_KEY, "1");
+      } catch (_) {}
+    };
+  }
+}
+
+async function initVersionBadge() {
+  const el = document.getElementById("sys-build");
+  if (!el) return;
+  try {
+    const r = await fetch("/api/version");
+    const data = await r.json();
+    if (data && data.label) {
+      el.textContent = data.label;
+      el.title = `MQ Radio ${data.version || ""} · ${data.sha || ""}`;
+      return;
+    }
+    if (data && data.version) {
+      el.textContent = data.sha ? `${data.version} · ${data.sha}` : String(data.version);
+      return;
+    }
+  } catch (_) {}
+  el.textContent = DESKTOP_VERSION_FALLBACK;
+}
+
 document.getElementById("log-date").value = todayISO();
 document.getElementById("btn-refresh").onclick = refresh;
-document.getElementById("btn-play").onclick = () => postAction("/api/play");
+document.getElementById("btn-play").onclick = async () => {
+  await postAction("/api/play");
+  // Trustworthy feedback: confirm media after play
+  try {
+    const st = lastStatus;
+    const onAir = st && st.now && st.now.status === "ON_AIR";
+    const url = st && (st.playable_url || (st.now && st.now.playable_url));
+    const msg = document.getElementById("engine-msg");
+    if (onAir && !url && msg) {
+      msg.textContent = "Playing log row — no audio file on this cart (import audio / Replace)";
+    } else if (onAir && url && msg && !(msg.textContent || "").trim()) {
+      msg.textContent = "playing";
+    }
+  } catch (_) {}
+};
 document.getElementById("btn-stop").onclick = () => postAction("/api/stop");
 document.getElementById("btn-skip").onclick = () => postAction("/api/skip");
 document.getElementById("btn-step").onclick = () => postAction("/api/step");
@@ -1640,7 +1774,10 @@ document.addEventListener("keydown", (ev) => {
 initSettings();
 initVtStudio();
 initLogFilters();
+initWelcomeTip();
+initVersionBadge();
 window.mqRefresh = refresh;
+window.mqSetEngineMsg = setEngineMsg;
 window.mqOpenVtStudio = openVtStudio;
 window.mqPostAction = postAction;
 setInterval(tickClock, 250);

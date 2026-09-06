@@ -17,6 +17,7 @@ from mq_radio.library.ingest import (
     get_track,
     import_vt_inbox,
     ingest_bytes,
+    ingest_file,
     library_audio_dir,
     save_library_root_path,
     save_segment_as_cart,
@@ -26,6 +27,7 @@ from mq_radio.library.ingest import (
 )
 from mq_radio.production.ramps import load_ramps, profile_for_context, save_ramps
 from mq_radio.web.media import content_type_for, playable_url, resolve_media_path
+from mq_radio.web.build_info import version_payload
 from mq_radio.living_log.service import (
     delete_event,
     insert_event,
@@ -146,7 +148,7 @@ def _synthetic_vu() -> dict:
         dur = SESSION.duration_ms or 0
         etype = SESSION.event_type or ""
     if not running or started is None:
-        return {"playing": False, "left": 0.02, "right": 0.02, "peak_left": 0.02, "peak_right": 0.02}
+        return {"playing": False, "left": 0.0, "right": 0.0, "peak_left": 0.0, "peak_right": 0.0}
     elapsed = max(0.0, _time.time() - started)
     # Pseudo programme energy: mid-cart louder, soft intro/outro
     progress = (elapsed * 1000 / dur) if dur > 0 else 0.5
@@ -313,6 +315,10 @@ def make_handler(db_path: Path):
                     },
                     "audio_route": _status_audio_route(),
                 })
+                return
+
+            if path == "/api/version":
+                _json_response(self, version_payload())
                 return
 
             if path == "/api/audio/route":
@@ -1047,56 +1053,134 @@ def make_handler(db_path: Path):
                 _json_response(self, save_vt_inbox_path(raw_path, DATA_DIR))
                 return
 
-            if path == "/api/library/ingest":
+            if path in ("/api/library/ingest", "/api/ingest"):
+                # Multipart blob (Browse/drop in browser) OR JSON path (Electron absolute path)
                 ctype = (self.headers.get("Content-Type") or "").lower()
-                title = payload.get("title")
-                artist = payload.get("artist")
-                event_type = payload.get("event_type") or "MUSIC"
-                if "multipart/form-data" in ctype:
-                    parts = parse_multipart(self.headers.get("Content-Type") or "", body)
-                    file_part = parts.get("file") or parts.get("audio") or parts.get("upload")
-                    if not isinstance(file_part, dict) or not file_part.get("data"):
-                        _json_response(self, {"ok": False, "error": "file field required"}, status=400)
-                        return
-                    title = parts.get("title") or title
-                    artist = parts.get("artist") or artist
-                    event_type = parts.get("event_type") or event_type
-                    result = ingest_bytes(
-                        file_part.get("filename") or "upload.bin",
-                        file_part["data"],
-                        title=title if isinstance(title, str) else None,
-                        artist=artist if isinstance(artist, str) else None,
-                        event_type=str(event_type or "MUSIC"),
-                        db_path=db_path,
-                        data_dir=DATA_DIR,
-                    )
-                else:
-                    import base64
-                    b64 = payload.get("audio_b64") or payload.get("data_b64") or ""
-                    filename = payload.get("filename") or payload.get("name") or "upload.bin"
-                    if not b64:
-                        _json_response(self, {"ok": False, "error": "file or audio_b64 required"}, status=400)
-                        return
-                    raw = b64
-                    if "," in raw and str(raw).strip().startswith("data:"):
-                        raw = str(raw).split(",", 1)[1]
-                    try:
-                        blob = base64.b64decode(raw)
-                    except Exception as exc:
-                        _json_response(self, {"ok": False, "error": f"invalid base64: {exc}"}, status=400)
-                        return
-                    result = ingest_bytes(
-                        filename,
-                        blob,
-                        title=title,
-                        artist=artist,
-                        event_type=str(event_type or "MUSIC"),
-                        db_path=db_path,
-                        data_dir=DATA_DIR,
-                    )
+                title = payload.get("title") if isinstance(payload, dict) else None
+                artist = payload.get("artist") if isinstance(payload, dict) else None
+                event_type = (payload.get("event_type") if isinstance(payload, dict) else None) or "MUSIC"
+                result = None
+                try:
+                    from mq_radio import config as _cfg
+                    data_dir = _cfg.DATA_DIR
+                    if "multipart/form-data" in ctype:
+                        parts = parse_multipart(self.headers.get("Content-Type") or "", body)
+                        file_part = (
+                            parts.get("file")
+                            or parts.get("audio")
+                            or parts.get("upload")
+                            or parts.get("media")
+                        )
+                        # Recover if a text field was mis-parsed as non-dict with binary-ish content
+                        if not isinstance(file_part, dict):
+                            for k, v in parts.items():
+                                if isinstance(v, dict) and v.get("data"):
+                                    file_part = v
+                                    break
+                        if not isinstance(file_part, dict) or not file_part.get("data"):
+                            _json_response(
+                                self,
+                                {
+                                    "ok": False,
+                                    "error": (
+                                        "No audio file in upload — drop or Browse a "
+                                        ".wav / .mp3 / .flac / .mp4 file"
+                                    ),
+                                },
+                                status=400,
+                            )
+                            return
+                        title = parts.get("title") if isinstance(parts.get("title"), str) else title
+                        artist = parts.get("artist") if isinstance(parts.get("artist"), str) else artist
+                        et = parts.get("event_type")
+                        if isinstance(et, str) and et.strip():
+                            event_type = et
+                        result = ingest_bytes(
+                            file_part.get("filename") or "upload.bin",
+                            file_part["data"],
+                            title=title if isinstance(title, str) else None,
+                            artist=artist if isinstance(artist, str) else None,
+                            event_type=str(event_type or "MUSIC"),
+                            db_path=db_path,
+                            data_dir=data_dir,
+                        )
+                    else:
+                        # JSON: absolute filesystem path (Electron) or base64 blob
+                        file_path = (
+                            (payload or {}).get("path")
+                            or (payload or {}).get("file_path")
+                            or (payload or {}).get("abs_path")
+                        )
+                        if file_path:
+                            result = ingest_file(
+                                Path(str(file_path)),
+                                title=title if isinstance(title, str) else None,
+                                artist=artist if isinstance(artist, str) else None,
+                                event_type=str(event_type or "MUSIC"),
+                                copy=True,
+                                db_path=db_path,
+                                data_dir=data_dir,
+                            )
+                        else:
+                            import base64
+                            b64 = (payload or {}).get("audio_b64") or (payload or {}).get("data_b64") or ""
+                            filename = (
+                                (payload or {}).get("filename")
+                                or (payload or {}).get("name")
+                                or "upload.bin"
+                            )
+                            if not b64:
+                                _json_response(
+                                    self,
+                                    {
+                                        "ok": False,
+                                        "error": (
+                                            "file, path, or audio_b64 required — "
+                                            "use Browse / drop, or Electron path ingest"
+                                        ),
+                                    },
+                                    status=400,
+                                )
+                                return
+                            raw = b64
+                            if "," in raw and str(raw).strip().startswith("data:"):
+                                raw = str(raw).split(",", 1)[1]
+                            try:
+                                blob = base64.b64decode(raw)
+                            except Exception as exc:
+                                _json_response(
+                                    self,
+                                    {"ok": False, "error": f"invalid base64: {exc}"},
+                                    status=400,
+                                )
+                                return
+                            result = ingest_bytes(
+                                filename,
+                                blob,
+                                title=title,
+                                artist=artist,
+                                event_type=str(event_type or "MUSIC"),
+                                db_path=db_path,
+                                data_dir=data_dir,
+                            )
+                except OSError as exc:
+                    result = {
+                        "ok": False,
+                        "error": f"Cannot write library folder — check Settings → library root ({exc})",
+                    }
+                except Exception as exc:
+                    result = {"ok": False, "error": f"Import failed: {exc}"}
+                if not isinstance(result, dict):
+                    result = {"ok": False, "error": "Import returned nothing"}
+                # Clarify ffmpeg tip for operators
+                err = str(result.get("error") or "")
+                if not result.get("ok") and "ffmpeg" in err.lower():
+                    result = {
+                        **result,
+                        "hint": "Install ffmpeg (brew install ffmpeg) for mp4/flac decode. WAV/MP3 work without it.",
+                    }
                 _json_response(self, result, status=200 if result.get("ok") else 400)
                 return
-
 
             if path == "/api/library/track/markers":
                 tid = payload.get("track_id") or payload.get("id")

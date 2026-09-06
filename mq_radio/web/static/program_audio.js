@@ -21,7 +21,7 @@
   let procOutput = null;
   let currentProc = null;
   let vuRaf = 0;
-  let lastVuLevels = { playing: false, left: 0.02, right: 0.02, source: "idle" };
+  let lastVuLevels = { playing: false, left: 0, right: 0, source: "idle" };
   let audioRouteState = { sink_label: null, device_id: null, source: null, active: false };
   let currentSinkId = "";
 
@@ -812,54 +812,85 @@
     const other = active === "A" ? "B" : "A";
 
     if (!onAir) {
-      if (decks.A.eventId || decks.B.eventId) {
+      if ((decks.A && decks.A.eventId) || (decks.B && decks.B.eventId)) {
         stopProgram({ rampProfile: st.ramp_profile, eventType: (st.now || {}).event_type });
       }
       return;
     }
 
-    if (!programUrl) return;
+    function notifyMediaMissing(detail) {
+      try {
+        if (typeof window.mqSetEngineMsg === "function") {
+          window.mqSetEngineMsg(detail || "media missing — play continues without audio");
+        } else {
+          const el = document.getElementById("engine-msg");
+          if (el) el.textContent = detail || "media missing — play continues without audio";
+        }
+      } catch (_) {}
+    }
 
-    const programChanged = decks[active].eventId !== eventId;
+    if (!programUrl) {
+      // Engine may still be "playing" the log row — don't throw; clear sticky msg
+      notifyMediaMissing("on air · media missing (no playable file)");
+      return;
+    }
+
+    const activeDeck = decks[active] || decks.A;
+    const otherDeck = decks[other] || decks.B;
+    if (!activeDeck) {
+      notifyMediaMissing("on air · deck unavailable");
+      return;
+    }
+
+    const programChanged = activeDeck.eventId !== eventId;
     const needOverlap =
       overlap &&
       fading &&
       fading.event_id &&
-      (programChanged || decks[other].role !== "fading");
+      (programChanged || (otherDeck && otherDeck.role !== "fading"));
 
     if (needOverlap && fadingUrl) {
       // Ensure outgoing is on the fading deck letter
       const fadeLetter = (fading.deck || other).toUpperCase();
       const inLetter = active;
       // If outgoing isn't already playing on fadeLetter, start it briefly (muted path) — usually already there
-      if (decks[fadeLetter].eventId !== fading.event_id) {
-        await playOnDeck(fadeLetter, fadingUrl, {
+      if (decks[fadeLetter] && decks[fadeLetter].eventId !== fading.event_id) {
+        const fadeOk = await playOnDeck(fadeLetter, fadingUrl, {
           eventId: fading.event_id,
           eventType: fading.event_type,
           rampProfile: fading.ramp_profile,
           role: "fading",
           fadeInMs: 0,
         });
+        if (!fadeOk) {
+          // Incoming still proceeds; fading bed optional
+          notifyMediaMissing("segue · outgoing media missing");
+        }
         // Jump near end-pulse so we don't replay from top
         try {
-          const el = decks[fadeLetter].el;
+          const el = decks[fadeLetter] && decks[fadeLetter].el;
           const durSec = (Number(fading.duration_ms) || 0) / 1000;
           const elapsedSec = (Number(fading.elapsed_ms) || 0) / 1000;
           if (el && durSec > 0) el.currentTime = Math.min(durSec - 0.05, Math.max(0, elapsedSec));
         } catch (_) {}
-        if (decks[fadeLetter].gain) {
+        if (decks[fadeLetter] && decks[fadeLetter].gain && ctx) {
           const now = ctx.currentTime;
           decks[fadeLetter].gain.gain.setValueAtTime(1, now);
         }
       }
-      await playOnDeck(inLetter, programUrl, {
+      const inOk = await playOnDeck(inLetter, programUrl, {
         eventId,
-        eventType: st.now.event_type,
+        eventType: (st.now && st.now.event_type) || "",
         rampProfile: st.ramp_profile,
         overnight,
         role: "program",
         fadeInMs: 0,
       });
+      if (!inOk) {
+        notifyMediaMissing("media missing / play failed — log still advances");
+        programDeck = inLetter;
+        return;
+      }
       startCrossfade(fadeLetter, inLetter, {
         crossfadeMs: Number(segue.crossfade_ms) || 1500,
         duckDb: segue.duck_db,
@@ -870,16 +901,27 @@
     }
 
     // Steady-state: keep program deck in sync
-    if (programChanged || !decks[active].el || decks[active].el.paused) {
-      await playProgram(programUrl, {
+    if (programChanged || !activeDeck.el || activeDeck.el.paused) {
+      const ok = await playProgram(programUrl, {
         deck: active,
         eventId,
-        eventType: st.now.event_type,
+        eventType: (st.now && st.now.event_type) || "",
         rampProfile: st.ramp_profile,
         overnight,
         keepOther: overlap,
       });
       programDeck = active;
+      if (!ok) {
+        notifyMediaMissing("media missing / play failed — log still advances");
+      } else {
+        // Clear prior missing notice once audio is healthy again
+        try {
+          const el = document.getElementById("engine-msg");
+          if (el && /media missing/i.test(el.textContent || "")) {
+            el.textContent = "playing";
+          }
+        } catch (_) {}
+      }
     }
   }
 
@@ -989,7 +1031,7 @@
       (decks.B.el && !decks.B.el.paused) ||
       (oneshotEl && !oneshotEl.paused) ||
       level > 0.02;
-    if (!playing) return { playing: false, left: 0.02, right: 0.02, source: "analyser-idle" };
+    if (!playing) return { playing: false, left: 0, right: 0, source: "analyser-idle" };
     const left = Math.min(1, level * (0.92 + 0.08 * (pk > level ? 1 : 0.6)));
     const right = Math.min(1, level * (0.88 + 0.12 * Math.sin(Date.now() / 180)));
     return { playing: true, left, right, peak_left: pk, peak_right: pk * 0.98, source: "analyser" };
