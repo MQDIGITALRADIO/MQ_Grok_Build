@@ -77,14 +77,14 @@ jobs:
           ditto "$APP" "$STAGE/MQ Radio.app"
           codesign --force --deep --sign - "$STAGE/MQ Radio.app"
           ln -sf /Applications "$STAGE/Applications"
-          cat > "$STAGE/README-INSTALL.txt" <<'NOTE'
-MQ Radio — unsigned CI build
-1. Prefer the .zip: double-click to unzip, then drag MQ Radio.app to Applications.
-2. If macOS says "damaged": 
-   xattr -cr "/Applications/MQ Radio.app"
-   codesign --force --deep --sign - "/Applications/MQ Radio.app"
-3. Right-click → Open the first time (Gatekeeper).
-NOTE
+          printf '%s\n' \
+            'MQ Radio - unsigned CI build' \
+            '1. Prefer the .zip: double-click to unzip, then drag MQ Radio.app to Applications.' \
+            '2. If macOS says damaged:' \
+            '   xattr -cr "/Applications/MQ Radio.app"' \
+            '   codesign --force --deep --sign - "/Applications/MQ Radio.app"' \
+            '3. Right-click -> Open the first time (Gatekeeper).' \
+            > "$STAGE/README-INSTALL.txt"
           hdiutil create -volname "MQ Radio" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
           rm -rf "$STAGE"
 
