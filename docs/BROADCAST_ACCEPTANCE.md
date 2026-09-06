@@ -46,3 +46,8 @@ Cross-check vs Maestro / early Zetta / Netia Radio-Assist / mAirList / StationPl
 1. Automated: full pytest green
 2. Manual web desk: import → library → insert log → PLAY → hear → STOP; VU idle dark
 3. Manual Mac ZIP: Gatekeeper helper → same path on real devices
+
+## Package size (Matt)
+- Target Mac ZIP/DMG **≥ ~500 MB**, aiming **~1 GB** class with *real* bundled substance (ffmpeg, Liquidsoap/Master Control bits, engine, sample beds, processing assets, docs).
+- Do **not** pad with empty/junk files.
+- Primary music/VT library remains on external **MQ Digital** drive (not forced inside .app).
