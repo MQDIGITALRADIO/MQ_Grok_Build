@@ -58,7 +58,7 @@
         <div class="engine-msg" id="engine-msg">Engine idle</div>
       </div>
 
-      <div class="vu-panel" id="vu-panel" title="Program VU — stereo LED (mock analyser until engine wires real peaks)">
+      <div class="vu-panel" id="vu-panel" title="Program VU — AnalyserNode on program bus when audio plays; synthetic fallback idle">
         <div class="vu-head">
           <span class="vu-label">PROGRAM VU</span>
           <span class="vu-peak-read" id="vu-peak-read">—</span>
@@ -382,6 +382,16 @@
           (override with env <code>MQ_RADIO_VT_INBOX</code>). Import picks up .mp3/.wav/.flac/.mp4 VT renders.
         </p>
 
+        <div class="settings-section-title">MQ DIGITAL LIBRARY ROOT</div>
+        <div class="audio-route-row">
+          <label for="library-root-path">Library folder</label>
+          <input type="text" id="library-root-path" placeholder="data/library or custom path" autocomplete="off" />
+        </div>
+        <p class="settings-intro">
+          Ingest / drop-audio destination. When set, carts land under this root
+          (env <code>MQ_RADIO_LIBRARY_ROOT</code> also honored). Default: <code>data/library</code>.
+        </p>
+
         <div class="settings-section-title">PROGRAM INSERT (AU stub)</div>
         <p class="settings-intro">
           Optional insert on the Program / On-Air path. When the slot is
@@ -605,6 +615,7 @@
       </div>
     </div>
   </div>
+  <script src="/static/program_audio.js"></script>
   <script src="/static/app.js"></script>
   <script src="/static/desk_programming.js"></script>
 </body>

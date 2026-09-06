@@ -244,7 +244,7 @@ No proprietary logos, trademarks, or pixel-perfect clones. Avoid modern SaaS / S
 
 ## On-Air desk — VU, carts, ingest, Segment Editor, VT inbox, processing
 
-**PROGRAM VU:** Stereo LED meter on the top strip. Driven by MockEngine play state (synthetic analyser until a real engine peak bus is wired). Peak-hold readout in dB; greens/ambers/reds like a classic on-air desk.
+**PROGRAM VU:** Stereo LED meter on the top strip. Fed from Web Audio AnalyserNode on the program bus when carts/hotkeys play; synthetic fallback when the graph is idle. Peak-hold readout in dB; greens/ambers/reds like a classic on-air desk.
 
 **Cart decks:** Deck A/B/C titles and artists wrap and scroll — no clipped ellipsis. Hover shows full cart metadata.
 
@@ -257,7 +257,7 @@ No proprietary logos, trademarks, or pixel-perfect clones. Avoid modern SaaS / S
 - Linux/web demo: `data/vt-inbox` (override with Settings → VT inbox path, or env `MQ_RADIO_VT_INBOX`)
 - Copies into `data/vt/` + library; optionally attaches audio to the selected VT log event
 
-**On-air processing (native):** Settings → **ON-AIR PROCESSING**. Topology is public broadcast practice — **AGC → EQ → Multiband → Exciter → Peak Limiter** — with **FM** (dense on-air, pre-emphasis) and **Digital** (stream/DAB, ISR-aware) templates. This is **not** an Orban Optimod schematic clone and **not** AU/AAX hosting (optional AU hosting remains a later Mac *production-bus* feature only). Params persist to `data/processing.json`; MockEngine exposes a PROC summary on the status bar for desk trust. Real sample processing lands with Liquidsoap/Mac engine later.
+**On-air processing (native):** Settings → **ON-AIR PROCESSING**. Topology is public broadcast practice — **AGC → EQ → Multiband → Exciter → Peak Limiter** — with **FM** (dense on-air, pre-emphasis) and **Digital** (stream/DAB, ISR-aware) templates. This is **not** an Orban Optimod schematic clone and **not** AU/AAX hosting (optional AU hosting remains a later Mac *production-bus* feature only). Params persist to `data/processing.json`; the On-Air page applies an audible Web Audio approximation on the program bus (template audition on Load FM/Digital). Transmission-path DSP remains Liquidsoap/Mac later.
 
 API highlights: `POST /api/library/ingest`, `POST /api/library/segment`, `POST /api/vt/import-inbox`, `GET|POST /api/settings/processing`, `vu` + `processing` on `/api/status`.
 
@@ -270,23 +270,26 @@ Matt’s release bar: next DMG must meet **broadcast-ready specs**, not a thin s
 ### Production-desk in this build (real, usable)
 - Living Log edit (insert/replace/delete), sample hour, AUTO/ASSIST/LIVE modes
 - Cart decks A/B/C with full title/artist (no clipped ellipsis), timers, end-ramp
-- **PROGRAM VU** stereo LED meter (synthetic levels tied to MockEngine play — analyser UI is real; peak source is mock until engine peak bus)
+- **PROGRAM VU** stereo LED meter fed from Web Audio **AnalyserNode** on the program bus when audio plays (synthetic fallback when idle)
 - **Drag-drop / Browse ingest** of `.wav` `.mp3` `.flac` `.mp4` → copies into `data/library/` + SQLite carts (ffmpeg for mp4/flac decode)
 - **Segment Editor** — cut long carts into library segments (`data/segments/`); distinct from Segue Editor
 - **VT Studio mic Record** (MediaRecorder) → mark IN/OUT → **Save take to log** (cleaned cut via ffmpeg when available) → optional **Segment Editor** on that take → attach to Living Log VT
 - **Import from Downloads / VT inbox** (Mac `~/Downloads` or `data/vt-inbox` / `MQ_RADIO_VT_INBOX`)
 - **Hotkey / one-shot carts** store **absolute path references** and fire without copying into the library; library ingest only on explicit drop/import
-- **Native on-air processing** templates **FM** + **Digital** (AGC→EQ→Multiband→Exciter→Limiter) persisted in `data/processing.json`
+- **Native on-air processing** templates **FM** + **Digital** (AGC→EQ→Multiband→Exciter→Limiter) persisted in `data/processing.json` and applied in the browser On-Air Web Audio graph (audible template switch)
+- **End-pulse AUTO advance**: ingest outro/end-pulse marks; MockEngine fires next Living Log event on pulse (not only EOF); ASSIST/LIVE hold
+- **AI DJ / overnight volume ramps**: fade in/out profiles applied on the program play path (`data/ramps.json`)
+- **Hotkey one-shot audio**: resolved path/track plays through the On-Air program bus with fire/end pulse flash
+- **MQ Digital library root** + VT inbox paths in Settings (ingest lands under configured root)
 - **Studio routing matrix**: Program (processed), Monitor, Headphones, Aux 1/2, **Mix-minus ↔ Aux input** (caller/Zoom), Stream, Record — persisted
 - **Program AU insert slot** stub: `(none) / Native only` persisted; empty slot → native chain is main output
 
 ### Still mock / deferred (called out, not fake-ready)
 - **Device enumeration**: mock device names in web demo; real CoreAudio on Mac engine later
 - **AU/AAX hosting**: insert slot + config only — **not** hosting plugins on-air; optional AU remains later Mac *production-bus* feature
-- **Actual DSP DSP apply**: processing params + templates are desk-complete; sample processing application awaits Liquidsoap/Mac engine
-- **VU peak source**: desk meter is production-grade UI; levels are synthetic from play session until engine wires real peaks
+- **True multiband DSP / hardware chain**: browser On-Air graph approximates AGC/EQ/multiband/exciter/limiter so FM vs Digital is audible; Liquidsoap/Mac engine still owns transmission-path processing
 - **Hotkey path on pure web**: browsers hide absolute paths — Electron/desktop provides `File.path`; web UI asks operator to paste path
-- **One-shot audio playback**: fire API resolves path/track and reports; MockEngine does not yet stream arbitrary hotkey files to speakers
+- **Overlapping dual-deck segue audio**: end-pulse advances the Living Log in AUTO; true crossfade overlap decks remain later
 
 ## Mac install (DMG)
 

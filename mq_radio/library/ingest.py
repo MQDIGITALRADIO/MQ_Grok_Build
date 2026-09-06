@@ -19,8 +19,54 @@ VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".mkv", ".webm"}
 INGEST_EXTS = AUDIO_EXTS | VIDEO_EXTS
 
 
-def library_audio_dir(data_dir: Optional[Path] = None) -> Path:
+def library_root_config_path(data_dir: Optional[Path] = None) -> Path:
     root = Path(data_dir) if data_dir else _cfg.DATA_DIR
+    return root / "library-root.json"
+
+
+def save_library_root_path(path: str | Path, data_dir: Optional[Path] = None) -> dict:
+    """Persist MQ Digital library root (ingest destination)."""
+    import json
+
+    root = Path(data_dir) if data_dir else _cfg.DATA_DIR
+    root.mkdir(parents=True, exist_ok=True)
+    p = Path(path).expanduser()
+    p.mkdir(parents=True, exist_ok=True)
+    cfg = library_root_config_path(data_dir)
+    payload = {"path": str(p)}
+    cfg.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return {"ok": True, "path": str(p), "config": str(cfg)}
+
+
+def library_audio_dir(data_dir: Optional[Path] = None) -> Path:
+    """MQ Digital library audio root.
+
+    Priority:
+      1. MQ_RADIO_LIBRARY_ROOT env
+      2. data/library-root.json path key
+      3. data/library (default)
+    """
+    env = os.environ.get("MQ_RADIO_LIBRARY_ROOT")
+    if env:
+        p = Path(env).expanduser()
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+    root = Path(data_dir) if data_dir else _cfg.DATA_DIR
+    cfg_path = library_root_config_path(data_dir)
+    if cfg_path.exists():
+        try:
+            import json
+
+            data = json.loads(cfg_path.read_text(encoding="utf-8"))
+            raw = (data or {}).get("path") or ""
+            if raw:
+                p = Path(str(raw)).expanduser()
+                p.mkdir(parents=True, exist_ok=True)
+                return p
+        except Exception:
+            pass
+
     d = root / "library"
     d.mkdir(parents=True, exist_ok=True)
     return d

@@ -20,3 +20,10 @@ data/audio_outputs.json
 data/hotkeys.json
 data/vt/
 data/vocloner.json
+data/library/
+data/segments/
+data/vt-inbox/
+data/library-root.json
+data/vt-inbox.json
+data/ramps.json
+data/processing.json

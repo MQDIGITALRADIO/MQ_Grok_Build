@@ -90,7 +90,8 @@ def list_events(
     sql = """
         SELECT e.*,
                COALESCE(t.intro_ms, 0) AS intro_ms,
-               COALESCE(t.outro_ms, 0) AS outro_ms
+               COALESCE(t.outro_ms, 0) AS outro_ms,
+               COALESCE(t.file_path, '') AS file_path
         FROM log_events e
         JOIN daily_logs d ON d.id = e.daily_log_id
         LEFT JOIN tracks t ON t.id = e.track_id

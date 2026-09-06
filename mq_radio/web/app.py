@@ -17,10 +17,14 @@ from mq_radio.library.ingest import (
     get_track,
     import_vt_inbox,
     ingest_bytes,
+    library_audio_dir,
+    save_library_root_path,
     save_segment_as_cart,
     save_vt_inbox_path,
     vt_inbox_dir,
 )
+from mq_radio.production.ramps import load_ramps, profile_for_context, save_ramps
+from mq_radio.web.media import content_type_for, playable_url, resolve_media_path
 from mq_radio.living_log.service import (
     delete_event,
     insert_event,
@@ -123,6 +127,31 @@ def _synthetic_vu() -> dict:
 
 
 
+
+def _media_response(handler: BaseHTTPRequestHandler, path: Path) -> None:
+    data = path.read_bytes()
+    handler.send_response(200)
+    handler.send_header("Content-Type", content_type_for(path))
+    handler.send_header("Content-Length", str(len(data)))
+    handler.send_header("Accept-Ranges", "bytes")
+    handler.send_header("Cache-Control", "private, max-age=30")
+    handler.send_header("Access-Control-Allow-Origin", "*")
+    handler.end_headers()
+    handler.wfile.write(data)
+
+
+def _enrich_playable(ev: dict | None) -> dict | None:
+    if not ev:
+        return ev
+    out = dict(ev)
+    tid = out.get("track_id")
+    fpath = out.get("file_path") or ""
+    url = playable_url(fpath, int(tid) if tid is not None else None)
+    if url:
+        out["playable_url"] = url
+    return out
+
+
 def make_handler(db_path: Path):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, fmt, *args):
@@ -173,17 +202,43 @@ def make_handler(db_path: Path):
                 data = now_and_upcoming(log_date, db_path=db_path)
                 timing = SESSION.timing()
                 proc = load_processing(DATA_DIR)
+                ramps = load_ramps(DATA_DIR)
+                now_ev = _enrich_playable(data.get("now"))
+                upcoming = [_enrich_playable(e) for e in (data.get("upcoming") or [])]
+                with SESSION.lock:
+                    mode = SESSION.playout_mode
+                    auto = SESSION.auto_advance
+                    sess_path = SESSION.file_path
+                    sess_tid = SESSION.track_id
+                    ramp_id = SESSION.ramp_profile
+                play_url = playable_url(sess_path, sess_tid) if (sess_path or sess_tid) else (
+                    (now_ev or {}).get("playable_url")
+                )
                 _json_response(self, {
                     "date": log_date,
-                    **data,
+                    "now": now_ev,
+                    "upcoming": upcoming,
+                    "total": data.get("total"),
                     "timing": timing,
                     "running": SESSION.running,
                     "vu": _synthetic_vu(),
+                    "playout_mode": mode,
+                    "auto_advance": auto,
+                    "playable_url": play_url,
+                    "ramp_profile": ramp_id or ramps.get("active_profile"),
+                    "ramps": {
+                        "active_profile": ramps.get("active_profile"),
+                        "ai_dj_profile": ramps.get("ai_dj_profile"),
+                        "active": ramps.get("active"),
+                        "ai_dj": ramps.get("ai_dj"),
+                    },
                     "processing": {
                         "enabled": proc.get("enabled"),
                         "template": proc.get("template"),
                         "summary": processing_summary(proc),
                         "topology": proc.get("topology"),
+                        "stages": proc.get("stages"),
+                        "output": proc.get("output"),
                     },
                 })
                 return
@@ -278,6 +333,42 @@ def make_handler(db_path: Path):
                 _json_response(self, load_processing(DATA_DIR))
                 return
 
+            if path == "/api/settings/library-root":
+                lib = library_audio_dir(DATA_DIR)
+                _json_response(self, {"ok": True, "path": str(lib)})
+                return
+
+            if path == "/api/settings/ramps":
+                _json_response(self, load_ramps(DATA_DIR))
+                return
+
+            if path.startswith("/api/media/track/"):
+                raw_id = path.rsplit("/", 1)[-1]
+                try:
+                    tid = int(raw_id)
+                except ValueError:
+                    self.send_error(400)
+                    return
+                row = get_track(tid, db_path=db_path)
+                if not row or not row.get("file_path"):
+                    self.send_error(404)
+                    return
+                mp = resolve_media_path(row["file_path"], DATA_DIR)
+                if not mp:
+                    self.send_error(404)
+                    return
+                _media_response(self, mp)
+                return
+
+            if path == "/api/media":
+                raw = (qs.get("path") or [""])[0]
+                mp = resolve_media_path(raw, DATA_DIR)
+                if not mp:
+                    self.send_error(404)
+                    return
+                _media_response(self, mp)
+                return
+
             self.send_error(404)
 
         def do_POST(self):
@@ -341,6 +432,14 @@ def make_handler(db_path: Path):
                     exists = False
                     resolved = str(target) if target else None
                     kind = "label"
+                track_id = None
+                if kind == "track" and target is not None and str(target).isdigit():
+                    track_id = int(target)
+                url = None
+                if exists and resolved:
+                    url = playable_url(resolved, track_id)
+                elif track_id is not None:
+                    url = playable_url(None, track_id)
                 _json_response(self, {
                     "ok": True,
                     "fired": True,
@@ -348,11 +447,13 @@ def make_handler(db_path: Path):
                     "kind": kind,
                     "path": resolved,
                     "exists": exists,
+                    "playable_url": url,
+                    "track_id": track_id,
                     "copied_to_library": False,
                     "message": (
                         f"ONE-SHOT {label}: {resolved or '(no path)'}"
                         + (" [missing file]" if resolved and not exists else "")
-                        + " — path reference only, not ingested"
+                        + (" · playing" if url and exists else " — path reference only, not ingested")
                     ),
                 })
                 return
@@ -570,6 +671,51 @@ def make_handler(db_path: Path):
                     move=bool(payload.get("move")),
                 )
                 _json_response(self, result, status=200 if result.get("ok") else 400)
+                return
+
+            if path == "/api/settings/library-root":
+                raw_path = payload.get("path") or ""
+                if not raw_path:
+                    _json_response(self, {"ok": False, "error": "path required"}, status=400)
+                    return
+                _json_response(self, save_library_root_path(raw_path, DATA_DIR))
+                return
+
+            if path == "/api/settings/ramps":
+                _json_response(self, save_ramps(payload, DATA_DIR))
+                return
+
+            if path == "/api/mode":
+                mode = str(payload.get("mode") or "AUTO").upper()
+                if mode not in ("AUTO", "ASSIST", "LIVE"):
+                    mode = "AUTO"
+                with SESSION.lock:
+                    SESSION.playout_mode = mode
+                    SESSION.auto_advance = mode == "AUTO"
+                _json_response(self, {
+                    "ok": True,
+                    "mode": mode,
+                    "auto_advance": mode == "AUTO",
+                })
+                return
+
+            if path == "/api/pulse":
+                # Client end-pulse flash → honor by finishing current if due/forced
+                force = bool(payload.get("force"))
+                engine = MockEngine(log_date, db_path=db_path)
+                if force:
+                    st = engine.step()
+                    advanced = True
+                else:
+                    advanced = engine.finish_if_due()
+                    st = engine.status()
+                _json_response(self, {
+                    "ok": True,
+                    "advanced": advanced,
+                    "message": st.message,
+                    "running": st.running,
+                    "title": st.current_title,
+                })
                 return
 
             engine = MockEngine(log_date, db_path=db_path)

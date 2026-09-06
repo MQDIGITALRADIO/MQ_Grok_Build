@@ -7,6 +7,8 @@ from mq_radio.library.ingest import (
     ingest_file,
     save_segment_as_cart,
     save_vt_inbox_path,
+    save_library_root_path,
+    library_audio_dir,
     vt_inbox_dir,
 )
 
@@ -19,5 +21,7 @@ __all__ = [
     "ingest_file",
     "save_segment_as_cart",
     "save_vt_inbox_path",
+    "save_library_root_path",
+    "library_audio_dir",
     "vt_inbox_dir",
 ]

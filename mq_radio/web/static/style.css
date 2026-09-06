@@ -1460,3 +1460,8 @@ input { border-radius: 0; }
   color: #444;
   margin: 4px 0 0;
 }
+
+/* Hotkey one-shot fire flash on deck */
+.deck.hotkey-pulse {
+  box-shadow: inset 0 0 0 2px #44ff88, 0 0 12px rgba(68, 255, 136, 0.45);
+}

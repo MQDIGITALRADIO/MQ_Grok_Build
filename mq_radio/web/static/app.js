@@ -341,16 +341,24 @@ function syncTimingFromStatus(st) {
   const playing = !!(t.playing || st.running);
   const nowEv = st.now;
   const onAir = nowEv && nowEv.status === "ON_AIR";
+  const nextId = onAir ? nowEv.id : null;
+  const sameCart = timingSnap && timingSnap.eventId === nextId;
   timingSnap = {
     playing: playing && !!onAir,
-    eventId: onAir ? nowEv.id : null,
+    eventId: nextId,
     duration_ms: Number(t.duration_ms || (onAir && nowEv.duration_ms) || 0),
     elapsed_ms: Number(t.elapsed_ms || 0),
     remaining_ms: Number(t.remaining_ms || 0),
     progress: Number(t.progress || 0),
-    intro_ms: Number((onAir && nowEv.intro_ms) || 0),
+    intro_ms: Number(t.intro_ms || (onAir && nowEv.intro_ms) || 0),
+    end_pulse_ms: Number(
+      t.end_pulse_ms != null
+        ? t.end_pulse_ms
+        : (onAir && nowEv.outro_ms) || 0
+    ),
     event_type: (onAir && nowEv.event_type) || "",
     syncedAt: Date.now(),
+    _pulseSent: sameCart ? !!timingSnap._pulseSent : false,
   };
   // Prefer server remaining when present
   if (timingSnap.playing && timingSnap.duration_ms > 0 && t.elapsed_ms != null) {
@@ -505,13 +513,48 @@ function tickTimers() {
     meterEl.style.setProperty("--progress", String(live.progress));
   }
   applyEndRamp(deckEl, meterEl, live.remaining_ms);
-  applyVu(lastStatus && lastStatus.vu && lastStatus.vu.playing
-    ? {
-        playing: true,
-        left: synthVuLocal(true).left,
-        right: synthVuLocal(true).right,
-      }
-    : synthVuLocal(true));
+  const analyserVu =
+    window.MQProgramAudio && typeof window.MQProgramAudio.getVu === "function"
+      ? window.MQProgramAudio.getVu()
+      : null;
+  if (analyserVu && analyserVu.source === "analyser" && analyserVu.playing) {
+    applyVu(analyserVu);
+  } else if (lastStatus && lastStatus.vu && lastStatus.vu.playing) {
+    applyVu({
+      playing: true,
+      left: synthVuLocal(true).left,
+      right: synthVuLocal(true).right,
+    });
+  } else {
+    applyVu(synthVuLocal(true));
+  }
+
+  // End-pulse: AUTO advances when remaining enters pulse window (not only EOF)
+  const pulseMs = Number(
+    (timingSnap.end_pulse_ms != null
+      ? timingSnap.end_pulse_ms
+      : lastStatus && lastStatus.timing && lastStatus.timing.end_pulse_ms) || 0
+  );
+  if (
+    timingSnap.playing &&
+    timingSnap.duration_ms > 0 &&
+    live.remaining_ms <= Math.max(0, pulseMs) &&
+    !timingSnap._pulseSent
+  ) {
+    timingSnap._pulseSent = true;
+    if (playoutMode === "AUTO") {
+      fetch("/api/pulse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ force: false }),
+      })
+        .then(() => refresh())
+        .catch(() => refresh());
+    } else {
+      // ASSIST/LIVE: flash only; operator advances
+      if (window.MQProgramAudio) window.MQProgramAudio.flashEndPulse();
+    }
+  }
 
   // When local timer hits zero, refresh so finish_if_due advances the log
   if (live.remaining_ms <= 0 && timingSnap.duration_ms > 0) {
@@ -537,7 +580,14 @@ async function refresh() {
   fillDeck("deck-c", up[1] || null, "ready", "READY");
 
   syncTimingFromStatus(st);
-  if (st.vu) applyVu(st.vu);
+  if (window.MQProgramAudio) {
+    window.MQProgramAudio.syncFromStatus(st).catch(() => {});
+    const av = window.MQProgramAudio.getVu();
+    if (av && av.playing && av.source === "analyser") applyVu(av);
+    else if (st.vu) applyVu(st.vu);
+  } else if (st.vu) {
+    applyVu(st.vu);
+  }
   tickTimers();
 
   document.getElementById("lamp-onair").classList.toggle("lit", !!onAir);
@@ -621,6 +671,7 @@ async function refresh() {
 }
 
 async function postAction(path) {
+  if (window.MQProgramAudio) window.MQProgramAudio.resume();
   const date = document.getElementById("log-date").value || todayISO();
   const res = await fetch(`${path}?date=${date}`, { method: "POST" }).then((r) =>
     r.json()
@@ -648,6 +699,11 @@ function setMode(mode) {
   });
   document.getElementById("mode-status").textContent = `MODE: ${mode}`;
   document.getElementById("engine-msg").textContent = `Mode → ${mode}`;
+  fetch("/api/mode", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode }),
+  }).catch(() => {});
   tickTimers();
 }
 
@@ -933,7 +989,12 @@ async function applyProcessingTemplate(name) {
     populateProcessingForm(res);
     const st = document.getElementById("proc-status");
     if (st) st.textContent = `PROC: ${res.summary || name}`;
-    document.getElementById("engine-msg").textContent = `Loaded ${name} processing template`;
+    if (window.MQProgramAudio) {
+      window.MQProgramAudio.applyProcessing(res);
+      window.MQProgramAudio.auditionTemplate(res).catch(() => {});
+    }
+    document.getElementById("engine-msg").textContent =
+      `Loaded ${name} processing template (audition on program bus)`;
   }
 }
 
@@ -945,6 +1006,13 @@ function openSettings() {
     .then((r) => (r.ok ? r.json() : null))
     .then((data) => {
       const el = document.getElementById("vt-inbox-path");
+      if (el && data && data.path) el.value = data.path;
+    })
+    .catch(() => {});
+  fetch("/api/settings/library-root")
+    .then((r) => (r.ok ? r.json() : null))
+    .then((data) => {
+      const el = document.getElementById("library-root-path");
       if (el && data && data.path) el.value = data.path;
     })
     .catch(() => {});
@@ -978,6 +1046,16 @@ function initSettings() {
         });
       } catch (e) { /* ignore */ }
     }
+    const libEl = document.getElementById("library-root-path");
+    if (libEl && libEl.value.trim()) {
+      try {
+        await fetch("/api/settings/library-root", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: libEl.value.trim() }),
+        });
+      } catch (e) { /* ignore */ }
+    }
     try {
       const procPayload = readProcessingForm();
       const savedProc = await fetch("/api/settings/processing", {
@@ -989,6 +1067,7 @@ function initSettings() {
         populateProcessingForm(savedProc);
         const st = document.getElementById("proc-status");
         if (st) st.textContent = `PROC: ${savedProc.summary || savedProc.template || "FM"}`;
+        if (window.MQProgramAudio) window.MQProgramAudio.applyProcessing(savedProc);
       }
     } catch (e) { /* ignore */ }
     document.getElementById("engine-msg").textContent =

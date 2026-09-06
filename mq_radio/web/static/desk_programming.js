@@ -556,6 +556,7 @@
       setTimeout(() => btn.classList.remove("fired"), 180);
     }
     try {
+      if (window.MQProgramAudio) window.MQProgramAudio.resume();
       const res = await fetch("/api/hotkey/fire", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -566,7 +567,15 @@
           path: item.path || null,
         }),
       }).then((r) => r.json());
-      msg(res.message || `HOTKEY ${item.key || "#" + (item.slot + 1)}: ${item.label}`);
+      let played = false;
+      if (res && res.playable_url && window.MQProgramAudio) {
+        played = await window.MQProgramAudio.playOneShot(res.playable_url, res.label || item.label);
+      }
+      msg(
+        res.message ||
+          `HOTKEY ${item.key || "#" + (item.slot + 1)}: ${item.label}` +
+            (played ? " · audio" : "")
+      );
     } catch (e) {
       msg(`HOTKEY ${item.key || "#" + (item.slot + 1)}: ${item.label} [${item.type}]`);
     }
