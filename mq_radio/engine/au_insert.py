@@ -29,6 +29,14 @@ from typing import Any, Optional, Protocol, runtime_checkable
 
 # Operator-facing copy (Settings banner + status envelope)
 OPERATOR_INACTIVE_MSG = "native chain active — AU host not loaded"
+OPERATOR_UNAVAILABLE_MSG = (
+    "AU insert unavailable — real Audio Unit host not shipped "
+    "(native MQ chain still runs)"
+)
+OPERATOR_NON_MAC_MSG = (
+    "AU insert unavailable on this platform — Audio Units require macOS; "
+    "native MQ chain remains the Program path"
+)
 DOCS_RELPATH = "desktop/au_insert/README.md"
 DOCS_URL = (
     "https://github.com/MQDIGITALRADIO/MQ_Grok_Build/blob/main/desktop/au_insert/README.md"
@@ -103,6 +111,67 @@ def platform_supports_au() -> bool:
     # Tests may claim Darwin-like probe without a Mac
     val = (os.environ.get("MQ_RADIO_AU_PROBE") or "").strip().lower()
     return val in {"1", "true", "yes", "darwin"}
+
+
+def unavailable_reason(*, slot: Optional[str] = None) -> Optional[str]:
+    """Why AU processing cannot run (operator-facing code).
+
+    Returns None when no AU is selected (native-only — not an error).
+    """
+    if slot is not None and not is_au_slot(slot):
+        return None
+    if host_available():
+        return None
+    if not platform_supports_au() and platform.system().lower() != "darwin":
+        return "au_unavailable_platform"
+    return "au_host_not_loaded"
+
+
+def operator_message_for(*, slot: Optional[str] = None, name: Optional[str] = None) -> Optional[str]:
+    """Clear inactive / unavailable copy for Settings + status."""
+    reason = unavailable_reason(slot=slot)
+    if reason is None:
+        return None
+    if reason == "au_unavailable_platform":
+        return OPERATOR_NON_MAC_MSG
+    label = (name or slot or "AU").strip()
+    if label and label not in _NATIVE_SLOTS and not label.startswith("au:"):
+        return f"{OPERATOR_INACTIVE_MSG} (selected: {label})"
+    if slot and str(slot).startswith("au:"):
+        return f"{OPERATOR_INACTIVE_MSG} (slot: {slot})"
+    return OPERATOR_INACTIVE_MSG
+
+
+def describe_insert(*, slot: Optional[str] = None, name: Optional[str] = None) -> dict[str, Any]:
+    """Scaffold status dict for UI / tests without loading a handle."""
+    raw_slot = _normalize_name(slot if slot is not None else name)
+    wants = is_au_slot(raw_slot)
+    reason = unavailable_reason(slot=raw_slot)
+    return {
+        "slot": raw_slot,
+        "name": _normalize_name(name) if name else raw_slot,
+        "wants_au": wants,
+        "active": False,
+        "host_available": False,
+        "native_runs": True,
+        "unavailable_reason": reason if wants else None,
+        "operator_message": operator_message_for(slot=raw_slot, name=name) if wants else None,
+        "unavailable_message": OPERATOR_UNAVAILABLE_MSG if wants else None,
+        "warning": "au_insert_inactive" if wants else None,
+        "docs": DOCS_RELPATH,
+        "docs_url": DOCS_URL,
+        "chain": PROGRAM_PATH,
+        "real_au_host": False,
+    }
+
+
+def process_buffer(insert: "AuInsert", buffer: Any) -> Any:
+    """Call insert.process — never silent passthrough.
+
+    Scaffold helper for future host wiring + unit tests. Propagates
+    AuHostNotAvailable / AuInsertNotSelected.
+    """
+    return insert.process(buffer)
 
 
 def probe_pyobjc() -> dict[str, Any]:
@@ -181,19 +250,25 @@ class StubAuInsert:
 
     def status(self) -> dict[str, Any]:
         wants = is_au_slot(self.slot)
+        msg = operator_message_for(slot=self.slot, name=self.name) if wants else None
+        reason = unavailable_reason(slot=self.slot) if wants else None
         return {
             "slot": self.slot,
             "name": self.name,
             "active": bool(self.active and self.host_available),
             "host_available": False,
+            "real_au_host": False,
             "warning": "au_insert_inactive" if wants else None,
+            "unavailable_reason": reason,
             "native_runs": True,
-            "operator_message": OPERATOR_INACTIVE_MSG if wants else None,
+            "operator_message": msg,
+            "unavailable_message": OPERATOR_UNAVAILABLE_MSG if wants else None,
             "docs": DOCS_RELPATH,
             "docs_url": DOCS_URL,
             "chain": PROGRAM_PATH,
             "probe": dict(self.probe) if self.probe else probe_pyobjc(),
             "interface": "mq_radio.engine.au_insert",
+            "platform": platform.system().lower(),
         }
 
 
@@ -218,7 +293,7 @@ def load(name: Optional[str] = None, *, slot: Optional[str] = None) -> StubAuIns
         active=False,
         host_available=False,
         warning="au_insert_inactive" if wants else None,
-        operator_message=OPERATOR_INACTIVE_MSG if wants else "",
+        operator_message=operator_message_for(slot=raw_slot, name=display) or "",
         probe=probe,
     )
 
@@ -238,12 +313,18 @@ __all__ = [
     "AuInsert",
     "StubAuInsert",
     "OPERATOR_INACTIVE_MSG",
+    "OPERATOR_UNAVAILABLE_MSG",
+    "OPERATOR_NON_MAC_MSG",
     "DOCS_RELPATH",
     "DOCS_URL",
     "PROGRAM_PATH",
     "is_au_slot",
     "host_available",
     "platform_supports_au",
+    "unavailable_reason",
+    "operator_message_for",
+    "describe_insert",
+    "process_buffer",
     "probe_pyobjc",
     "load",
     "status_for_insert",

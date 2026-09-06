@@ -112,7 +112,9 @@
       "packaging/liquidsoap/processing_handoff.json",
       "packaging/liquidsoap/template_fm.json",
       "packaging/liquidsoap/template_digital.json",
-      "packaging/liquidsoap/mq_processing_stub.liq"
+      "packaging/liquidsoap/mq_processing_stub.liq",
+      "packaging/liquidsoap/mq_master_control_operator.liq",
+      "desktop/resources/master_control/liquidsoap/"
     ],
     "steps": [
       "Install Liquidsoap on the Mac that owns the transmitter / encoder path (Homebrew or official binary).",
@@ -122,10 +124,13 @@
       "Keep MQ Radio desk as control UI + Living Log; Liquidsoap owns Master Control TX audio."
     ],
     "not_included": [
-      "Bundled Liquidsoap binary in the Electron DMG",
-      "Live Telnet/Harbor control from MockEngine (LiquidsoapEngine stub only)",
+      "Guaranteed Liquidsoap binary in every Electron DMG (copied only when brew present on Mac CI)",
+      "Live Telnet/Harbor control from MockEngine (LiquidsoapEngine start/stop stubs only)",
+      "Auto-started Master Control graph from the desk",
       "AU/AAX hosting"
-    ]
+    ],
+    "dry_run": "POST /api/settings/master-control/dry-run",
+    "start_stop": "POST /api/settings/master-control/{start,stop} \u2014 fail clearly; never fake Harbor"
   },
   "templates": {
     "FM": {

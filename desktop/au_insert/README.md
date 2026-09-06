@@ -81,6 +81,8 @@ isolation; more packaging work.
 
 When an AU is selected and the host is down, Operators see:
 
-**Native chain active — AU host not loaded**
+**Native chain active — AU host not loaded** (plus selected slot/name when known)
+
+Status also exposes `unavailable_reason` (`au_host_not_loaded` / `au_unavailable_platform`) and `unavailable_message`. `process()` / `process_buffer()` always raise — never silent passthrough.
 
 with a link back to this README.

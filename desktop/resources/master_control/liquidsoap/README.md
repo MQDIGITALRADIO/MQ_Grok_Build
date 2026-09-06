@@ -52,3 +52,6 @@ python -c "from mq_radio.production.liquidsoap_export import export_processing_h
 ```
 
 Or `POST /api/settings/processing/export`.
+
+Operator dry-run / start stubs: `mq_radio.production.master_control` and
+`GET|POST /api/settings/master-control…` — never claim live Harbor Done.

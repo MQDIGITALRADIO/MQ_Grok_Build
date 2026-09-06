@@ -13,6 +13,7 @@ from mq_radio.production.liquidsoap_export import (
     handoff_payload,
     render_liq_snippet,
 )
+from mq_radio.production import master_control
 from mq_radio.production.transmission_dsp import process_wav_file
 
 __all__ = [
@@ -27,5 +28,6 @@ __all__ = [
     "export_processing_handoff",
     "handoff_payload",
     "render_liq_snippet",
+    "master_control",
     "process_wav_file",
 ]

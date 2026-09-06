@@ -16,9 +16,8 @@ Handoff version 3 — FM/Digital templates + `transmission_mode` + operator inst
 
 ## Operator install (Master Control path)
 
-The Mac package stages Master Control **templates** under `Resources/master_control/` (and copies a Homebrew `liquidsoap` binary into `Resources/runtime/liquidsoap/` when `stage_mac_resources.sh` runs on a Mac that has it). A live Harbor graph is still not wired.
-
-If the binary is missing, install Liquidsoap on the TX Mac:
+Liquidsoap is **not** bundled in the MQ Radio DMG. Install it on the Mac that owns
+the transmitter / encoder path:
 
 ```bash
 brew install liquidsoap
@@ -53,3 +52,6 @@ python -c "from mq_radio.production.liquidsoap_export import export_processing_h
 ```
 
 Or `POST /api/settings/processing/export`.
+
+Operator dry-run / start stubs: `mq_radio.production.master_control` and
+`GET|POST /api/settings/master-control…` — never claim live Harbor Done.

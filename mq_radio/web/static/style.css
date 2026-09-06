@@ -2559,3 +2559,27 @@ body:has(.desk-hybrid) .settings-dialog {
   color: #e8eef8;
   border: 1px solid #334155;
 }
+
+/* Master Control operator path (Settings) */
+.mc-status-box {
+  margin: 8px 0 12px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(120, 160, 220, 0.35);
+  background: rgba(30, 48, 72, 0.55);
+  color: #c8d6e8;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.mc-status-line {
+  font-weight: 600;
+  color: #e8eef8;
+  margin-bottom: 4px;
+}
+.mc-status-detail {
+  opacity: 0.9;
+  color: #a8b8cc;
+}
+.au-insert-banner.is-unavailable .au-insert-banner-title {
+  color: #ffc978;
+}

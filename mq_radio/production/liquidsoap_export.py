@@ -102,6 +102,8 @@ def handoff_payload(
                 "packaging/liquidsoap/template_fm.json",
                 "packaging/liquidsoap/template_digital.json",
                 "packaging/liquidsoap/mq_processing_stub.liq",
+                "packaging/liquidsoap/mq_master_control_operator.liq",
+                "desktop/resources/master_control/liquidsoap/",
             ],
             "steps": [
                 "Install Liquidsoap on the Mac that owns the transmitter / encoder path (Homebrew or official binary).",
@@ -111,10 +113,13 @@ def handoff_payload(
                 "Keep MQ Radio desk as control UI + Living Log; Liquidsoap owns Master Control TX audio.",
             ],
             "not_included": [
-                "Bundled Liquidsoap binary in the Electron DMG",
-                "Live Telnet/Harbor control from MockEngine (LiquidsoapEngine stub only)",
+                "Guaranteed Liquidsoap binary in every Electron DMG (copied only when brew present on Mac CI)",
+                "Live Telnet/Harbor control from MockEngine (LiquidsoapEngine start/stop stubs only)",
+                "Auto-started Master Control graph from the desk",
                 "AU/AAX hosting",
             ],
+            "dry_run": "POST /api/settings/master-control/dry-run",
+            "start_stop": "POST /api/settings/master-control/{start,stop} — fail clearly; never fake Harbor",
         },
     }
     if include_templates:
@@ -220,6 +225,18 @@ def export_processing_handoff(
             p.write_text(json.dumps(tmpl, indent=2) + "\n", encoding="utf-8")
             written.append(str(p))
 
+    # Operator sketch beside handoff (imported lazily to avoid cycles at import)
+    try:
+        from mq_radio.production.master_control import render_operator_liq
+
+        op_text = render_operator_liq()
+        for root in targets:
+            op = root / "mq_master_control_operator.liq"
+            op.write_text(op_text, encoding="utf-8")
+            written.append(str(op))
+    except Exception:
+        pass
+
     return {
         "ok": True,
         "version": HANDOFF_VERSION,
@@ -229,6 +246,7 @@ def export_processing_handoff(
         if isinstance(chain or payload.get("current"), dict)
         else payload["current"].get("template"),
         "status": "stub",
+        "live_harbor": False,
     }
 
 
@@ -287,4 +305,7 @@ python -c "from mq_radio.production.liquidsoap_export import export_processing_h
 ```
 
 Or `POST /api/settings/processing/export`.
+
+Operator dry-run / start stubs: `mq_radio.production.master_control` and
+`GET|POST /api/settings/master-control…` — never claim live Harbor Done.
 """

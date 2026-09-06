@@ -1,9 +1,10 @@
 # Master Control runtime pack
 
-Liquidsoap handoff v3 + operator `.liq` sketches for the transmitter / encoder Mac.
+Liquidsoap handoff v3 + operator `.liq` sketches for the TX Mac.
 
-- Desk remains Living Log + On-Air UI
-- Liquidsoap owns TX Master Control when installed
-- Do not claim a live Harbor graph until wired from `LiquidsoapEngine`
+- Desk = Living Log + On-Air UI
+- Liquidsoap = Master Control TX when installed and wired
+- **Not** a live Harbor graph until `LiquidsoapEngine` owns Telnet/Harbor
+- See `docs/OPERATOR.md` and `liquidsoap/OPERATOR.md`
 
-Music library is external (MQ Digital drive).
+Music library stays external (MQ Digital drive).

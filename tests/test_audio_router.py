@@ -174,7 +174,9 @@ def test_au_insert_inactive_warning_when_au_selected():
     assert st["au_insert"]["active"] is False
     assert st["au_insert"]["native_runs"] is True
     assert st["au_insert"]["host_available"] is False
-    assert st["au_insert"]["operator_message"] == "native chain active — AU host not loaded"
+    msg = st["au_insert"]["operator_message"] or ""
+    assert ("native chain active" in msg) or ("AU insert unavailable" in msg)
+    assert st["au_insert"].get("real_au_host") is False
     assert "au_insert" in (st["au_insert"].get("docs") or "")
     assert "au_insert_inactive" in st["warnings"]
     assert st["program_path"] == PROGRAM_PATH

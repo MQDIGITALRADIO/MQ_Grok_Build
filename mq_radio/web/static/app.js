@@ -227,7 +227,7 @@ function fillDeck(prefix, event, stateClass, stateText) {
   if (!event) {
     if (typeEl) { typeEl.textContent = "—"; typeEl.className = "deck-type"; }
     if (titleEl) {
-      titleEl.textContent = prefix === "deck-a" ? "No cart cued" : "No next cart";
+      titleEl.textContent = prefix === "deck-a" ? "No cart cued (import + generate)" : "No next cart";
       titleEl.title = "Import audio + Clocks → Generate hour to fill decks";
     }
     if (artistEl) artistEl.textContent = "Import audio · Clocks → Generate";
@@ -1007,7 +1007,7 @@ function renderLivingLog(events, np, up) {
   if (!all.length) {
     const tr = document.createElement("tr");
     tr.className = "log-row log-empty-hint";
-    tr.innerHTML = `<td colspan="10" class="log-empty">Living Log is empty (normal on first run) — <strong>Import audio</strong>, open <strong>Clocks</strong> → Generate hour (or Sample hour), then <strong>PLAY</strong>. Mac ZIP: if the desk never loads, run <code>Open MQ Radio.command</code> once (Gatekeeper). Settings → audio route before going live.</td>`;
+    tr.innerHTML = `<td colspan="10" class="log-empty">Living Log is empty (normal on first run) — <strong>Import audio</strong>, open <strong>Clocks</strong> → Generate hour (or Sample hour), <strong>Settings</strong> → audio route, then <strong>PLAY</strong>. Mac ZIP blocked or “damaged”? Run <code>Open MQ Radio.command</code> once (Gatekeeper), then reopen — see README-INSTALL.txt.</td>`;
     body.appendChild(tr);
     return;
   }
@@ -1322,14 +1322,151 @@ function outSelectId(role) {
   return `out-${role}`;
 }
 
-function updateAuInsertBanner(slot) {
+async function refreshAuInsertStatus(slot) {
+  try {
+    const r = await fetch("/api/settings/au-insert");
+    if (!r.ok) return;
+    const data = await r.json();
+    const au = data.au_insert || data;
+    updateAuInsertBanner(slot || au.slot, au);
+  } catch (_) {}
+}
+
+async function loadMasterControlStatus() {
+  const line = document.getElementById("mc-status-line");
+  const detail = document.getElementById("mc-status-detail");
+  if (!line) return;
+  try {
+    const r = await fetch("/api/settings/master-control");
+    const data = r.ok ? await r.json() : null;
+    if (!data) {
+      line.textContent = "Master Control: status unavailable";
+      return;
+    }
+    const bin = data.liquidsoap && data.liquidsoap.available ? "binary found" : "binary missing";
+    line.textContent = `Master Control: ${data.status || "operator_pack"} · ${bin} · live Harbor: no`;
+    if (detail) {
+      detail.textContent = data.operator_message || "";
+    }
+  } catch (_) {
+    line.textContent = "Master Control: status poll failed";
+  }
+}
+
+async function runMasterControlDryRun() {
+  const line = document.getElementById("mc-status-line");
+  const detail = document.getElementById("mc-status-detail");
+  setEngineMsgOperator("Master Control dry-run…", { kind: "hint" });
+  try {
+    const r = await fetch("/api/settings/master-control/dry-run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh: false }),
+    });
+    const data = await r.json();
+    if (line) {
+      line.textContent = data.ok
+        ? `Dry-run OK · ${data.status} · Harbor wired: no`
+        : `Dry-run failed · ${(data.errors && data.errors[0]) || data.status}`;
+    }
+    if (detail) {
+      detail.textContent = data.operator_message || (data.warnings || []).slice(0, 2).join(" · ");
+    }
+    setEngineMsgOperator(data.operator_message || (data.ok ? "Master Control dry-run OK" : "Dry-run failed"), {
+      kind: data.ok ? "hint" : "error",
+    });
+  } catch (e) {
+    setEngineMsgOperator("Master Control dry-run failed — engine offline?", { kind: "error" });
+  }
+}
+
+async function runMasterControlEnsure() {
+  setEngineMsgOperator("Refreshing Master Control templates…", { kind: "hint" });
+  try {
+    const r = await fetch("/api/settings/master-control/ensure", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    const data = await r.json();
+    setEngineMsgOperator(
+      data.ok
+        ? `Templates refreshed (${(data.written || []).length} files) — live Harbor still not wired`
+        : `Template refresh failed: ${data.error || "unknown"}`,
+      { kind: data.ok ? "ok" : "error" }
+    );
+    loadMasterControlStatus();
+  } catch (_) {
+    setEngineMsgOperator("Template refresh failed — engine offline?", { kind: "error" });
+  }
+}
+
+async function runMasterControlStartStop(kind) {
+  const path = kind === "start" ? "/api/settings/master-control/start" : "/api/settings/master-control/stop";
+  setEngineMsgOperator(kind === "start" ? "Master Control start (stub)…" : "Master Control stop (stub)…", {
+    kind: "hint",
+  });
+  try {
+    const r = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    const data = await r.json();
+    setEngineMsgOperator(data.operator_message || data.error || `${kind} done`, {
+      kind: data.started ? "ok" : kind === "start" ? "error" : "hint",
+    });
+    loadMasterControlStatus();
+  } catch (_) {
+    setEngineMsgOperator(`Master Control ${kind} failed — engine offline?`, { kind: "error" });
+  }
+}
+
+async function exportLiquidsoapHandoff() {
+  setEngineMsgOperator("Exporting Liquidsoap handoff…", { kind: "hint" });
+  try {
+    const r = await fetch("/api/settings/processing/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    const data = await r.json();
+    setEngineMsgOperator(
+      data.ok
+        ? `Handoff v${data.version || "?"} written — live Harbor: no`
+        : `Handoff export failed: ${data.error || "unknown"}`,
+      { kind: data.ok ? "ok" : "error" }
+    );
+    loadMasterControlStatus();
+  } catch (_) {
+    setEngineMsgOperator("Handoff export failed — engine offline?", { kind: "error" });
+  }
+}
+
+function updateAuInsertBanner(slot, statusPayload) {
   const banner = document.getElementById("au-insert-banner");
   if (!banner) return;
   const s = String(slot || "none");
   const wantsAu = s.startsWith("au:") || (s !== "none" && s !== "native_only" && s !== "");
+  const titleEl = document.getElementById("au-insert-banner-title");
+  const bodyEl = document.getElementById("au-insert-banner-body");
   if (wantsAu) {
     banner.hidden = false;
     banner.removeAttribute("hidden");
+    const st = statusPayload || {};
+    const op =
+      st.operator_message ||
+      st.unavailable_message ||
+      "Native chain active — AU host not loaded";
+    if (titleEl) titleEl.textContent = op;
+    if (bodyEl) {
+      const reason = st.unavailable_reason ? ` Reason: ${st.unavailable_reason}.` : "";
+      bodyEl.innerHTML =
+        `Selected Audio Unit is <strong>unavailable</strong> until a real Mac AU host ships.` +
+        ` Program audio continues through the <strong>native</strong> MQ chain — the plugin is` +
+        ` <em>not</em> processing buffers.${reason} Real AU hosting is <strong>not</strong> Done. ` +
+        `<a id="au-insert-docs-link" href="https://github.com/MQDIGITALRADIO/MQ_Grok_Build/blob/main/desktop/au_insert/README.md" target="_blank" rel="noopener noreferrer">AU insert docs</a>`;
+    }
   } else {
     banner.hidden = true;
     banner.setAttribute("hidden", "");
@@ -1384,8 +1521,12 @@ function populateSettingsForm(bundle, devicesPayload) {
     updateAuInsertBanner(ins.value);
     if (!ins.dataset.auBannerBound) {
       ins.dataset.auBannerBound = "1";
-      ins.addEventListener("change", () => updateAuInsertBanner(ins.value));
+      ins.addEventListener("change", () => {
+        updateAuInsertBanner(ins.value);
+        refreshAuInsertStatus(ins.value);
+      });
     }
+    refreshAuInsertStatus(ins.value);
   }
 
   const badge = document.getElementById("audio-device-source");
@@ -1690,7 +1831,13 @@ function initSettings() {
     .catch(() => {});
   document.getElementById("btn-proc-fm")?.addEventListener("click", () => applyProcessingTemplate("FM"));
   document.getElementById("btn-proc-digital")?.addEventListener("click", () => applyProcessingTemplate("DIGITAL"));
+  document.getElementById("btn-proc-export")?.addEventListener("click", () => exportLiquidsoapHandoff());
+  document.getElementById("btn-mc-dry-run")?.addEventListener("click", () => runMasterControlDryRun());
+  document.getElementById("btn-mc-ensure")?.addEventListener("click", () => runMasterControlEnsure());
+  document.getElementById("btn-mc-start")?.addEventListener("click", () => runMasterControlStartStop("start"));
+  document.getElementById("btn-mc-stop")?.addEventListener("click", () => runMasterControlStartStop("stop"));
   loadProcessingSettings();
+  loadMasterControlStatus();
 }
 
 
@@ -1711,6 +1858,7 @@ function operatorEngineMessage(raw) {
     "status incomplete": "Status incomplete — Refresh; if Mac ZIP just opened, wait for engine then Refresh",
     "status poll failed — engine offline?": "Engine offline — Mac ZIP: run Open MQ Radio.command (Gatekeeper), reopen app, then Refresh",
     "status partial — desk kept alive": "Status partial — desk kept alive; Refresh if transport looks stuck",
+    "damaged": "macOS ‘damaged’ usually means quarantine — run Open MQ Radio.command, or xattr -cr the .app (README-INSTALL.txt)",
   };
   if (map[key]) return map[key];
   if (map[t]) return map[t];

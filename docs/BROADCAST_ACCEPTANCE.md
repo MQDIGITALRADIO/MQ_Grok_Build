@@ -31,8 +31,8 @@ Cross-check vs Maestro / early Zetta / Netia Radio-Assist / mAirList / StationPl
 - [ ] Library root on external drive + inbox ingest; hotkeys play in-place
 
 ## P2 — Above comparable / market package
-- [ ] Real AU insert host (empty = native); not scaffold-only
-- [ ] Liquidsoap / Master Control live chain (not handoff docs only)
+- [ ] Real AU insert host (empty = native); not scaffold-only — messaging/scaffold only
+- [ ] Liquidsoap / Master Control live Harbor chain (operator pack + dry-run ≠ live)
 - [ ] CoreAudio PCM multi-bus (not enum + best-effort only)
 - [ ] Apple Developer ID signed + notarized Mac build (or documented Gatekeeper path that always works)
 - [ ] Aircheck / compliance logger
@@ -73,10 +73,10 @@ Cross-check vs Maestro / early Zetta / Netia Radio-Assist / mAirList / StationPl
 | P1 TO TIME / ETM | **Done** | Studio clock TO TIME/ETM; hard HIT fill stretch/compress/filler; `to_time_payload`; `tests/test_clock_editor_and_etm_fill.py` + living_log ETM + P1 e2e |
 | P1 Multi-bus + mix-minus subtract | **Done** | Browser path: route all buses + `/api/audio/mix-minus` subtract_active reflected in `/api/status`; pairing + operator description. CoreAudio PCM multi-bus remains P2 Missing |
 | P1 Native FM/Digital + TX mode | **Done** | Operator path: `/api/settings/processing` FM/Digital + `transmission_mode`; status `+TX`; `/api/settings/processing/wav-stub` peak/AGC preview. Not live Harbor (P2 Missing) |
-| P2 Real AU host | **Missing** | Scaffold + banner only — do not claim done |
-| P2 Live Liquidsoap graph | **Missing** | Handoff v3 + Master Control pack bundled; no live Harbor/Telnet operator graph |
+| P2 Real AU host | **Missing** | Clearer inactive/unavailable messaging + load/process scaffold tests (`au_insert`); Settings banner + `/api/settings/au-insert` — **not** a real AU host |
+| P2 Live Liquidsoap / Harbor | **Missing** | Operator path strengthened: bundled templates, `OPERATOR.md`, dry-run validation, start/stop stubs that fail clearly when binary missing / graph not wired (`master_control` + Settings UI). **Live Harbor still Missing** — do not claim Done |
 | P2 CoreAudio PCM multi-bus | **Missing** | Enum + best-effort streams |
-| P2 Apple notarized DMG | **Missing** | Gatekeeper helper path only |
+| P2 Apple notarized DMG | **Missing** | Gatekeeper helper + README-INSTALL polished (damaged/quarantine path); notarization still Missing |
 | P2 Aircheck / traffic / RDS / multi-user | **Missing** | Not started |
 
 **P2 rule:** never tick Done with stubs.
@@ -89,9 +89,9 @@ Matt bar: installer **~500MB–1GB+** signals a real broadcast product. Empty/ju
 |--------|--------|-------|
 | MQRadioEngine (PyInstaller) | Partial | Core engine in app (CI PyInstaller) |
 | ffmpeg / ffprobe (static) | **Done** | darwin-arm64 staged via `packaging/scripts/stage_mac_resources.sh` → `desktop/resources/runtime/`; Electron PATH + `resolve_ffmpeg()` |
-| Liquidsoap runtime | Partial | Master Control pack + handoff v3 bundled; brew `liquidsoap` binary copied when present on macOS CI — live Harbor graph still Missing |
+| Liquidsoap runtime | Partial | Operator pack: handoff v3 + `mq_master_control_operator.liq` markers, dry-run API, start/stop stubs; brew binary copied when present on macOS CI — **live Harbor still Missing** |
 | Richer demo beds / imaging | **Done** | Minutes of real PCM under `desktop/resources/demo_beds` (generator; CI ~400MB+) — not music library |
-| Docs + Gatekeeper helper | Done | README-INSTALL + Open MQ Radio.command |
+| Docs + Gatekeeper helper | Done | README-INSTALL (damaged/quarantine) + Open MQ Radio.command first-run polish |
 | Music library | **External** | MQ Digital drive / Settings library root — never stuff commercial music into the .app |
 
 CI (`.github/workflows/macos-dmg.yml` + `packaging/ci/macos-dmg.yml`): stage runtime + beds into `extraResources`; soft-warn if ZIP &lt; 400MB; listing checks for ffmpeg + demo_beds. No junk padding. Heredocs avoided (printf).

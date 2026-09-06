@@ -114,26 +114,22 @@ except Exception as e:
     print("  handoff skip:", e)
 PY
   fi
-  # Substantial operator graph stubs (commented but multi-KB real configs)
-  cat > "$MC/liquidsoap/mq_master_control_operator.liq" <<'LIQ'
-# MQ Radio — Master Control operator sketch (Liquidsoap)
-# Pair with processing_handoff.json (FM / Digital + transmission_mode).
-# Install Liquidsoap on the TX Mac: brew install liquidsoap
-# This file is bundled for operators — not auto-started by the desk.
+  # Operator sketch with dry-run markers (master_control.ensure_operator_templates)
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - <<"PY" || true
+from pathlib import Path
+try:
+    from mq_radio.production.master_control import ensure_operator_templates
+    ensure_operator_templates(
+        data_dir=Path("$MC"),
+        packaging_dir=Path("$MC") / "liquidsoap",
+    )
+    print("  operator pack ensured")
+except Exception as e:
+    print("  operator pack skip:", e)
+PY
+  fi
 
-# settings.init.allow_root.set(false)
-
-# program = input.harbor("mq.program", port=8005, headers=[], buffer=0.5)
-# aux = input.harbor("mq.aux", port=8006, headers=[], buffer=0.5)
-# mix_minus = program  # minus aux when wired: program - aux
-
-# Chain (public practice topology — not an Optimod clone):
-# AGC → EQ → Multiband → Exciter → Peak Limiter
-# See packaging/liquidsoap/mq_processing_stub.liq for param mirrors.
-
-# output.icecast(%mp3, host="127.0.0.1", port=8000, password="hackme",
-#   mount="mq-fm", program)
-LIQ
   # Optional: copy brew liquidsoap when running on macOS CI
   if command -v liquidsoap >/dev/null 2>&1; then
     LS="$(command -v liquidsoap)"

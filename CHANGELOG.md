@@ -2,6 +2,24 @@
 
 Lean build log for Matt. SHAs are on `main` (`MQDIGITALRADIO/MQ_Grok_Build`).
 
+## Desk grind 2026-09-06 (Master Control operator path + AU/Gatekeeper polish)
+
+| SHA | Theme |
+|-----|--------|
+| *(this commit)* | Liquidsoap Master Control operator path; AU unavailable messaging; first-run/Gatekeeper polish |
+
+**Master Control (still Missing live Harbor):** `mq_radio.production.master_control` — bundled templates + `mq_master_control_operator.liq` dry-run markers, `OPERATOR.md`, binary probe, dry-run validation, start/stop stubs that fail clearly when binary missing or graph not wired. `LiquidsoapEngine` uses those stubs. Settings UI: Dry-run / Refresh templates / Start(stub) / Stop(stub) + export handoff. APIs: `GET/POST /api/settings/master-control…`. Never claims live Harbor Done.
+
+**AU insert (still Missing real host):** clearer inactive/unavailable operator copy (`unavailable_reason`, platform message); `describe_insert` / `process_buffer` scaffold; richer router + `/api/settings/au-insert` status; banner uses status text. `process()` still raises — never silent passthrough.
+
+**First-run / Gatekeeper:** welcome tip + empty Living Log + empty deck copy; Open MQ Radio.command + README-INSTALL damaged/quarantine polish; Master Control notes in install sheet.
+
+**Acceptance:** P2 AU / live Liquidsoap / notarization remain **Missing** (honest matrix update only).
+
+**Tests:** `tests/test_master_control_operator.py`; AU scaffold expansions; full suite green.
+
+Lean build log for Matt. SHAs are on `main` (`MQDIGITALRADIO/MQ_Grok_Build`).
+
 ## Desk grind 2026-09-06 (hotkey fire + VT/segment depth · no Mac audio)
 
 | SHA | Theme |

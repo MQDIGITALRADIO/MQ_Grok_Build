@@ -33,11 +33,12 @@
     <div class="welcome-tip" id="welcome-tip" hidden role="status">
       <div class="welcome-tip-body">
         <strong>First run</strong> —
-        1) <strong>Import audio</strong> (drop or Browse) ·
-        2) <strong>Clocks</strong> → Generate hour ·
-        3) <strong>PLAY</strong>.
-        Empty decks / empty Living Log are normal until you import + generate.
-        Mac ZIP blocked? Double-click <code>Open MQ Radio.command</code> (clears Gatekeeper), then reopen.
+        1) <strong>Import audio</strong> (drop or Browse .wav/.mp3/.flac/.mp4) ·
+        2) <strong>Clocks</strong> → Generate hour (or Sample hour) ·
+        3) <strong>Settings</strong> → audio route ·
+        4) <strong>PLAY</strong>.
+        Empty decks / empty Living Log / empty cartwall are normal until you import + generate.
+        Mac ZIP says damaged or won’t open? Double-click <code>Open MQ Radio.command</code> once (Gatekeeper quarantine), then reopen — see <code>README-INSTALL.txt</code>.
       </div>
       <button type="button" class="btn-chrome welcome-tip-dismiss" id="welcome-tip-dismiss" title="Dismiss tip">✕</button>
     </div>
@@ -421,6 +422,24 @@
         <div class="settings-actions proc-template-actions">
           <button type="button" class="btn-dialog" id="btn-proc-fm">Load FM template</button>
           <button type="button" class="btn-dialog" id="btn-proc-digital">Load Digital template</button>
+          <button type="button" class="btn-dialog" id="btn-proc-export" title="Write Liquidsoap handoff JSON + .liq stubs">Export Liquidsoap handoff</button>
+        </div>
+
+        <div class="settings-section-title">MASTER CONTROL (Liquidsoap operator path)</div>
+        <p class="settings-intro">
+          Bundled FM/Digital handoff templates + operator <code>.liq</code> for the TX Mac.
+          Desk On-Air stays the live Program processor. <strong>Live Harbor is not wired</strong> —
+          start/stop stubs fail clearly when the binary is missing or the graph is not implemented.
+        </p>
+        <div class="mc-status-box" id="mc-status-box" role="status">
+          <div class="mc-status-line" id="mc-status-line">Master Control: checking operator pack…</div>
+          <div class="mc-status-detail" id="mc-status-detail"></div>
+        </div>
+        <div class="settings-actions proc-template-actions">
+          <button type="button" class="btn-dialog" id="btn-mc-dry-run">Dry-run validate</button>
+          <button type="button" class="btn-dialog" id="btn-mc-ensure">Refresh templates</button>
+          <button type="button" class="btn-dialog" id="btn-mc-start" title="Stub — fails clearly until Harbor is wired">Start (stub)</button>
+          <button type="button" class="btn-dialog" id="btn-mc-stop" title="Stub — nothing auto-started by desk">Stop (stub)</button>
         </div>
 
         <div class="settings-section-title">VT INBOX / DOWNLOADS</div>
@@ -481,11 +500,11 @@
           <select id="prog-insert"></select>
         </div>
         <div id="au-insert-banner" class="au-insert-banner" hidden role="status" aria-live="polite">
-          <div class="au-insert-banner-title">Native chain active — AU host not loaded</div>
-          <p class="au-insert-banner-body">
+          <div class="au-insert-banner-title" id="au-insert-banner-title">Native chain active — AU host not loaded</div>
+          <p class="au-insert-banner-body" id="au-insert-banner-body">
             Selected Audio Unit is remembered for a future host. Program audio
             continues through the <strong>native</strong> MQ chain — the plugin is
-            <em>not</em> processing buffers.
+            <em>not</em> processing buffers. Real AU hosting is <strong>not</strong> Done.
             <a id="au-insert-docs-link" href="https://github.com/MQDIGITALRADIO/MQ_Grok_Build/blob/main/desktop/au_insert/README.md" target="_blank" rel="noopener noreferrer">AU insert docs</a>
           </p>
         </div>

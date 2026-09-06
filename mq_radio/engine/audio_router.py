@@ -177,6 +177,12 @@ def _au_insert_status(insert: dict[str, Any], *, host_available: bool = False) -
     warning = None
     if wants_au and not host_ok:
         warning = "au_insert_inactive"
+    op_msg = base.get("operator_message") if warning else None
+    if warning and not op_msg:
+        op_msg = au_insert_mod.operator_message_for(
+            slot=str(slot),
+            name=insert.get("name") or insert.get("label"),
+        )
     return {
         "slot": slot,
         "name": insert.get("name") or base.get("name"),
@@ -184,16 +190,18 @@ def _au_insert_status(insert: dict[str, Any], *, host_available: bool = False) -
         "mode": insert.get("mode"),
         "active": active,
         "host_available": host_ok,
+        "real_au_host": False,
         "warning": warning,
+        "unavailable_reason": base.get("unavailable_reason") if warning else None,
+        "unavailable_message": base.get("unavailable_message") if warning else None,
         "chain": PROGRAM_PATH,
         "native_runs": True,
-        "operator_message": (
-            au_insert_mod.OPERATOR_INACTIVE_MSG if warning else None
-        ),
+        "operator_message": op_msg,
         "docs": au_insert_mod.DOCS_RELPATH,
         "docs_url": au_insert_mod.DOCS_URL,
         "interface": "mq_radio.engine.au_insert",
         "probe": base.get("probe") or au_insert_mod.probe_pyobjc(),
+        "platform": base.get("platform"),
     }
 
 

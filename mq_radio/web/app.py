@@ -80,6 +80,8 @@ from mq_radio.production.processing import (
     save_processing,
 )
 from mq_radio.production.liquidsoap_export import export_processing_handoff, handoff_payload
+from mq_radio.production import master_control as master_control_ops
+from mq_radio.engine.au_insert import status_for_insert as au_status_for_insert
 from mq_radio.production.transmission_dsp import process_wav_file
 from mq_radio.engine.audio_devices import list_audio_devices
 from mq_radio.engine.audio_router import get_audio_router, apply_audio_route_from_settings
@@ -466,7 +468,36 @@ def make_handler(db_path: Path):
                     "ok": True,
                     **handoff_payload(),
                     "hint": "POST this path to write packaging/liquidsoap + data/processing stubs",
+                    "live_harbor": False,
                 })
+                return
+
+            if path == "/api/settings/master-control":
+                # Operator pack status — never claims live Harbor
+                _json_response(self, master_control_ops.operator_status(data_dir=DATA_DIR))
+                return
+
+            if path == "/api/settings/au-insert":
+                # Scaffold status for Settings banner / tests
+                route = _status_audio_route()
+                insert = (route or {}).get("au_insert") or {}
+                # Prefer router envelope; fall back to settings-shaped status
+                if not insert.get("slot"):
+                    from mq_radio.web.settings_store import load_audio_outputs
+                    bundle = load_audio_outputs(DATA_DIR)
+                    insert = au_status_for_insert((bundle or {}).get("insert") or {"slot": "none"})
+                _json_response(
+                    self,
+                    {
+                        "ok": True,
+                        "real_au_host": False,
+                        "au_insert": insert,
+                        "operator_message": insert.get("operator_message")
+                        or insert.get("unavailable_message"),
+                        "docs": insert.get("docs"),
+                        "docs_url": insert.get("docs_url"),
+                    },
+                )
                 return
 
             if path == "/api/settings/library-root":
@@ -1156,6 +1187,49 @@ def make_handler(db_path: Path):
                     data_dir=DATA_DIR,
                     chain=payload if payload.get("template") or payload.get("stages") else None,
                 )
+                # Also refresh operator sketch + desktop master_control pack when possible
+                try:
+                    ensured = master_control_ops.ensure_operator_templates(data_dir=DATA_DIR)
+                    result["operator_pack"] = {
+                        "ok": True,
+                        "written_count": len(ensured.get("written") or []),
+                        "live_harbor": False,
+                        "status": ensured.get("status"),
+                    }
+                except Exception as exc:  # pragma: no cover — best-effort mirror
+                    result["operator_pack"] = {"ok": False, "error": str(exc), "live_harbor": False}
+                result["live_harbor"] = False
+                _json_response(self, result)
+                return
+
+            if path == "/api/settings/master-control/dry-run":
+                refresh = bool(payload.get("refresh") or payload.get("refresh_templates"))
+                result = master_control_ops.dry_run(
+                    data_dir=DATA_DIR,
+                    binary=payload.get("binary"),
+                    refresh_templates=refresh,
+                )
+                status = 200 if result.get("ok") else 400
+                _json_response(self, result, status=status)
+                return
+
+            if path == "/api/settings/master-control/start":
+                result = master_control_ops.start_stub(
+                    data_dir=DATA_DIR,
+                    binary=payload.get("binary"),
+                    script=payload.get("script"),
+                )
+                # Honest: start stubs return ok=False until Harbor is wired
+                _json_response(self, result, status=409 if not result.get("started") else 200)
+                return
+
+            if path == "/api/settings/master-control/stop":
+                result = master_control_ops.stop_stub(reason=payload.get("reason"))
+                _json_response(self, result)
+                return
+
+            if path == "/api/settings/master-control/ensure":
+                result = master_control_ops.ensure_operator_templates(data_dir=DATA_DIR)
                 _json_response(self, result)
                 return
 

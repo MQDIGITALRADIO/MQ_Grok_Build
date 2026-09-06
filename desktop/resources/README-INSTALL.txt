@@ -3,6 +3,7 @@ MQ Radio — first-run install (Mac)
 
 You downloaded an unsigned / ad-hoc signed CI build (market preview).
 Apple Gatekeeper will block it until you clear quarantine once.
+Apple Developer ID signing + notarization is still Missing (acceptance P2).
 
 PREFERRED (easiest)
 -------------------
@@ -15,12 +16,14 @@ PREFERRED (easiest)
 
 If macOS says the app is "damaged"
 ----------------------------------
+That usually means quarantine attributes — not a corrupt download.
 Open Terminal and paste:
 
   xattr -cr "/Applications/MQ Radio.app"
   codesign --force --deep --sign - "/Applications/MQ Radio.app"
 
 Then right-click → Open, or System Settings → Privacy & Security → Open Anyway.
+Or just re-run Open MQ Radio.command.
 
 Manual Gatekeeper (without the .command helper)
 -----------------------------------------------
@@ -28,23 +31,30 @@ Manual Gatekeeper (without the .command helper)
   codesign --force --deep --sign - "/Applications/MQ Radio.app"
   open "/Applications/MQ Radio.app"
 
-Apple Developer ID signing comes later — until then this helper is normal.
-
 First launch
 ------------
 - MQ Radio starts the On-Air engine at http://127.0.0.1:8080
 - Station data: ~/Library/Application Support/MQ Radio/
-- Empty Living Log / empty decks are normal until you import + generate
+- Empty Living Log / empty decks / empty cartwall are normal until you import + generate
 - Drop .wav / .mp3 / .flac / .mp4 (or Import audio) to build a library
 - Clocks → Generate hour (or Sample hour) fills the Living Log
-- PLAY starts the cued cart; Settings → audio routes before going live
+- Settings → audio routes before going live, then PLAY
 - If the desk says engine offline: run Open MQ Radio.command, reopen, Refresh
-- Package substance (~637MB class): bundled ffmpeg + demo beds + engine (music library stays external)
+- Package substance (~637MB class): bundled ffmpeg + demo beds + Master Control
+  templates + engine (music library stays external on MQ Digital drive)
+
+Master Control (Liquidsoap) — operator path only
+------------------------------------------------
+- Templates ship under Resources/master_control/liquidsoap/
+- Settings → Master Control: Dry-run validate / Start(stub) / Stop(stub)
+- Start fails clearly if liquidsoap is missing: brew install liquidsoap
+- Live Harbor / Telnet graph is NOT wired — do not treat TX as live from the desk
 
 Not yet broadcast-bar
 ---------------------
-- Real AU/AAX plugin hosting (Settings shows banner; native chain still runs)
-- Full Liquidsoap Master Control graph (handoff stub ships; install Liquidsoap separately — see packaging/liquidsoap/README.md)
+- Real AU/AAX plugin hosting (Settings banner; native chain still runs)
+- Full Liquidsoap Master Control live Harbor graph
+- Apple notarized DMG
 - This build is a market preview for desk workflow + packaging
 
 Need help: MQ DIGITAL RADIO / repo MQDIGITALRADIO/MQ_Grok_Build
