@@ -302,16 +302,7 @@ def upsert_track(
 
     # Announcer-friendly marker defaults (Maestro-style cold/soft/fade cues)
     dur_i = int(dur or 0)
-    if event_type == "VOICE_TRACK":
-        intro_ms, outro_ms = 0, min(800, dur_i // 10 if dur_i else 0)
-    elif event_type in ("ID", "SWEEPER", "PROMO"):
-        intro_ms, outro_ms = 0, min(1500, max(400, dur_i // 8 if dur_i else 400))
-    elif dur_i >= 180_000:  # long form concert / interview
-        intro_ms, outro_ms = 4000, 6000
-    elif dur_i >= 90_000:
-        intro_ms, outro_ms = 8000, 5000
-    else:
-        intro_ms, outro_ms = min(5000, dur_i // 5 if dur_i else 0), min(4000, dur_i // 6 if dur_i else 0)
+    intro_ms, outro_ms = default_markers_for(event_type, dur_i)
 
     conn = get_connection(db_path)
     cat_id = _category_id(conn, category_code)
@@ -667,6 +658,68 @@ def import_vt_inbox(
         "errors": errors,
         "attached": attached,
         "ffmpeg": ffmpeg_available(),
+    }
+
+
+
+def default_markers_for(event_type: str, duration_ms: int) -> tuple[int, int]:
+    """Sensible intro / end-pulse (outro) defaults for newly ingested carts."""
+    dur_i = max(0, int(duration_ms or 0))
+    et = (event_type or "MUSIC").upper()
+    if et == "VOICE_TRACK":
+        return 0, min(800, dur_i // 10 if dur_i else 0)
+    if et in ("ID", "SWEEPER", "PROMO"):
+        return 0, min(1500, max(400, dur_i // 8 if dur_i else 400))
+    if et == "BED":
+        return min(2000, dur_i // 8 if dur_i else 0), min(3000, max(800, dur_i // 5 if dur_i else 800))
+    if dur_i >= 180_000:
+        return 4000, 6000
+    if dur_i >= 90_000:
+        return 8000, 5000
+    # Short music: keep pulse window meaningful for AUTO/segue (~2–5s)
+    intro = min(5000, dur_i // 5 if dur_i else 0)
+    outro = min(5000, max(2000, dur_i // 5 if dur_i else 2000))
+    if dur_i and outro >= dur_i:
+        outro = max(500, dur_i // 4)
+    return intro, outro
+
+
+def update_track_markers(
+    track_id: int,
+    *,
+    intro_ms: Optional[int] = None,
+    outro_ms: Optional[int] = None,
+    db_path: Optional[Path] = None,
+) -> dict:
+    """Update cart intro / end-pulse (outro_ms) marks used by AUTO and Segue."""
+    conn = get_connection(db_path)
+    row = conn.execute("SELECT * FROM tracks WHERE id = ?", (int(track_id),)).fetchone()
+    if not row:
+        conn.close()
+        return {"ok": False, "error": f"track {track_id} not found"}
+    dur = int(row["duration_ms"] or 0)
+    new_intro = int(row["intro_ms"] or 0) if intro_ms is None else max(0, int(intro_ms))
+    new_outro = int(row["outro_ms"] or 0) if outro_ms is None else max(0, int(outro_ms))
+    if dur > 0:
+        # Keep usable body before pulse (≥55% of cart, matching engine clamp)
+        max_pulse = max(250, int(dur * 0.45))
+        new_outro = min(new_outro, max_pulse)
+        if new_intro + new_outro > dur:
+            new_intro = max(0, dur - new_outro)
+    conn.execute(
+        """UPDATE tracks SET intro_ms=?, outro_ms=?, updated_at=datetime('now')
+           WHERE id=?""",
+        (new_intro, new_outro, int(track_id)),
+    )
+    conn.commit()
+    conn.close()
+    return {
+        "ok": True,
+        "track_id": int(track_id),
+        "intro_ms": new_intro,
+        "outro_ms": new_outro,
+        "duration_ms": dur,
+        "end_pulse_ms": new_outro,
     }
 
 

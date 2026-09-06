@@ -7,15 +7,38 @@ from typing import Optional
 
 from mq_radio.db.connection import get_connection
 from mq_radio.living_log.service import _enrich_event
+from mq_radio.web.media import playable_url
 
 DEFAULT_DUCK_DB = -11.0
+
+def _with_media(ev: Optional[dict]) -> Optional[dict]:
+    """Attach playable_url for Segue Editor audition / desk preview."""
+    if not ev:
+        return ev
+    out = dict(ev)
+    tid = out.get("track_id")
+    fpath = out.get("file_path") or out.get("audio_path")
+    # Prefer track_id media route when present
+    url = None
+    if tid is not None:
+        try:
+            url = playable_url(None, int(tid))
+        except Exception:
+            url = None
+    if not url and fpath:
+        url = playable_url(fpath)
+    out["playable_url"] = url
+    return out
+
+
 
 
 def _event_by_id(conn, event_id: int) -> Optional[dict]:
     row = conn.execute(
         """SELECT e.*,
                   COALESCE(t.intro_ms, 0) AS intro_ms,
-                  COALESCE(t.outro_ms, 0) AS outro_ms
+                  COALESCE(t.outro_ms, 0) AS outro_ms,
+                  t.file_path AS file_path
            FROM log_events e
            LEFT JOIN tracks t ON t.id = e.track_id
            WHERE e.id = ?""",
@@ -119,7 +142,8 @@ def segue_context_for_event(event_id: int, db_path: Optional[Path] = None) -> di
     rows = conn.execute(
         """SELECT e.*,
                   COALESCE(t.intro_ms, 0) AS intro_ms,
-                  COALESCE(t.outro_ms, 0) AS outro_ms
+                  COALESCE(t.outro_ms, 0) AS outro_ms,
+                  t.file_path AS file_path
            FROM log_events e
            LEFT JOIN tracks t ON t.id = e.track_id
            WHERE e.daily_log_id = ?
@@ -183,9 +207,9 @@ def segue_context_for_event(event_id: int, db_path: Optional[Path] = None) -> di
 
     return {
         "ok": True,
-        "outgoing": outgoing,
-        "voice_track": vt_ev,
-        "incoming": incoming,
+        "outgoing": _with_media(outgoing),
+        "voice_track": _with_media(vt_ev),
+        "incoming": _with_media(incoming),
         "segue": link,
         "defaults": {
             "duck_db": DEFAULT_DUCK_DB,

@@ -194,6 +194,8 @@ def list_library(
     params: list = []
     sql = """
         SELECT t.id, t.artist, t.title, t.duration_ms, t.event_type,
+               COALESCE(t.intro_ms, 0) AS intro_ms,
+               COALESCE(t.outro_ms, 0) AS outro_ms,
                COALESCE(c.code, t.rotation_category, '') AS category
         FROM tracks t
         LEFT JOIN categories c ON c.id = t.category_id
@@ -215,6 +217,9 @@ def list_library(
             "category": r["category"] or "",
             "duration_ms": int(r["duration_ms"] or 0),
             "event_type": r["event_type"] or "MUSIC",
+            "intro_ms": int(r["intro_ms"] or 0),
+            "outro_ms": int(r["outro_ms"] or 0),
+            "end_pulse_ms": int(r["outro_ms"] or 0),
         }
         for r in rows
     ]

@@ -521,7 +521,7 @@
         <div class="segue-controls">
           <label>Duck level (dB) <input type="number" id="segue-duck" value="-11" step="0.5" /></label>
           <label>Crossfade (ms) <input type="number" id="segue-xfade" value="0" step="50" /></label>
-          <button type="button" class="btn-dialog" id="btn-segue-audition">▶ Audition</button>
+          <button type="button" class="btn-dialog" id="btn-segue-audition" title="Preview outgoing→incoming with duck/crossfade using library media">▶ Audition</button>
           <span id="segue-audition-msg" class="segue-msg"></span>
         </div>
         <div class="settings-actions">
@@ -572,6 +572,13 @@
             </select>
           </label>
         </div>
+        <div class="segue-controls seg-marks seg-pulse-row">
+          <label title="Talk-up / cold open mark">Intro (ms) <input type="number" id="seg-intro-ms" value="0" min="0" step="100" /></label>
+          <label title="End-pulse window — AUTO starts next cart when remaining ≤ this">End-pulse / outro (ms) <input type="number" id="seg-pulse-ms" value="0" min="0" step="100" /></label>
+          <label class="seg-check"><input type="checkbox" id="seg-save-source-pulse" checked /> Also write markers on source cart</label>
+          <button type="button" class="btn-dialog" id="btn-seg-save-pulse" title="Save intro/end-pulse on selected cart without cutting">Save pulse markers</button>
+        </div>
+        <p class="vt-hint">End-pulse drives AUTO overlap (and Segue defaults). Ingest sets sensible defaults; edit here on the cart metadata.</p>
         <div class="settings-actions">
           <button type="button" class="btn-dialog" id="btn-segment-cancel">Cancel</button>
           <button type="button" class="btn-dialog primary" id="btn-segment-save">Save segment cart</button>
@@ -604,7 +611,12 @@
         </div>
         <div class="audio-route-row"><label for="hk-edit-target">Track id (library)</label><input type="text" id="hk-edit-target" placeholder="optional library track id" /></div>
         <div class="audio-route-row"><label for="hk-edit-path">File path (one-shot)</label><input type="text" id="hk-edit-path" placeholder="/absolute/path/to/cart.wav — plays in place, no library copy" /></div>
-        <p class="settings-intro">Hotkey/one-shot carts play from the path as-is. Library ingest only happens when you drop onto the DROP AUDIO / library zone or Import from Downloads.</p>
+        <p class="settings-intro">
+          Hotkeys play <strong>in place</strong> (no library copy). 
+          <strong>Electron / Mac app:</strong> drop a file on the hotkey grid — <code>File.path</code> is stored automatically.
+          <strong>Browser (web):</strong> drop opens this dialog — paste the absolute path (browsers hide disk paths).
+          Library ingest only on DROP AUDIO / Import from Downloads.
+        </p>
         <div class="audio-route-row"><label for="hk-edit-macro">Macro</label><input type="text" id="hk-edit-macro" placeholder="optional macro name" /></div>
         <div class="settings-actions">
           <button type="button" class="btn-dialog" id="btn-hk-clear">Clear slot</button>

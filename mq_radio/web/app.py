@@ -21,6 +21,7 @@ from mq_radio.library.ingest import (
     save_library_root_path,
     save_segment_as_cart,
     save_vt_inbox_path,
+    update_track_markers,
     vt_inbox_dir,
 )
 from mq_radio.production.ramps import load_ramps, profile_for_context, save_ramps
@@ -332,6 +333,8 @@ def make_handler(db_path: Path):
                 if not row:
                     _json_response(self, {"ok": False, "error": "not found"}, status=404)
                     return
+                intro = int(row["intro_ms"] or 0)
+                outro = int(row["outro_ms"] or 0)
                 _json_response(self, {
                     "ok": True,
                     "track": {
@@ -341,6 +344,10 @@ def make_handler(db_path: Path):
                         "duration_ms": int(row["duration_ms"] or 0),
                         "event_type": row["event_type"] or "MUSIC",
                         "file_path": row["file_path"] or "",
+                        "intro_ms": intro,
+                        "outro_ms": outro,
+                        "end_pulse_ms": outro,
+                        "playable_url": playable_url(row.get("file_path"), int(row["id"])),
                     },
                 })
                 return
@@ -667,6 +674,21 @@ def make_handler(db_path: Path):
                 _json_response(self, result, status=200 if result.get("ok") else 400)
                 return
 
+
+            if path == "/api/library/track/markers":
+                tid = payload.get("track_id") or payload.get("id")
+                if tid is None:
+                    _json_response(self, {"ok": False, "error": "track_id required"}, status=400)
+                    return
+                result = update_track_markers(
+                    int(tid),
+                    intro_ms=payload.get("intro_ms"),
+                    outro_ms=payload.get("outro_ms") if payload.get("outro_ms") is not None else payload.get("end_pulse_ms"),
+                    db_path=db_path,
+                )
+                _json_response(self, result, status=200 if result.get("ok") else 400)
+                return
+
             if path == "/api/library/segment":
                 tid = payload.get("track_id")
                 if tid is None:
@@ -682,6 +704,37 @@ def make_handler(db_path: Path):
                     db_path=db_path,
                     data_dir=DATA_DIR,
                 )
+                # Optional: set end-pulse / intro on the NEW segment cart
+                if result.get("ok") and (
+                    payload.get("outro_ms") is not None
+                    or payload.get("end_pulse_ms") is not None
+                    or payload.get("intro_ms") is not None
+                ):
+                    marked = update_track_markers(
+                        int(result["track_id"]),
+                        intro_ms=payload.get("intro_ms"),
+                        outro_ms=(
+                            payload.get("outro_ms")
+                            if payload.get("outro_ms") is not None
+                            else payload.get("end_pulse_ms")
+                        ),
+                        db_path=db_path,
+                    )
+                    if marked.get("ok"):
+                        result["intro_ms"] = marked["intro_ms"]
+                        result["outro_ms"] = marked["outro_ms"]
+                        result["end_pulse_ms"] = marked["outro_ms"]
+                # Optional: also update SOURCE cart markers when save_source_markers
+                if result.get("ok") and payload.get("save_source_markers"):
+                    update_track_markers(
+                        int(tid),
+                        intro_ms=payload.get("source_intro_ms", payload.get("intro_ms")),
+                        outro_ms=payload.get(
+                            "source_outro_ms",
+                            payload.get("outro_ms", payload.get("end_pulse_ms")),
+                        ),
+                        db_path=db_path,
+                    )
                 _json_response(self, result, status=200 if result.get("ok") else 400)
                 return
 

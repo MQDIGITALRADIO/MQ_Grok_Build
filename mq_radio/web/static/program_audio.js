@@ -550,6 +550,15 @@
       );
       el.onended = () => {
         flashEndPulse("A");
+        clearDeckPulse("A");
+        // brief end flash then clear so desk doesn't stick red
+        const deck = document.getElementById("deck-a");
+        if (deck) {
+          deck.classList.add("end-ramp", "end-ramp-5", "pulse-fired");
+          setTimeout(() => {
+            deck.classList.remove("end-ramp", "end-ramp-5", "pulse-fired");
+          }, 350);
+        }
       };
       await el.play();
       flashFirePulse();
@@ -562,9 +571,33 @@
 
   function flashFirePulse() {
     const deck = document.getElementById("deck-a");
+    const panel = document.getElementById("hotkey-panel");
     if (deck) {
+      deck.classList.remove("hotkey-pulse");
+      // reflow so re-fire retriggers animation
+      void deck.offsetWidth;
       deck.classList.add("hotkey-pulse");
-      setTimeout(() => deck.classList.remove("hotkey-pulse"), 220);
+      setTimeout(() => deck.classList.remove("hotkey-pulse"), 280);
+    }
+    if (panel) {
+      panel.classList.add("hk-firing");
+      setTimeout(() => panel.classList.remove("hk-firing"), 280);
+    }
+  }
+
+  function clearDeckPulse(letter) {
+    const id = letter === "B" ? "deck-b" : letter === "C" ? "deck-c" : "deck-a";
+    const meterId = letter === "B" ? "deck-b-meter" : letter === "C" ? "deck-c-meter" : "deck-a-meter";
+    const deck = document.getElementById(id);
+    const meter = document.getElementById(meterId);
+    if (deck) {
+      deck.classList.remove(
+        "end-ramp", "end-ramp-1", "end-ramp-2", "end-ramp-3", "end-ramp-4", "end-ramp-5",
+        "hotkey-pulse", "pulse-fired"
+      );
+    }
+    if (meter) {
+      meter.classList.remove("end-ramp-1", "end-ramp-2", "end-ramp-3", "end-ramp-4", "end-ramp-5");
     }
   }
 
@@ -573,13 +606,16 @@
     const meterId = letter === "B" ? "deck-b-meter" : "deck-a-meter";
     const deck = document.getElementById(id);
     const meter = document.getElementById(meterId);
+    clearDeckPulse(letter || "A");
     if (deck) {
-      deck.classList.add("end-ramp", "end-ramp-5");
-      setTimeout(() => deck.classList.remove("end-ramp", "end-ramp-5"), 400);
+      deck.classList.add("end-ramp", "end-ramp-5", "pulse-fired");
+      setTimeout(() => {
+        deck.classList.remove("end-ramp", "end-ramp-5", "pulse-fired");
+      }, 420);
     }
     if (meter) {
       meter.classList.add("end-ramp-5");
-      setTimeout(() => meter.classList.remove("end-ramp-5"), 400);
+      setTimeout(() => meter.classList.remove("end-ramp-5"), 420);
     }
   }
 
@@ -642,8 +678,127 @@
     }, 1000);
   }
 
-  /** Segue Editor audition: short equal-power duck demo on tones */
+  function decodeAudioUrl(url) {
+    return fetch(url)
+      .then((r) => {
+        if (!r.ok) throw new Error("media " + r.status);
+        return r.arrayBuffer();
+      })
+      .then((buf) => ctx.decodeAudioData(buf.slice(0)));
+  }
+
+  /** Segue Editor audition: real outgoing/incoming(/VT) media with duck + crossfade */
   async function auditionSegue(opts) {
+    opts = opts || {};
+    await resume();
+    const ms = Math.max(200, Number(opts.crossfadeMs) || 1500);
+    const duckDb = Number(opts.duckDb);
+    const duck = Number.isFinite(duckDb) ? dbToGain(duckDb) : dbToGain(-11);
+    const outUrl = opts.outgoingUrl || opts.fromUrl || null;
+    const inUrl = opts.incomingUrl || opts.toUrl || null;
+    const vtUrl = opts.vtUrl || null;
+    const outroMarkMs = Math.max(0, Number(opts.outroMarkMs) || 0);
+    const introMarkMs = Math.max(0, Number(opts.introMarkMs) || 0);
+    const vtInMs = Math.max(0, Number(opts.vtInMs) || 0);
+
+    // Prefer real library media; fall back to tones if URLs missing/fail
+    let outBuf = null;
+    let inBuf = null;
+    let vtBuf = null;
+    try {
+      if (outUrl) outBuf = await decodeAudioUrl(outUrl);
+    } catch (e) { console.warn("audition out", e); }
+    try {
+      if (inUrl) inBuf = await decodeAudioUrl(inUrl);
+    } catch (e) { console.warn("audition in", e); }
+    try {
+      if (vtUrl) vtBuf = await decodeAudioUrl(vtUrl);
+    } catch (e) { console.warn("audition vt", e); }
+
+    if (!outBuf && !inBuf) {
+      return auditionSegueTones({ crossfadeMs: ms, duckDb: Number.isFinite(duckDb) ? duckDb : -11 });
+    }
+
+    const gOut = ctx.createGain();
+    const gIn = ctx.createGain();
+    const gVt = ctx.createGain();
+    gOut.gain.value = 0.0001;
+    gIn.gain.value = 0.0001;
+    gVt.gain.value = 0.0001;
+    gOut.connect(procInput);
+    gIn.connect(procInput);
+    gVt.connect(procInput);
+
+    const now = ctx.currentTime;
+    const leadIn = 0.35; // hear outgoing bed before crossfade
+    const xfadeSec = ms / 1000;
+    const nodes = [];
+
+    function playBuffer(buf, gainNode, when, offsetSec, durationSec) {
+      if (!buf) return null;
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(gainNode);
+      const off = Math.max(0, Math.min(offsetSec || 0, Math.max(0, buf.duration - 0.05)));
+      const dur = durationSec != null
+        ? Math.min(durationSec, Math.max(0.05, buf.duration - off))
+        : Math.max(0.05, buf.duration - off);
+      try {
+        src.start(when, off, dur);
+      } catch (_) {
+        src.start(when, off);
+      }
+      nodes.push(src);
+      return src;
+    }
+
+    // Start near end-pulse / outro mark so audition mirrors on-air overlap
+    const outOffset = outBuf
+      ? Math.max(0, outBuf.duration - Math.max(xfadeSec + leadIn, (outroMarkMs || ms) / 1000 + leadIn))
+      : 0;
+    const inOffset = inBuf ? Math.min(introMarkMs / 1000, Math.max(0, inBuf.duration * 0.15)) : 0;
+    const vtOffset = vtBuf ? Math.min(vtInMs / 1000, Math.max(0, vtBuf.duration * 0.2)) : 0;
+
+    playBuffer(outBuf, gOut, now, outOffset, leadIn + xfadeSec + 0.15);
+    gOut.gain.linearRampToValueAtTime(0.85, now + 0.05);
+
+    const xf0 = now + leadIn;
+    if (vtBuf) {
+      playBuffer(vtBuf, gVt, xf0 - 0.05, vtOffset, xfadeSec + 0.4);
+      gVt.gain.setValueAtTime(0.0001, xf0 - 0.05);
+      gVt.gain.linearRampToValueAtTime(0.55, xf0 + 0.08);
+      gVt.gain.linearRampToValueAtTime(0.0001, xf0 + xfadeSec + 0.25);
+    }
+    playBuffer(inBuf, gIn, xf0, inOffset, xfadeSec + 0.6);
+
+    const steps = 24;
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const [o, inn] = equalPower(t);
+      const at = xf0 + xfadeSec * t;
+      const outVal = Math.max(0.0001, 0.85 * o * (duck < 1 ? Math.max(duck, 0.12) : 1));
+      gOut.gain.linearRampToValueAtTime(outVal, at);
+      gIn.gain.linearRampToValueAtTime(Math.max(0.0001, 0.9 * inn), at);
+    }
+    gOut.gain.linearRampToValueAtTime(0.0001, xf0 + xfadeSec + 0.05);
+
+    const totalMs = Math.round((leadIn + xfadeSec + 0.45) * 1000);
+    setTimeout(() => {
+      nodes.forEach((n) => {
+        try { n.stop(); } catch (_) {}
+        try { n.disconnect(); } catch (_) {}
+      });
+      [gOut, gIn, gVt].forEach((g) => {
+        try { g.disconnect(); } catch (_) {}
+      });
+      flashEndPulse("A");
+    }, totalMs);
+    flashFirePulse();
+    return totalMs;
+  }
+
+  /** Tone fallback when library media is unavailable */
+  async function auditionSegueTones(opts) {
     opts = opts || {};
     await resume();
     const ms = Math.max(200, Number(opts.crossfadeMs) || 1500);
@@ -668,14 +823,14 @@
     for (let i = 1; i <= steps; i++) {
       const t = i / steps;
       const [o, inn] = equalPower(t);
-      const at = now + 0.2 + (ms / 1000) * t;
+      const at = now + 0.25 + (ms / 1000) * t;
       gA.gain.linearRampToValueAtTime(Math.max(0.0001, 0.2 * o * duck), at);
       gB.gain.linearRampToValueAtTime(Math.max(0.0001, 0.18 * inn), at);
     }
     oscA.start(now);
-    oscB.start(now + 0.15);
-    oscA.stop(now + 0.3 + ms / 1000);
-    oscB.stop(now + 0.35 + ms / 1000);
+    oscB.start(now + 0.2);
+    oscA.stop(now + 0.35 + ms / 1000);
+    oscB.stop(now + 0.4 + ms / 1000);
     return ms;
   }
 
@@ -694,6 +849,7 @@
     getVu,
     flashEndPulse,
     flashFirePulse,
+    clearDeckPulse,
     auditionTemplate,
     auditionSegue,
     get currentProc() { return currentProc; },

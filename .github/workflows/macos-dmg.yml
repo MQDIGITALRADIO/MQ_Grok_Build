@@ -70,20 +70,54 @@ jobs:
           DMG="dist/MQ-Radio-${VERSION}-arm64.dmg"
 
           # Prefer ZIP for distribution: Finder unzip preserves signature better than some DMG paths
-          ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
+          # Stage Gatekeeper first-open helper next to the app inside the ZIP
+          ZIP_STAGE=$(mktemp -d)
+          ditto "$APP" "$ZIP_STAGE/MQ Radio.app"
+          if [ -f "../packaging/macos/Open MQ Radio.command" ]; then
+            cp "../packaging/macos/Open MQ Radio.command" "$ZIP_STAGE/Open MQ Radio.command"
+            chmod +x "$ZIP_STAGE/Open MQ Radio.command"
+          elif [ -f "resources/Open MQ Radio.command" ]; then
+            cp "resources/Open MQ Radio.command" "$ZIP_STAGE/Open MQ Radio.command"
+            chmod +x "$ZIP_STAGE/Open MQ Radio.command"
+          fi
+          printf '%s\n' \
+            'MQ Radio - unsigned CI build' \
+            '1. Unzip, drag MQ Radio.app to Applications.' \
+            '2. Double-click Open MQ Radio.command (clears quarantine + ad-hoc codesign + opens).' \
+            '3. Or manually: xattr -cr then codesign --force --deep --sign - then right-click Open.' \
+            > "$ZIP_STAGE/README-INSTALL.txt"
+          # ZIP top-level: MQ Radio.app + Open MQ Radio.command + README
+          rm -f "$ZIP"
+          (
+            cd "$ZIP_STAGE"
+            FILES=("MQ Radio.app" "README-INSTALL.txt")
+            if [ -f "Open MQ Radio.command" ]; then
+              FILES+=("Open MQ Radio.command")
+            fi
+            zip -ry "$OLDPWD/$ZIP" "${FILES[@]}"
+          )
+          rm -rf "$ZIP_STAGE"
 
           # DMG from a freshly re-signed copy (avoids stale quarantine bits in staging)
           STAGE=$(mktemp -d)
           ditto "$APP" "$STAGE/MQ Radio.app"
           codesign --force --deep --sign - "$STAGE/MQ Radio.app"
           ln -sf /Applications "$STAGE/Applications"
+          if [ -f "../packaging/macos/Open MQ Radio.command" ]; then
+            cp "../packaging/macos/Open MQ Radio.command" "$STAGE/Open MQ Radio.command"
+            chmod +x "$STAGE/Open MQ Radio.command"
+          elif [ -f "resources/Open MQ Radio.command" ]; then
+            cp "resources/Open MQ Radio.command" "$STAGE/Open MQ Radio.command"
+            chmod +x "$STAGE/Open MQ Radio.command"
+          fi
           printf '%s\n' \
             'MQ Radio - unsigned CI build' \
-            '1. Prefer the .zip: double-click to unzip, then drag MQ Radio.app to Applications.' \
-            '2. If macOS says damaged:' \
+            '1. Prefer the .zip: unzip, drag MQ Radio.app to Applications.' \
+            '2. Double-click Open MQ Radio.command (xattr + ad-hoc codesign + open).' \
+            '3. Or manually:' \
             '   xattr -cr "/Applications/MQ Radio.app"' \
             '   codesign --force --deep --sign - "/Applications/MQ Radio.app"' \
-            '3. Right-click -> Open the first time (Gatekeeper).' \
+            '4. Right-click -> Open the first time (Gatekeeper).' \
             > "$STAGE/README-INSTALL.txt"
           hdiutil create -volname "MQ Radio" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
           rm -rf "$STAGE"

@@ -275,6 +275,8 @@ Matt’s release bar: next DMG must meet **broadcast-ready specs**, not a thin s
 - **Hotkey / one-shot carts** store **absolute path references** and fire without copying into the library; library ingest only on explicit drop/import
 - **Native on-air processing** templates **FM** + **Digital** (AGC→EQ→Multiband→Exciter→Limiter) persisted in `data/processing.json` and applied in the browser On-Air Web Audio graph (audible template switch)
 - **End-pulse AUTO advance**: ingest outro/end-pulse marks; MockEngine fires next Living Log event on pulse (not only EOF); ASSIST/LIVE hold
+- **Segue Editor audition**: real outgoing/incoming(/VT) media URLs with duck + crossfade_ms (tone fallback)
+- **Editable end-pulse** on Segment Editor / cart metadata; flash clears when pulse fires; ingest sets sensible outro defaults
 - **Overlapping dual-deck segue**: AUTO end-pulse starts the next Living Log cart on the **other** deck while the current fades (classic overlap). Web Audio: dual MediaElementSources (deck A/B) with crossfade gains into the program processing chain (equal-power + optional duck). Segue Editor markers (`from_outro_mark_ms` / `to_intro_mark_ms` / `vt_*` / `duck_db` / `crossfade_ms`) drive the overlap when present; otherwise defaults from end-pulse/outro. `/api/status` exposes `decks` A/B, `active_deck`, `overlap_active`, `segue`. ASSIST/LIVE arm **GO** on pulse (Space or STEP fires overlapping advance).
 - **AI DJ / overnight volume ramps**: fade in/out profiles applied on the program play path (`data/ramps.json`)
 - **Hotkey one-shot audio**: resolved path/track plays through the On-Air program bus with fire/end pulse flash
@@ -287,6 +289,49 @@ Matt’s release bar: next DMG must meet **broadcast-ready specs**, not a thin s
 - **AU/AAX hosting**: insert slot + config only — **not** hosting plugins on-air; optional AU remains later Mac *production-bus* feature
 - **True multiband DSP / hardware chain**: browser On-Air graph approximates AGC/EQ/multiband/exciter/limiter so FM vs Digital is audible; Liquidsoap/Mac engine still owns transmission-path processing
 - **Hotkey path on pure web**: browsers hide absolute paths — Electron/desktop provides `File.path`; web UI asks operator to paste path
+
+
+## Operator desk guide (broadcast-ready)
+
+Quick reference for the On-Air surface — what to use when.
+
+### DROP AUDIO vs hotkeys
+- **DROP AUDIO / Browse / Import from Downloads** → copies into the **library** (`data/library/` or configured MQ Digital library root) and registers a cart with sensible **intro / end-pulse** defaults.
+- **Hotkey grid drop / path field** → stores an **absolute path reference** and plays **in place** (no library copy).
+  - **Electron / Mac app:** drop a file on a hotkey slot — `File.path` is captured automatically.
+  - **Browser (web paste):** browsers hide disk paths — Edit the slot and paste the full path (e.g. `/Users/matt/Audio/Sweeper.wav`).
+
+### Segment Editor vs Segue Editor
+| Tool | Purpose |
+|------|---------|
+| **Segment Editor** | Cut a long cart (concert / interview / VT take) into shorter library carts. Edit **Intro** and **End-pulse / outro** marks on cart metadata (drives AUTO). |
+| **Segue Editor** | Shape the **transition** between outgoing → optional VT → incoming (duck dB, crossfade ms, outro/intro marks). **Audition** plays real library media with duck + crossfade (tone fallback if media missing). |
+
+### Dual-deck AUTO / ASSIST
+- **AUTO** — end-pulse starts the next Living Log cart on the **other** deck while the current fades (overlapping segue). Crossfade/duck from Segue Editor when present; else from outro/end-pulse defaults.
+- **ASSIST / LIVE** — pulse **arms GO** (Space / STEP) for operator-timed overlap; does not auto-chain.
+- Mode bank on the desk flips playout mode; Living Log remains the authority (AI never picks next song live).
+
+### Processing FM / Digital
+Settings → **ON-AIR PROCESSING**: public broadcast topology **AGC → EQ → Multiband → Exciter → Limiter**.
+- **FM** — denser on-air, pre-emphasis flavour.
+- **Digital** — stream/DAB-leaning, slightly cleaner ceiling.
+Audible on the Web Audio program bus (template audition on Load). Not an Orban clone; transmission-path DSP remains Liquidsoap/Mac later.
+
+### Mix-minus
+Settings → routing matrix: **Mix-minus ↔ Aux input** for caller/Zoom return (Program minus talent). Persists with other buses (Program, Monitor, Headphones, Aux 1/2, Stream, Record). Device names are mock in the web demo — real CoreAudio enum is Mac-later.
+
+### Library root
+Settings → **MQ Digital library root** (or env `MQ_RADIO_LIBRARY_ROOT` / `data/library-root.json`). Ingest lands under this folder. Default: `data/library/`.
+
+### Hotkeys in-place
+F1–F12 fire page-1 slots. Edit mode: click to edit, drag to reorder. Fire shows visual pulse on the button + program deck; end flash clears so the desk does not stick red. Path one-shots never force a library ingest.
+
+### Gatekeeper first open (Mac)
+After installing from the CI ZIP/DMG, prefer **Open MQ Radio.command** (ships next to the app in the artifact): runs `xattr -cr` + ad-hoc `codesign` then opens the app. Or right-click → Open once.
+
+### Local demo beds
+`python -m mq_radio seed-demo` writes richer harmonic fixtures under `fixtures/demo_audio/` and slightly longer beds under **`data/demo_beds/`** (gitignored — keeps the installer lean).
 
 ## Mac install (DMG)
 
@@ -316,7 +361,7 @@ Optional later: `gh auth refresh -s workflow` so future pushes can update workfl
    https://github.com/MQDIGITALRADIO/MQ_Grok_Build/actions/workflows/macos-dmg.yml
 2. Download the artifact **MQ-Radio-macOS-DMG** (contains `.dmg` and `.zip`).
 3. Open the DMG (or unzip) and drag **MQ Radio** into **Applications**.
-4. First launch (unsigned / ad-hoc signed build): Finder → Applications → **right-click MQ Radio → Open** → confirm Open.
+4. First launch (unsigned / ad-hoc signed build): prefer **Open MQ Radio.command** from the ZIP/DMG (xattr + ad-hoc codesign + open), or Finder → Applications → **right-click MQ Radio → Open** → confirm Open.
    Apple Gatekeeper blocks unsigned apps until you do this once. Apple Developer signing comes later.
 5. MQ Radio opens the On-Air UI. First run auto-creates a demo library and Living Log.
 

@@ -457,16 +457,37 @@
   async function auditionSegue() {
     const duck = Number(document.getElementById("segue-duck").value || -11);
     const xfade = Number(document.getElementById("segue-xfade").value || 1500);
+    const outroMark = Number(document.getElementById("segue-outro-mark").value || 0);
+    const introMark = Number(document.getElementById("segue-intro-mark").value || 0);
+    const vtIn = Number(document.getElementById("segue-vt-in").value || 0);
     const el = document.getElementById("segue-audition-msg");
-    el.textContent = `Audition: equal-power crossfade ${xfade || 1500}ms · duck ${duck} dB`;
+    const out = segueCtx && segueCtx.outgoing;
+    const inn = segueCtx && segueCtx.incoming;
+    const vt = segueCtx && segueCtx.voice_track;
+    const outUrl = out && out.playable_url;
+    const inUrl = inn && inn.playable_url;
+    const vtUrl = vt && vt.playable_url;
+    const srcNote = outUrl || inUrl
+      ? `media ${outUrl ? "OUT" : ""}${outUrl && inUrl ? "+" : ""}${inUrl ? "IN" : ""}${vtUrl ? "+VT" : ""}`
+      : "tone fallback";
+    el.textContent = `Audition: ${xfade || 1500}ms · duck ${duck} dB · ${srcNote}`;
     try {
       if (window.MQProgramAudio && window.MQProgramAudio.auditionSegue) {
         await window.MQProgramAudio.auditionSegue({
           crossfadeMs: xfade > 0 ? xfade : 1500,
           duckDb: duck,
+          outgoingUrl: outUrl || null,
+          incomingUrl: inUrl || null,
+          vtUrl: vtUrl || null,
+          outroMarkMs: outroMark,
+          introMarkMs: introMark,
+          vtInMs: vtIn,
         });
+        el.textContent = `Auditioned ${xfade || 1500}ms · duck ${duck} dB · ${srcNote}`;
       }
-    } catch (_) {}
+    } catch (err) {
+      el.textContent = `Audition failed: ${err && err.message ? err.message : err}`;
+    }
   }
 
   function renderHotkeyBank() {
@@ -516,15 +537,17 @@
 
   async function fireHotkeySlot(item, btn) {
     if (item.empty) {
-      msg(`Hotkey slot ${item.slot + 1} empty`);
+      msg(`Hotkey slot ${item.slot + 1} empty — Edit mode to assign path/track`);
       return;
     }
     if (btn) {
+      btn.classList.remove("fired", "hk-ended");
+      void btn.offsetWidth;
       btn.classList.add("fired");
-      setTimeout(() => btn.classList.remove("fired"), 180);
     }
+    const keyLab = item.key || "#" + (item.slot + 1);
     try {
-      if (window.MQProgramAudio) window.MQProgramAudio.resume();
+      if (window.MQProgramAudio) await window.MQProgramAudio.resume();
       const res = await fetch("/api/hotkey/fire", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -536,16 +559,39 @@
         }),
       }).then((r) => r.json());
       let played = false;
-      if (res && res.playable_url && window.MQProgramAudio) {
-        played = await window.MQProgramAudio.playOneShot(res.playable_url, res.label || item.label);
+      const url = res && res.playable_url;
+      if (url && window.MQProgramAudio && window.MQProgramAudio.playOneShot) {
+        played = await window.MQProgramAudio.playOneShot(url, res.label || item.label);
+        if (played && window.MQProgramAudio.flashFirePulse) {
+          window.MQProgramAudio.flashFirePulse();
+        }
       }
-      msg(
-        res.message ||
-          `HOTKEY ${item.key || "#" + (item.slot + 1)}: ${item.label}` +
-            (played ? " · audio" : "")
-      );
+      if (btn) {
+        if (played) {
+          // Keep fired look briefly; mark end when oneshot finishes (~estimate)
+          setTimeout(() => {
+            btn.classList.remove("fired");
+            btn.classList.add("hk-ended");
+            if (window.MQProgramAudio && window.MQProgramAudio.flashEndPulse) {
+              window.MQProgramAudio.flashEndPulse("A");
+            }
+            setTimeout(() => btn.classList.remove("hk-ended"), 320);
+          }, 900);
+        } else {
+          setTimeout(() => btn.classList.remove("fired"), 220);
+        }
+      }
+      const note = played
+        ? " · PLAYING"
+        : res && res.exists === false
+          ? " · missing file (paste path / Electron drop)"
+          : url
+            ? " · url unresolved"
+            : " · no audio path";
+      msg(res.message || `HOTKEY ${keyLab}: ${item.label}${note}`);
     } catch (e) {
-      msg(`HOTKEY ${item.key || "#" + (item.slot + 1)}: ${item.label} [${item.type}]`);
+      if (btn) setTimeout(() => btn.classList.remove("fired"), 220);
+      msg(`HOTKEY ${keyLab}: ${item.label} [${item.type}] — ${e && e.message ? e.message : e}`);
     }
   }
 
@@ -779,6 +825,10 @@
     document.getElementById("seg-artist").value = "";
     document.getElementById("seg-msg").textContent = "";
     document.getElementById("seg-track-search").value = "";
+    const introEl = document.getElementById("seg-intro-ms");
+    const pulseEl = document.getElementById("seg-pulse-ms");
+    if (introEl) introEl.value = "0";
+    if (pulseEl) pulseEl.value = "0";
     const bd = document.getElementById("segment-backdrop");
     bd.classList.add("open");
     bd.setAttribute("aria-hidden", "false");
@@ -807,13 +857,19 @@
         row.classList.add("selected");
         segSelected = t;
         document.getElementById("seg-selected").textContent =
-          `#${t.id} ${t.artist} — ${t.title} (${fmtDur(t.duration_ms)}) · markers ready`;
+          `#${t.id} ${t.artist} — ${t.title} (${fmtDur(t.duration_ms)}) · intro ${t.intro_ms || 0}ms · pulse ${t.outro_ms || t.end_pulse_ms || 0}ms`;
         document.getElementById("seg-out-ms").value = String(t.duration_ms || 0);
         document.getElementById("seg-in-ms").value = "0";
         document.getElementById("seg-title").value = `${t.title} (part)`;
         document.getElementById("seg-artist").value = t.artist || "";
         const et = document.getElementById("seg-event-type");
         if (et) et.value = t.event_type || "MUSIC";
+        const introEl = document.getElementById("seg-intro-ms");
+        const pulseEl = document.getElementById("seg-pulse-ms");
+        if (introEl) introEl.value = String(t.intro_ms != null ? t.intro_ms : 0);
+        if (pulseEl) pulseEl.value = String(
+          t.outro_ms != null ? t.outro_ms : (t.end_pulse_ms != null ? t.end_pulse_ms : 0)
+        );
         updateSegLen();
       };
       list.appendChild(row);
@@ -843,6 +899,12 @@
         title: title || undefined,
         artist: artist || undefined,
         event_type: document.getElementById("seg-event-type")?.value || "MUSIC",
+        intro_ms: Number(document.getElementById("seg-intro-ms")?.value || 0),
+        end_pulse_ms: Number(document.getElementById("seg-pulse-ms")?.value || 0),
+        outro_ms: Number(document.getElementById("seg-pulse-ms")?.value || 0),
+        save_source_markers: !!document.getElementById("seg-save-source-pulse")?.checked,
+        source_intro_ms: Number(document.getElementById("seg-intro-ms")?.value || 0),
+        source_outro_ms: Number(document.getElementById("seg-pulse-ms")?.value || 0),
       }),
     }).then((r) => r.json());
     if (res.ok) {
@@ -1000,6 +1062,35 @@
     document.getElementById("btn-segment-close")?.addEventListener("click", closeSegmentEditor);
     document.getElementById("btn-segment-cancel")?.addEventListener("click", closeSegmentEditor);
     document.getElementById("btn-segment-save")?.addEventListener("click", saveSegmentCart);
+    document.getElementById("btn-seg-save-pulse")?.addEventListener("click", async () => {
+      if (!segSelected) {
+        document.getElementById("seg-msg").textContent = "Select a source cart first";
+        return;
+      }
+      const intro = Number(document.getElementById("seg-intro-ms")?.value || 0);
+      const pulse = Number(document.getElementById("seg-pulse-ms")?.value || 0);
+      const res = await fetch("/api/library/track/markers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          track_id: segSelected.id,
+          intro_ms: intro,
+          outro_ms: pulse,
+          end_pulse_ms: pulse,
+        }),
+      }).then((r) => r.json());
+      if (res.ok) {
+        segSelected.intro_ms = res.intro_ms;
+        segSelected.outro_ms = res.outro_ms;
+        segSelected.end_pulse_ms = res.outro_ms;
+        document.getElementById("seg-msg").textContent =
+          `Saved markers on #${res.track_id}: intro ${res.intro_ms}ms · end-pulse ${res.outro_ms}ms`;
+        document.getElementById("seg-selected").textContent =
+          `#${segSelected.id} ${segSelected.artist} — ${segSelected.title} · intro ${res.intro_ms}ms · pulse ${res.outro_ms}ms`;
+      } else {
+        document.getElementById("seg-msg").textContent = res.error || "Marker save failed";
+      }
+    });
     document.getElementById("segment-backdrop")?.addEventListener("click", (ev) => {
       if (ev.target.id === "segment-backdrop") closeSegmentEditor();
     });

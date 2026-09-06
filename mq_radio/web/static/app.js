@@ -542,6 +542,16 @@ function tickTimers() {
     !timingSnap._pulseSent
   ) {
     timingSnap._pulseSent = true;
+    // Flash once, then clear so deck doesn't stick in end-ramp red after fire
+    if (window.MQProgramAudio) {
+      if (window.MQProgramAudio.flashEndPulse) window.MQProgramAudio.flashEndPulse("A");
+      setTimeout(() => {
+        if (window.MQProgramAudio.clearDeckPulse) window.MQProgramAudio.clearDeckPulse("A");
+        const deckEl = document.getElementById("deck-a");
+        const meterEl = document.getElementById("deck-a-meter");
+        if (typeof clearEndRamp === "function") clearEndRamp(deckEl, meterEl);
+      }, 450);
+    }
     if (playoutMode === "AUTO") {
       fetch("/api/pulse", {
         method: "POST",
@@ -551,8 +561,7 @@ function tickTimers() {
         .then(() => refresh())
         .catch(() => refresh());
     } else {
-      // ASSIST/LIVE: flash end-ramp + arm GO on next deck
-      if (window.MQProgramAudio) window.MQProgramAudio.flashEndPulse();
+      // ASSIST/LIVE: arm GO on next deck (flash already fired above)
       fetch("/api/pulse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

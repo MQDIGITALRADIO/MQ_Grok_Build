@@ -1503,3 +1503,27 @@ input { border-radius: 0; }
   0%, 100% { filter: brightness(1); }
   50% { filter: brightness(1.35); }
 }
+
+/* Pulse fired — brief flash then cleared (does not stick) */
+.deck.pulse-fired {
+  box-shadow: inset 0 0 0 3px #ff4444;
+  transition: box-shadow 0.15s steps(2);
+}
+.hotkey.hk-ended {
+  outline: 2px solid #ff6644;
+  background: #3a2018;
+}
+.hotkey-panel.hk-firing {
+  box-shadow: inset 0 0 0 2px #33ff66;
+}
+.seg-pulse-row {
+  margin-top: 0.5rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid #444;
+}
+.seg-check {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+}

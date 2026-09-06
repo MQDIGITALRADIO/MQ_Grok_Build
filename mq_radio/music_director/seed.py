@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import array
 import json
 import math
 import struct
@@ -15,28 +16,69 @@ from mq_radio.library.scanner import scan_directory
 
 
 def _write_tone_wav(path: Path, duration_sec: float, freq: float = 440.0, volume: float = 0.2) -> int:
-    """Write a short synthetic sine WAV; returns duration_ms."""
+    """Write a short synthetic bed WAV (fundamental + harmonics + soft pad).
+
+    Richer than a raw beep so desk timers / segue audition feel less toy-like,
+    while staying small enough for fixtures. Uses array('h') for speed.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     rate = 22050
     nframes = int(rate * duration_sec)
+    samples = array.array("h")
+    fade = min(0.08, duration_sec * 0.08)
+    outro_fade = min(0.35, duration_sec * 0.12)
+    two_pi = 2 * math.pi
+    inv_rate = 1.0 / rate
+    for i in range(nframes):
+        t = i * inv_rate
+        if t < fade:
+            env = t / fade if fade else 1.0
+        elif t > duration_sec - outro_fade:
+            env = max(0.0, (duration_sec - t) / outro_fade) if outro_fade else 0.0
+        else:
+            env = 1.0
+        pump = 0.92 + 0.08 * math.sin(two_pi * 0.35 * t)
+        fund = math.sin(two_pi * freq * t)
+        third = 0.28 * math.sin(two_pi * freq * 1.5 * t)
+        fifth = 0.18 * math.sin(two_pi * freq * 2.0 * t)
+        pad = 0.12 * math.sin(two_pi * (freq * 0.5) * t)
+        shimmer = 0.04 * math.sin(two_pi * (freq * 3.7 + 17) * t + i * 0.001)
+        mix = fund + third + fifth + pad + shimmer
+        val = volume * env * pump * mix
+        if val > 1.0:
+            val = 1.0
+        elif val < -1.0:
+            val = -1.0
+        samples.append(int(val * 32767))
     with wave.open(str(path), "w") as w:
         w.setnchannels(1)
         w.setsampwidth(2)
         w.setframerate(rate)
-        frames = bytearray()
-        for i in range(nframes):
-            # soft fade in/out to avoid clicks
-            t = i / rate
-            env = 1.0
-            fade = 0.02
-            if t < fade:
-                env = t / fade
-            elif t > duration_sec - fade:
-                env = max(0.0, (duration_sec - t) / fade)
-            sample = int(volume * env * 32767 * math.sin(2 * math.pi * freq * t))
-            frames += struct.pack("<h", sample)
-        w.writeframes(frames)
+        w.writeframes(samples.tobytes())
     return int(duration_sec * 1000)
+
+
+def _write_local_demo_beds(data_dir: Optional[Path] = None) -> list[Path]:
+    """Generate slightly longer beds under data/demo_beds/ (gitignored) for local desk feel."""
+    root = Path(data_dir) if data_dir else _cfg.DATA_DIR
+    out_dir = root / "demo_beds"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    beds = [
+        ("MQ_DEMO_Bed_A.wav", 28.0, 220.0, 0.18),
+        ("MQ_DEMO_Bed_B.wav", 32.0, 277.0, 0.17),
+        ("MQ_DEMO_ID_Sting.wav", 6.0, 880.0, 0.22),
+        ("MQ_DEMO_Sweeper.wav", 5.0, 990.0, 0.2),
+    ]
+    written: list[Path] = []
+    for name, dur, freq, vol in beds:
+        p = out_dir / name
+        # Skip rewrite when already present (keeps seed-demo / pytest snappy)
+        if p.is_file() and p.stat().st_size > 1000:
+            written.append(p)
+            continue
+        _write_tone_wav(p, dur, freq, vol)
+        written.append(p)
+    return written
 
 
 DEMO_TRACKS = [
@@ -339,12 +381,21 @@ def _seed_audio_fixtures() -> None:
     _cfg.FIXTURES_DIR.mkdir(parents=True, exist_ok=True)
     for filename, meta, dur, freq in DEMO_TRACKS:
         wav_path = _cfg.FIXTURES_DIR / filename
-        duration_ms = _write_tone_wav(wav_path, dur, freq)
+        # Keep fixture durations lean for git; richer harmonic beds (same length).
+        # Skip rewrite when present so pytest/seed stay fast; delete fixtures to regenerate.
+        if wav_path.is_file() and wav_path.stat().st_size > 1000:
+            duration_ms = int(dur * 1000)
+        else:
+            duration_ms = _write_tone_wav(wav_path, dur, freq)
         meta = dict(meta)
         meta["duration_ms"] = duration_ms
-        # map rotation to category for scanner default; scanner uses category_code param
         side = wav_path.with_suffix(".json")
         side.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    # Longer beds under data/demo_beds/ only (gitignored — not shipped in installer)
+    try:
+        _write_local_demo_beds()
+    except Exception:
+        pass
 
 
 def _assign_categories_by_rotation(conn) -> None:
