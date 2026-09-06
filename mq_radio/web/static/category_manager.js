@@ -55,6 +55,10 @@
     const list = $("cat-list");
     if (!list || !bundle) return;
     const cats = bundle.categories || [];
+    if (!cats.length) {
+      list.innerHTML = `<div class="cat-empty-hint">No categories yet — click <strong>+ Add</strong>. Tip: drop audio on the desk first, then assign carts here.</div>`;
+      return;
+    }
     list.innerHTML = cats
       .map((c) => {
         const sel = c.code === activeCode ? " active" : "";
@@ -80,7 +84,14 @@
 
   function fillEditor() {
     const c = activeCategory();
-    if (!c) return;
+    if (!c) {
+      const code = $("cat-edit-code");
+      if (code) code.value = "";
+      const name = $("cat-edit-name");
+      if (name) name.value = "";
+      setStatus("Add a category to begin");
+      return;
+    }
     $("cat-edit-code").value = c.code || "";
     $("cat-edit-name").value = c.name || "";
     $("cat-edit-rules").value = c.description || "";
@@ -109,7 +120,9 @@
       setStatus(`${(data.categories || []).length} categories · ${data.total_tracks || 0} carts`);
       await loadTracks();
     } catch (e) {
-      setStatus("load failed");
+      setStatus("load failed — is the On-Air engine running?");
+      const list = $("cat-list");
+      if (list) list.innerHTML = `<div class="cat-empty-hint">Could not load categories.</div>`;
     }
   }
 
@@ -128,7 +141,7 @@
       const data = await fetch(url).then((r) => r.json());
       const tracks = data.tracks || [];
       if (!tracks.length) {
-        body.innerHTML = `<tr><td colspan="5" class="cat-empty">No carts in ${escapeHtml(code) || "—"}</td></tr>`;
+        body.innerHTML = `<tr><td colspan="5" class="cat-empty">No carts in ${escapeHtml(code) || "—"}. Drop .wav/.mp3 onto the On-Air desk (or Browse…) then Refresh — FILLER carts help ETM under-fills.</td></tr>`;
         return;
       }
       body.innerHTML = tracks

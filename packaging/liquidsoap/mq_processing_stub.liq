@@ -1,6 +1,7 @@
 # MQ Radio — Liquidsoap processing handoff stub
 # Template: FM | Topology: AGC → EQ → Multiband → Exciter → Limiter
-# STATUS: stub — wire real operators in Mac/Liquidsoap milestone.
+# STATUS: stub — wire real operators for Master Control on Mac.
+# Operator install: brew install liquidsoap  (see packaging/liquidsoap/README.md)
 # NOT an Optimod clone. Params mirror data/processing.json / native desk.
 #
 # Suggested program chain (pseudo / documented — wire real operators on Mac):

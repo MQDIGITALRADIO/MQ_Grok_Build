@@ -413,7 +413,14 @@ Settings → **MQ Digital library root** (or env `MQ_RADIO_LIBRARY_ROOT` / `data
 F1–F12 fire page-1 slots. Edit mode: click to edit, drag to reorder. Fire shows visual pulse on the button + program deck; end flash clears so the desk does not stick red. Path one-shots never force a library ingest.
 
 ### Gatekeeper first open (Mac)
-After installing from the CI ZIP/DMG, prefer **Open MQ Radio.command** (ships next to the app in the artifact): runs `xattr -cr` + ad-hoc `codesign` then opens the app. Or right-click → Open once.
+After installing from the CI ZIP/DMG (**prefer the ZIP**), read **README-INSTALL.txt** in the artifact, then:
+
+1. Drag **MQ Radio.app** into Applications.
+2. Double-click **Open MQ Radio.command** (ships next to the app) — clears quarantine, ad-hoc codesigns, opens the app.
+3. If macOS still blocks: right-click → **Open**, or System Settings → Privacy & Security → **Open Anyway**.
+
+Manual: `xattr -cr "/Applications/MQ Radio.app"` then `codesign --force --deep --sign - "/Applications/MQ Radio.app"`.
+Apple Developer ID signing comes later — unsigned CI builds are a **market preview**, not the final broadcast bar.
 
 ### Local demo beds + FILLER pool
 `python -m mq_radio seed-demo` writes richer harmonic fixtures under `fixtures/demo_audio/`, slightly longer beds under **`data/demo_beds/`**, and short **FILLER / ID / SWEEPER** carts under **`data/filler/`** (both gitignored — keeps the installer lean). ETM under-fills prefer that pool.
@@ -431,7 +438,7 @@ Matt return brief — major SHAs this wave (see `CHANGELOG.md` for the table):
 - **Gatekeeper helper** — `639b2b4`
 - **Electron hotkey absolute-path drop** — preload `webUtils` (this polish); web still pastes path
 
-**Still deferred — do not claim DMG bar met:** real **AU/AAX hosting** (interface + Settings banner + `au_insert_inactive` — plugins are not loaded; see `desktop/au_insert/README.md`), Mac/Liquidsoap **full** transmission operator graph (browser TX mode + WAV stub + handoff v2 are in), CoreAudio **PCM** mix-minus subtract (browser Web Audio subtract is in). Multi-bus CoreAudio *stream open* (Program primary + best-effort secondaries) and device enumeration are in.
+**Still deferred — do not claim DMG bar met (market preview):** real **AU/AAX hosting** (interface + Settings banner + `au_insert_inactive` — plugins are not loaded; see `desktop/au_insert/README.md`), Mac/Liquidsoap **full** Master Control graph (browser TX mode + WAV stub + handoff **v3** + operator `brew install liquidsoap` docs are in — not a live operator graph), CoreAudio **PCM** mix-minus subtract (browser Web Audio subtract is in). Desktop package **0.1.1** ships Gatekeeper helper + README-INSTALL in ZIP/DMG staging. Multi-bus CoreAudio *stream open* (Program primary + best-effort secondaries) and device enumeration are in.
 
 ## Mac install (DMG)
 

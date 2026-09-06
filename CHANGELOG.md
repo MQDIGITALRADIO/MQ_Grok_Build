@@ -2,6 +2,28 @@
 
 Lean build log for Matt. SHAs are on `main` (`MQDIGITALRADIO/MQ_Grok_Build`).
 
+## Market-ready pass 2026-09-06 (packaging + desk harden + Liquidsoap v3)
+
+| SHA | Theme |
+|-----|--------|
+| *(this commit)* | Packaging 0.1.1 + Gatekeeper README; desk empty/error harden; Liquidsoap handoff v3 operator install |
+| `39f2081` | AU insert load/process scaffold + Settings inactive banner |
+| `c5c48a3` | Mix-minus Program−Aux subtract + transmission DSP depth |
+
+**Packaging:** Desktop **0.1.1**. Canonical `packaging/macos/Open MQ Radio.command` + beginner-clear **`README-INSTALL.txt`** staged into ZIP/DMG (CI verifies ZIP listing). Same files mirrored under `desktop/resources/` and listed in electron-builder `extraResources`. Gatekeeper notes in README rewritten for first-time operators.
+
+**Desk hardening:** Living Log / Clock Editor / Library Manager empty-state hints for new users; ingest surfaces HTTP/non-JSON/empty-file errors in the strip; Settings audio save awaits server confirm and reports issues; null-safe Settings open/close.
+
+**Transmission / Liquidsoap:** Handoff **v3** regenerates FM/Digital + `transmission_mode` + `operator_install` (`brew install liquidsoap` Master Control path). Still a stub graph — not a live Liquidsoap operator process.
+
+**AU host:** No fake progress — scaffold + inactive banner only (**market preview**).
+
+### Still deferred (not DMG / broadcast bar)
+- Real **AU/AAX hosting** (Mac native binary / Electron addon — not faked)
+- Live Liquidsoap Master Control graph + Harbor/Telnet from engine
+- CoreAudio **PCM** mix-minus subtract on dual devices
+- Apple Developer ID signed DMG (ad-hoc / Gatekeeper helper only)
+
 ## Away session 2026-09-06 (AU insert interface + Settings UX)
 
 | SHA | Theme |

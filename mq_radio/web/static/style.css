@@ -2127,3 +2127,26 @@ input { border-radius: 0; }
   font-weight: 700;
   text-decoration: underline;
 }
+
+
+/* Market-ready empty / error hints */
+.ingest-status.ingest-error {
+  color: #ff8a80;
+  font-weight: 600;
+}
+.log-empty,
+.clock-empty,
+.cat-empty-hint {
+  padding: 14px 16px;
+  color: #9aa4b8;
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: left;
+}
+.log-row.log-empty-hint td,
+.clock-empty-row td {
+  border-bottom: none;
+}
+.cat-empty-hint {
+  margin: 8px;
+}

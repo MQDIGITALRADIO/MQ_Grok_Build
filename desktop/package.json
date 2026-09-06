@@ -1,7 +1,7 @@
 {
   "name": "mq-radio",
   "productName": "MQ Radio",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MQ Radio Automation On-Air Living Log desktop app",
   "main": "main.js",
   "author": "MQ DIGITAL RADIO",
@@ -29,7 +29,17 @@
       {
         "from": "resources/MQRadioEngine",
         "to": "MQRadioEngine",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "resources/Open MQ Radio.command",
+        "to": "Open MQ Radio.command"
+      },
+      {
+        "from": "resources/README-INSTALL.txt",
+        "to": "README-INSTALL.txt"
       }
     ],
     "mac": {
@@ -37,7 +47,9 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["arm64"]
+          "arch": [
+            "arm64"
+          ]
         }
       ],
       "identity": null,
@@ -47,8 +59,16 @@
     "dmg": {
       "title": "MQ Radio",
       "contents": [
-        { "x": 130, "y": 220 },
-        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
       ]
     },
     "artifactName": "MQ-Radio-${version}-${arch}.${ext}"

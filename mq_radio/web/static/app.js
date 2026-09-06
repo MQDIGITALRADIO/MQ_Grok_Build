@@ -911,6 +911,21 @@ function renderLivingLog(events, np, up) {
   const nextPos = up && up[0] ? up[0].position : null;
   const nowPlaying = np || (lastStatus && lastStatus.now) || null;
 
+  if (!all.length) {
+    const tr = document.createElement("tr");
+    tr.className = "log-row log-empty-hint";
+    tr.innerHTML = `<td colspan="10" class="log-empty">Living Log is empty — open <strong>CLOCKS</strong> → Generate hour, or drop audio then build the hour. New stations: Settings ⚙ first for audio route.</td>`;
+    body.appendChild(tr);
+    return;
+  }
+  if (!filtered.length) {
+    const tr = document.createElement("tr");
+    tr.className = "log-row log-empty-hint";
+    tr.innerHTML = `<td colspan="10" class="log-empty">No events match this filter — clear filters above to see ${all.length} event(s).</td>`;
+    body.appendChild(tr);
+    return;
+  }
+
   filtered.forEach((e) => {
     const tr = document.createElement("tr");
     tr.className = "log-row";
@@ -1185,7 +1200,8 @@ function deviceOptionsHtml(includeSameAsProgram, devices) {
     opts.push(`<option value="same_as_program">Same as Program</option>`);
   }
   list.forEach((d) => {
-    opts.push(`<option value="${d.id}">${escapeHtml(d.label)}</option>`);
+    if (!d || d.id == null) return;
+    opts.push(`<option value="${escapeHtml(String(d.id))}">${escapeHtml(d.label || d.id)}</option>`);
   });
   return opts.join("");
 }
@@ -1427,44 +1443,67 @@ async function openSettings() {
     })
     .catch(() => {});
   const bd = document.getElementById("settings-backdrop");
+  if (!bd) return;
   bd.classList.add("open");
   bd.setAttribute("aria-hidden", "false");
 }
 
 function closeSettings() {
   const bd = document.getElementById("settings-backdrop");
+  if (!bd) return;
   bd.classList.remove("open");
   bd.setAttribute("aria-hidden", "true");
 }
 
 function initSettings() {
-  document.getElementById("btn-settings").onclick = openSettings;
-  document.getElementById("btn-settings-close").onclick = closeSettings;
-  document.getElementById("btn-settings-cancel").onclick = closeSettings;
-  document.getElementById("btn-settings-save").onclick = async () => {
+  const btnSettings = document.getElementById("btn-settings");
+  if (btnSettings) btnSettings.onclick = openSettings;
+  const btnClose = document.getElementById("btn-settings-close");
+  if (btnClose) btnClose.onclick = closeSettings;
+  const btnCancel = document.getElementById("btn-settings-cancel");
+  if (btnCancel) btnCancel.onclick = closeSettings;
+  const btnSave = document.getElementById("btn-settings-save");
+  if (btnSave) btnSave.onclick = async () => {
+    const msgEl = document.getElementById("engine-msg");
+    const issues = [];
     const routes = readSettingsForm();
-    saveAudioRoutes(routes);
-    const voc = saveVoclonerSettings(readVoclonerForm());
-    populateVoclonerForm(voc);
+    try {
+      const audioSaved = await saveAudioRoutes(routes);
+      if (!audioSaved) issues.push("audio route not confirmed by server");
+    } catch (e) {
+      issues.push("audio route save failed");
+    }
+    try {
+      const voc = saveVoclonerSettings(readVoclonerForm());
+      populateVoclonerForm(voc);
+    } catch (e) {
+      issues.push("Vocloner settings");
+    }
     const inboxEl = document.getElementById("vt-inbox-path");
     if (inboxEl && inboxEl.value.trim()) {
       try {
-        await fetch("/api/settings/vt-inbox", {
+        const r = await fetch("/api/settings/vt-inbox", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ path: inboxEl.value.trim() }),
         });
-      } catch (e) { /* ignore */ }
+        if (!r.ok) issues.push("VT inbox path");
+      } catch (e) {
+        issues.push("VT inbox path");
+      }
     }
     const libEl = document.getElementById("library-root-path");
     if (libEl && libEl.value.trim()) {
       try {
-        await fetch("/api/settings/library-root", {
+        const r = await fetch("/api/settings/library-root", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ path: libEl.value.trim() }),
         });
-      } catch (e) { /* ignore */ }
+        if (!r.ok) issues.push("library root");
+      } catch (e) {
+        issues.push("library root");
+      }
     }
     try {
       const procPayload = readProcessingForm();
@@ -1478,15 +1517,25 @@ function initSettings() {
         const st = document.getElementById("proc-status");
         if (st) st.textContent = `PROC: ${savedProc.summary || savedProc.template || "FM"}`;
         if (window.MQProgramAudio) window.MQProgramAudio.applyProcessing(savedProc);
+      } else {
+        issues.push("processing");
       }
-    } catch (e) { /* ignore */ }
-    document.getElementById("engine-msg").textContent =
-      "Settings saved (audio + Vocloner + VT inbox + processing)";
+    } catch (e) {
+      issues.push("processing");
+    }
+    if (msgEl) {
+      msgEl.textContent = issues.length
+        ? `Settings saved with issues: ${issues.join(", ")}`
+        : "Settings saved (audio + Vocloner + VT inbox + processing)";
+    }
     closeSettings();
   };
-  document.getElementById("settings-backdrop").addEventListener("click", (ev) => {
-    if (ev.target.id === "settings-backdrop") closeSettings();
-  });
+  const settingsBd = document.getElementById("settings-backdrop");
+  if (settingsBd) {
+    settingsBd.addEventListener("click", (ev) => {
+      if (ev.target.id === "settings-backdrop") closeSettings();
+    });
+  }
   // Prefetch device catalogue + server settings (merge over local if present)
   fetchAudioDevices().catch(() => {});
   fetch("/api/settings/audio")

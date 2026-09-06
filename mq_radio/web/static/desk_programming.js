@@ -78,7 +78,7 @@
       list.appendChild(row);
     });
     if (!(data.tracks || []).length) {
-      list.innerHTML = `<div class="lib-empty">No tracks — run seed-demo</div>`;
+      list.innerHTML = `<div class="lib-empty">No tracks yet — drop .wav/.mp3/.flac/.mp4 onto the desk, or run <code>python -m mq_radio seed-demo</code></div>`;
     }
   }
 
@@ -719,9 +719,14 @@
   const INGEST_EXTS = new Set([".wav", ".mp3", ".flac", ".mp4", ".m4a", ".ogg", ".aac", ".mov", ".mkv", ".webm"]);
   let segSelected = null;
 
-  function ingestStatus(t) {
+  function ingestStatus(t, opts) {
     const el = document.getElementById("ingest-status");
-    if (el) el.textContent = t || "";
+    const isErr = !!(opts && opts.error);
+    if (el) {
+      el.textContent = t || "";
+      el.classList.toggle("ingest-error", isErr);
+      el.title = t || "";
+    }
     msg(t || "");
   }
 
@@ -735,6 +740,9 @@
     if (!INGEST_EXTS.has(ext)) {
       return { ok: false, error: `unsupported ${ext || "type"} — use wav/mp3/flac/mp4` };
     }
+    if (!file || !file.size) {
+      return { ok: false, error: `${file && file.name ? file.name : "file"} is empty` };
+    }
     const fd = new FormData();
     fd.append("file", file, file.name);
     fd.append("title", file.name.replace(/\.[^.]+$/, ""));
@@ -744,13 +752,36 @@
     const et =
       /vocloner|voice.?track|\bvt[_-]|\bvt\b/.test(lower) ? "VOICE_TRACK" : "MUSIC";
     fd.append("event_type", et);
-    const res = await fetch("/api/library/ingest", { method: "POST", body: fd }).then((r) => r.json());
-    return res;
+    let r;
+    try {
+      r = await fetch("/api/library/ingest", { method: "POST", body: fd });
+    } catch (e) {
+      return { ok: false, error: `network: ${e && e.message ? e.message : e}` };
+    }
+    let res = null;
+    try {
+      res = await r.json();
+    } catch (_) {
+      return {
+        ok: false,
+        error: `ingest HTTP ${r.status}${r.statusText ? " " + r.statusText : ""} — non-JSON response`,
+      };
+    }
+    if (!r.ok && (!res || res.ok !== false)) {
+      return {
+        ok: false,
+        error: (res && res.error) || `ingest HTTP ${r.status}`,
+      };
+    }
+    return res || { ok: false, error: "empty ingest response" };
   }
 
   async function ingestFiles(fileList) {
     const files = Array.from(fileList || []);
-    if (!files.length) return;
+    if (!files.length) {
+      ingestStatus("No files selected — drop .wav/.mp3/.flac/.mp4 or Browse…", { error: true });
+      return;
+    }
     ingestStatus(`Ingesting ${files.length} file(s)…`);
     let ok = 0;
     const errors = [];
@@ -758,16 +789,18 @@
       try {
         const res = await ingestFileBlob(f);
         if (res && res.ok) ok += 1;
-        else errors.push((res && res.error) || f.name);
+        else errors.push(`${f.name}: ${(res && res.error) || "failed"}`);
       } catch (e) {
-        errors.push(String(e));
+        errors.push(`${f.name}: ${e && e.message ? e.message : e}`);
       }
     }
-    ingestStatus(
-      errors.length
-        ? `Ingested ${ok}; errors: ${errors.slice(0, 2).join("; ")}`
-        : `Ingested ${ok} cart(s) into library`
-    );
+    if (errors.length) {
+      const shown = errors.slice(0, 3).join(" · ");
+      const more = errors.length > 3 ? ` (+${errors.length - 3} more)` : "";
+      ingestStatus(`Ingested ${ok}/${files.length}. Errors: ${shown}${more}`, { error: true });
+    } else {
+      ingestStatus(`Ingested ${ok} cart(s) into library — open LIBRARY to assign categories`);
+    }
     await refresh();
   }
 

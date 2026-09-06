@@ -20,7 +20,7 @@ from mq_radio.production.processing import (
     normalize_processing,
 )
 
-HANDOFF_VERSION = 2
+HANDOFF_VERSION = 3
 
 
 def _repo_packaging_dir() -> Path:
@@ -86,6 +86,35 @@ def handoff_payload(
                 "(polarity invert + sum). Browser Web Audio implements this when Aux capture is live; "
                 "CoreAudio dual-device subtract remains engine milestone."
             ),
+            "master_control": (
+                "Operator path: install Liquidsoap on the Mac playout host, map stages from "
+                "processing_handoff.json / template_*.json, run as Master Control for TX. "
+                "Desk Web Audio remains the live Program processor until that graph is live."
+            ),
+        },
+        "operator_install": {
+            "role": "Master Control / transmission chain (Mac playout host)",
+            "status": "documented — not auto-installed by MQ Radio DMG",
+            "macos_homebrew": "brew install liquidsoap",
+            "verify": "liquidsoap --version",
+            "config_inputs": [
+                "packaging/liquidsoap/processing_handoff.json",
+                "packaging/liquidsoap/template_fm.json",
+                "packaging/liquidsoap/template_digital.json",
+                "packaging/liquidsoap/mq_processing_stub.liq",
+            ],
+            "steps": [
+                "Install Liquidsoap on the Mac that owns the transmitter / encoder path (Homebrew or official binary).",
+                "Export or copy current FM/Digital params (Settings → processing export, or regenerate via Python).",
+                "Wire operators in a real .liq: harbor/playlist → AGC → EQ → Multiband → Exciter → Limiter → Icecast/soundcard.",
+                "Honour transmission_mode and output.preemphasis from the handoff JSON (FM denser / Digital cleaner).",
+                "Keep MQ Radio desk as control UI + Living Log; Liquidsoap owns Master Control TX audio.",
+            ],
+            "not_included": [
+                "Bundled Liquidsoap binary in the Electron DMG",
+                "Live Telnet/Harbor control from MockEngine (LiquidsoapEngine stub only)",
+                "AU/AAX hosting",
+            ],
         },
     }
     if include_templates:
@@ -110,7 +139,8 @@ def render_liq_snippet(chain: Optional[dict[str, Any]] = None) -> str:
     lines = [
         "# MQ Radio — Liquidsoap processing handoff stub",
         f"# Template: {tmpl} | Topology: AGC → EQ → Multiband → Exciter → Limiter",
-        "# STATUS: stub — wire real operators in Mac/Liquidsoap milestone.",
+        "# STATUS: stub — wire real operators for Master Control on Mac.",
+        "# Operator install: brew install liquidsoap  (see packaging/liquidsoap/README.md)",
         "# NOT an Optimod clone. Params mirror data/processing.json / native desk.",
         "#",
         "# Suggested program chain (pseudo / documented — wire real operators on Mac):",
@@ -205,7 +235,8 @@ def export_processing_handoff(
 def _readme_text() -> str:
     return """# MQ Radio → Liquidsoap processing handoff
 
-Documented stub for a future Mac / Liquidsoap transmission chain.
+Documented handoff for a **Mac / Liquidsoap Master Control** transmission chain.
+Handoff version 3 — FM/Digital templates + `transmission_mode` + operator install notes.
 
 ## What this is
 
@@ -214,20 +245,40 @@ Documented stub for a future Mac / Liquidsoap transmission chain.
 
   **AGC → EQ → Multiband → Exciter → Peak Limiter**
 
-- `processing_handoff.json` — full current + both templates + Liquidsoap mapping hints
+- `processing_handoff.json` — current + both templates + Liquidsoap mapping hints + `operator_install`
 - `mq_processing_stub.liq` — commented snippet mirroring current params
 - `template_fm.json` / `template_digital.json` — standalone template dumps
 
+## Operator install (Master Control path)
+
+Liquidsoap is **not** bundled in the MQ Radio DMG. Install it on the Mac that owns
+the transmitter / encoder path:
+
+```bash
+brew install liquidsoap
+liquidsoap --version
+```
+
+Then:
+
+1. Copy or regenerate this folder (`export_processing_handoff` / Settings → processing export).
+2. Build a real `.liq` from `mq_processing_stub.liq` + `processing_handoff.json` stage map.
+3. Honour **FM vs Digital** and **`transmission_mode`** (denser FM / cleaner Digital).
+4. Run Liquidsoap as Master Control for TX; keep MQ Radio as Living Log + desk control UI.
+
+Optional Harbor / Telnet control from `LiquidsoapEngine` remains a later wire-up
+(`mq_radio/engine/liquidsoap.py` is still a stub).
+
 ## What this is not
 
-- Not a running Liquidsoap script
+- Not a running production Liquidsoap script (stub comments only)
 - Not AU/AAX hosting
 - Not a multiband Optimod schematic clone
+- Not auto-installed by the Electron package
 
 Browser On-Air is the live Program processor (optional **transmission_mode** for denser FM vs cleaner Digital).
 Python peak/AGC stub: `mq_radio.production.transmission_dsp.process_wav_file` on exported WAV.
-Wire these params into Liquidsoap operators when the Mac engine owns the transmission path.
-Mix-minus: browser subtracts Aux return when capture is live; Mac path is `program - aux_return` (documented above).
+Mix-minus: browser subtracts Aux return when capture is live; Mac path is `program - aux_return`.
 
 Regenerate from Python:
 

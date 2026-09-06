@@ -275,6 +275,10 @@
     $("clock-name").value = clock.name || "";
     $("clock-desc").value = clock.description || "";
     const slots = clock.slots || [];
+    if (!slots.length) {
+      body.innerHTML = `<tr class="clock-empty-row"><td colspan="8" class="clock-empty">No slots yet — click <strong>+ Add slot</strong>, or <strong>Reset</strong> for factory GENERAL/OVERNIGHT. New users: set daypart hours above, Save daypart, then Generate hour.</td></tr>`;
+      return;
+    }
     body.innerHTML = slots
       .map((s, i) => {
         const et = s.event_type || "MUSIC";
@@ -375,9 +379,14 @@
       renderSlots();
       dirty = false;
       daypartDirty = false;
-      setStatus(`${(data.clocks || []).length} clocks`);
+      const nClocks = (data.clocks || []).length;
+      setStatus(nClocks ? `${nClocks} clocks` : "No clocks — Reset a factory clock or Clone");
     } catch (e) {
-      setStatus("load failed");
+      setStatus("load failed — is the On-Air engine running?");
+      const body = $("clock-slots-body");
+      if (body) {
+        body.innerHTML = `<tr class="clock-empty-row"><td colspan="8" class="clock-empty">Could not load clocks. Check the engine, then reopen CLOCKS.</td></tr>`;
+      }
     }
   }
 

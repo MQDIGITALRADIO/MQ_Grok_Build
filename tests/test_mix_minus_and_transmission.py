@@ -140,21 +140,25 @@ def test_simple_agc_raises_quiet_signal():
     assert max(abs(x) for x in out) > max(abs(x) for x in quiet)
 
 
-def test_liquidsoap_handoff_v2_matches_templates(tmp_path: Path):
+def test_liquidsoap_handoff_v3_matches_templates(tmp_path: Path):
     pkg = tmp_path / "liq"
     data = tmp_path / "data"
     data.mkdir()
     result = export_processing_handoff(data_dir=data, packaging_dir=pkg)
     assert result["ok"]
     assert result["version"] == HANDOFF_VERSION
-    assert HANDOFF_VERSION >= 2
+    assert HANDOFF_VERSION >= 3
     payload = handoff_payload()
     assert "transmission_mode" in payload["current"]
     assert "mix_minus_mac" in payload["liquidsoap_hints"]
     assert "python_stub" in payload["liquidsoap_hints"]
+    assert "master_control" in payload["liquidsoap_hints"]
+    assert "operator_install" in payload
+    assert "brew install liquidsoap" in (payload["operator_install"].get("macos_homebrew") or "")
     liq = render_liq_snippet(fm_template())
     assert "Mix-minus" in liq
     assert "program - aux_return" in liq or "mix_minus" in liq
+    assert "Master Control" in liq or "brew install liquidsoap" in liq
     assert (pkg / "processing_handoff.json").is_file()
     assert (pkg / "template_fm.json").is_file()
     assert (pkg / "template_digital.json").is_file()

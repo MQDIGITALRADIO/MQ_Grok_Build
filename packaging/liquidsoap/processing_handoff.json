@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "kind": "mq_radio_processing_handoff",
   "engine_target": "liquidsoap",
   "status": "stub",
@@ -100,7 +100,32 @@
     "digital_output": "no preemphasis; ISR-aware limiter ceiling",
     "transmission_mode": "When true, push denser FM (more drive / tighter release) vs cleaner Digital (lower ceiling, milder exciter) \u2014 mirrors browser Program processor TX toggle",
     "python_stub": "mq_radio.production.transmission_dsp.process_wav_file(src, dst, template=...)",
-    "mix_minus_mac": "Mac engine path: mix_minus_out = program_processed - aux_in_return (polarity invert + sum). Browser Web Audio implements this when Aux capture is live; CoreAudio dual-device subtract remains engine milestone."
+    "mix_minus_mac": "Mac engine path: mix_minus_out = program_processed - aux_in_return (polarity invert + sum). Browser Web Audio implements this when Aux capture is live; CoreAudio dual-device subtract remains engine milestone.",
+    "master_control": "Operator path: install Liquidsoap on the Mac playout host, map stages from processing_handoff.json / template_*.json, run as Master Control for TX. Desk Web Audio remains the live Program processor until that graph is live."
+  },
+  "operator_install": {
+    "role": "Master Control / transmission chain (Mac playout host)",
+    "status": "documented \u2014 not auto-installed by MQ Radio DMG",
+    "macos_homebrew": "brew install liquidsoap",
+    "verify": "liquidsoap --version",
+    "config_inputs": [
+      "packaging/liquidsoap/processing_handoff.json",
+      "packaging/liquidsoap/template_fm.json",
+      "packaging/liquidsoap/template_digital.json",
+      "packaging/liquidsoap/mq_processing_stub.liq"
+    ],
+    "steps": [
+      "Install Liquidsoap on the Mac that owns the transmitter / encoder path (Homebrew or official binary).",
+      "Export or copy current FM/Digital params (Settings \u2192 processing export, or regenerate via Python).",
+      "Wire operators in a real .liq: harbor/playlist \u2192 AGC \u2192 EQ \u2192 Multiband \u2192 Exciter \u2192 Limiter \u2192 Icecast/soundcard.",
+      "Honour transmission_mode and output.preemphasis from the handoff JSON (FM denser / Digital cleaner).",
+      "Keep MQ Radio desk as control UI + Living Log; Liquidsoap owns Master Control TX audio."
+    ],
+    "not_included": [
+      "Bundled Liquidsoap binary in the Electron DMG",
+      "Live Telnet/Harbor control from MockEngine (LiquidsoapEngine stub only)",
+      "AU/AAX hosting"
+    ]
   },
   "templates": {
     "FM": {

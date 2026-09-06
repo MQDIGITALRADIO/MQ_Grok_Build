@@ -28,6 +28,7 @@ if [ -z "$pick" ]; then
 fi
 
 echo "Preparing: $pick"
+echo "(See README-INSTALL.txt in the ZIP/DMG if Gatekeeper still blocks.)"
 # Clear Gatekeeper quarantine + ad-hoc re-sign (no Apple Developer cert yet)
 xattr -cr "$pick" 2>/dev/null || true
 codesign --force --deep --sign - "$pick" 2>/dev/null || true

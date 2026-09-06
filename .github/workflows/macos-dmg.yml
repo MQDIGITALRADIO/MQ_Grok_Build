@@ -70,23 +70,30 @@ jobs:
           DMG="dist/MQ-Radio-${VERSION}-arm64.dmg"
 
           # Prefer ZIP for distribution: Finder unzip preserves signature better than some DMG paths
-          # Stage Gatekeeper first-open helper next to the app inside the ZIP
           ZIP_STAGE=$(mktemp -d)
           ditto "$APP" "$ZIP_STAGE/MQ Radio.app"
-          if [ -f "../packaging/macos/Open MQ Radio.command" ]; then
-            cp "../packaging/macos/Open MQ Radio.command" "$ZIP_STAGE/Open MQ Radio.command"
-            chmod +x "$ZIP_STAGE/Open MQ Radio.command"
-          elif [ -f "resources/Open MQ Radio.command" ]; then
-            cp "resources/Open MQ Radio.command" "$ZIP_STAGE/Open MQ Radio.command"
-            chmod +x "$ZIP_STAGE/Open MQ Radio.command"
+          # Gatekeeper helper + first-run README (packaging/macos is canonical; desktop/resources is fallback)
+          for SRC in "../packaging/macos/Open MQ Radio.command" "resources/Open MQ Radio.command"; do
+            if [ -f "$SRC" ]; then
+              cp "$SRC" "$ZIP_STAGE/Open MQ Radio.command"
+              chmod +x "$ZIP_STAGE/Open MQ Radio.command"
+              break
+            fi
+          done
+          for SRC in "../packaging/macos/README-INSTALL.txt" "resources/README-INSTALL.txt"; do
+            if [ -f "$SRC" ]; then
+              cp "$SRC" "$ZIP_STAGE/README-INSTALL.txt"
+              break
+            fi
+          done
+          if [ ! -f "$ZIP_STAGE/README-INSTALL.txt" ]; then
+            cat > "$ZIP_STAGE/README-INSTALL.txt" <<'NOTE'
+MQ Radio — unsigned CI build
+1. Unzip, drag MQ Radio.app to Applications.
+2. Double-click Open MQ Radio.command (clears quarantine + ad-hoc codesign + opens).
+3. Or manually: xattr -cr then codesign --force --deep --sign - then right-click Open.
+NOTE
           fi
-          printf '%s\n' \
-            'MQ Radio - unsigned CI build' \
-            '1. Unzip, drag MQ Radio.app to Applications.' \
-            '2. Double-click Open MQ Radio.command (clears quarantine + ad-hoc codesign + opens).' \
-            '3. Or manually: xattr -cr then codesign --force --deep --sign - then right-click Open.' \
-            > "$ZIP_STAGE/README-INSTALL.txt"
-          # ZIP top-level: MQ Radio.app + Open MQ Radio.command + README
           rm -f "$ZIP"
           (
             cd "$ZIP_STAGE"
@@ -103,27 +110,37 @@ jobs:
           ditto "$APP" "$STAGE/MQ Radio.app"
           codesign --force --deep --sign - "$STAGE/MQ Radio.app"
           ln -sf /Applications "$STAGE/Applications"
-          if [ -f "../packaging/macos/Open MQ Radio.command" ]; then
-            cp "../packaging/macos/Open MQ Radio.command" "$STAGE/Open MQ Radio.command"
-            chmod +x "$STAGE/Open MQ Radio.command"
-          elif [ -f "resources/Open MQ Radio.command" ]; then
-            cp "resources/Open MQ Radio.command" "$STAGE/Open MQ Radio.command"
-            chmod +x "$STAGE/Open MQ Radio.command"
+          for SRC in "../packaging/macos/Open MQ Radio.command" "resources/Open MQ Radio.command"; do
+            if [ -f "$SRC" ]; then
+              cp "$SRC" "$STAGE/Open MQ Radio.command"
+              chmod +x "$STAGE/Open MQ Radio.command"
+              break
+            fi
+          done
+          for SRC in "../packaging/macos/README-INSTALL.txt" "resources/README-INSTALL.txt"; do
+            if [ -f "$SRC" ]; then
+              cp "$SRC" "$STAGE/README-INSTALL.txt"
+              break
+            fi
+          done
+          if [ ! -f "$STAGE/README-INSTALL.txt" ]; then
+            cat > "$STAGE/README-INSTALL.txt" <<'NOTE'
+MQ Radio — unsigned CI build
+1. Prefer the .zip: unzip, drag MQ Radio.app to Applications.
+2. Double-click Open MQ Radio.command (xattr + ad-hoc codesign + open).
+3. Or manually:
+   xattr -cr "/Applications/MQ Radio.app"
+   codesign --force --deep --sign - "/Applications/MQ Radio.app"
+4. Right-click → Open the first time (Gatekeeper).
+NOTE
           fi
-          printf '%s\n' \
-            'MQ Radio - unsigned CI build' \
-            '1. Prefer the .zip: unzip, drag MQ Radio.app to Applications.' \
-            '2. Double-click Open MQ Radio.command (xattr + ad-hoc codesign + open).' \
-            '3. Or manually:' \
-            '   xattr -cr "/Applications/MQ Radio.app"' \
-            '   codesign --force --deep --sign - "/Applications/MQ Radio.app"' \
-            '4. Right-click -> Open the first time (Gatekeeper).' \
-            > "$STAGE/README-INSTALL.txt"
           hdiutil create -volname "MQ Radio" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
           rm -rf "$STAGE"
 
           ls -la dist
           ls -la "$APP"
+          # Prove Gatekeeper helper + README are inside the ZIP
+          unzip -l "$ZIP" | head -40
           file "$ZIP" "$DMG"
 
       - name: Upload DMG + ZIP artifact
