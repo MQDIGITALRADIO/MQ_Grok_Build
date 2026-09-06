@@ -14,7 +14,8 @@ from mq_radio.engine.mock_engine import MockEngine
 from mq_radio.library.scanner import scan_directory
 from mq_radio.living_log.service import list_events, load_sample_hour
 from mq_radio.music_director.seed import seed_demo
-from mq_radio.scheduler.generator import generate_log
+from mq_radio.scheduler.clocks import OVERNIGHT_HOURS, describe_daypart_grid, list_clock_defs
+from mq_radio.scheduler.generator import GenerateConstraints, generate_hour, generate_log
 from mq_radio.voice_tracker.inserter import generate_ai_breaks
 from mq_radio.voice_tracker.service import approve_ai_breaks, list_vt
 
@@ -46,12 +47,65 @@ def cmd_seed_demo(args: argparse.Namespace) -> int:
 def cmd_generate_log(args: argparse.Namespace) -> int:
     init_db(Path(args.db) if args.db else None)
     log_date = args.date or date.today().isoformat()
+    hours = None
+    if getattr(args, "overnight", False):
+        hours = sorted(OVERNIGHT_HOURS)
+    elif getattr(args, "hours", None):
+        hours = [int(h.strip()) for h in str(args.hours).split(",") if h.strip() != ""]
+    elif getattr(args, "hour", None) is not None:
+        hours = [int(args.hour)]
+    constraints = None
+    if getattr(args, "music_categories", None):
+        constraints = GenerateConstraints(
+            music_categories=tuple(
+                c.strip() for c in str(args.music_categories).split(",") if c.strip()
+            ),
+            enforce_australian_min=bool(getattr(args, "enforce_au", False)),
+            max_same_category_per_hour=getattr(args, "max_cat_per_hour", None),
+            block_explicit=bool(getattr(args, "block_explicit", False)),
+        )
+    elif getattr(args, "enforce_au", False) or getattr(args, "max_cat_per_hour", None) or getattr(args, "block_explicit", False):
+        constraints = GenerateConstraints(
+            enforce_australian_min=bool(getattr(args, "enforce_au", False)),
+            max_same_category_per_hour=getattr(args, "max_cat_per_hour", None),
+            block_explicit=bool(getattr(args, "block_explicit", False)),
+        )
     result = generate_log(
         log_date,
         db_path=Path(args.db) if args.db else None,
         force=args.force,
+        hours=hours,
+        constraints=constraints,
     )
     print(json.dumps(result, indent=2))
+    return 0
+
+
+def cmd_show_clocks(args: argparse.Namespace) -> int:
+    grid = describe_daypart_grid()
+    if args.json:
+        print(json.dumps(grid, indent=2))
+        return 0
+    print("MQ DIGITAL — category clocks / daypart grid")
+    print("-" * 60)
+    for code_row in list_clock_defs():
+        print(
+            f"{code_row['code']:<12} {code_row['name']}  "
+            f"slots={code_row['slot_count']} music={code_row['music_slots']} "
+            f"vt={code_row['vt_slots']}"
+        )
+    print()
+    print("Hour → clock:")
+    line = []
+    for h in range(24):
+        line.append(f"{h:02d}:{grid['hour_clock'][str(h)][:3]}")
+        if len(line) == 6:
+            print("  " + "  ".join(line))
+            line = []
+    if line:
+        print("  " + "  ".join(line))
+    print()
+    print("AI never picks MUSIC live. VT placeholders → generate-ai-breaks → approve.")
     return 0
 
 
@@ -179,10 +233,21 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("seed-demo", help="Seed categories, clock, rules, demo audio")
     s.set_defaults(func=cmd_seed_demo)
 
-    s = sub.add_parser("generate-log", help="Generate 24h Living Log")
+    s = sub.add_parser("generate-log", help="Generate Living Log (24h or hour subset)")
     s.add_argument("--date", default=None, help="YYYY-MM-DD (default: today)")
     s.add_argument("--force", action="store_true", help="Overwrite MANUAL rows too")
+    s.add_argument("--hour", type=int, default=None, help="Generate a single hour 0-23")
+    s.add_argument("--hours", default=None, help="Comma-separated hours, e.g. 23,0,1,2,3,4")
+    s.add_argument("--overnight", action="store_true", help="Only overnight hours (23-04)")
+    s.add_argument("--music-categories", default=None, help="Limit MUSIC cats, e.g. B,C")
+    s.add_argument("--enforce-au", action="store_true", help="Hard-ish Australian min per hour")
+    s.add_argument("--max-cat-per-hour", type=int, default=None, help="Cap same category / hour")
+    s.add_argument("--block-explicit", action="store_true", help="Block explicit regardless of rules")
     s.set_defaults(func=cmd_generate_log)
+
+    s = sub.add_parser("show-clocks", help="Show category clocks + daypart grid")
+    s.add_argument("--json", action="store_true", help="JSON dump")
+    s.set_defaults(func=cmd_show_clocks)
 
     s = sub.add_parser("show-log", help="Print Living Log")
     s.add_argument("--date", default=None)

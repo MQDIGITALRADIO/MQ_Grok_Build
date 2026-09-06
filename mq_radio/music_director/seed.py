@@ -328,53 +328,11 @@ def _seed_rules(conn) -> int:
 
 
 def _seed_general_clock(conn) -> int:
-    conn.execute(
-        """INSERT OR IGNORE INTO clocks (id, code, name, description, duration_sec)
-           VALUES (1, 'GENERAL', 'General Hour', 'Default MQ DIGITAL hour clock', 3600)"""
-    )
-    # Clear existing slots for idempotent reseed of structure
-    conn.execute("DELETE FROM clock_slots WHERE clock_id = 1")
+    """Seed GENERAL + OVERNIGHT canonical clocks and daypart grid."""
+    from mq_radio.scheduler.clocks import ensure_canonical_clocks
 
-    # General hour pattern (broadcast-style, short demo durations)
-    # Position, event_type, category_code, timing, chain, label
-    slots = [
-        (0, "ID", "ID", "HIT", "AUTO", "Top of hour ID"),
-        (1, "MUSIC", "A", "FLOAT", "MIX", "Power open"),
-        (2, "SWEEPER", "SW", "FLOAT", "AUTO", "Sweeper"),
-        (3, "MUSIC", "A", "FLOAT", "MIX", "Power"),
-        (4, "VOICE_TRACK", "VT", "FLOAT", "AUTO", "VT placeholder"),
-        (5, "MUSIC", "B", "FLOAT", "MIX", "Recurrent"),
-        (6, "PROMO", "PR", "SOFT", "AUTO", "Promo"),
-        (7, "MUSIC", "A", "FLOAT", "MIX", "Power"),
-        (8, "SWEEPER", "SW", "FLOAT", "AUTO", "Sweeper"),
-        (9, "MUSIC", "C", "FLOAT", "MIX", "Gold"),
-        (10, "MUSIC", "B", "FLOAT", "MIX", "Recurrent"),
-        (11, "VOICE_TRACK", "VT", "FLOAT", "AUTO", "VT placeholder"),
-        (12, "MUSIC", "A", "FLOAT", "MIX", "Power"),
-        (13, "ETM", None, "HIT", "HOLD", "ETM / stopset window"),
-        (14, "BREAK", None, "HARD", "MANUAL", "Stopset / break"),
-        (15, "MUSIC", "B", "FLOAT", "MIX", "Recurrent"),
-        (16, "SWEEPER", "SW", "FLOAT", "AUTO", "Sweeper"),
-        (17, "MUSIC", "A", "FLOAT", "MIX", "Power"),
-        (18, "MUSIC", "C", "FLOAT", "MIX", "Gold"),
-        (19, "MUSIC", "A", "FLOAT", "MIX", "Power close"),
-    ]
-    for pos, et, cat, timing, chain, label in slots:
-        conn.execute(
-            """INSERT INTO clock_slots
-               (clock_id, position, event_type, category_code, timing_mode, chain_mode, label)
-               VALUES (1,?,?,?,?,?,?)""",
-            (pos, et, cat, timing, chain, label),
-        )
-
-    # All hours use GENERAL clock
-    conn.execute("DELETE FROM daypart_clocks")
-    for hour in range(24):
-        conn.execute(
-            "INSERT INTO daypart_clocks (hour, clock_id, day_mask) VALUES (?, 1, 127)",
-            (hour,),
-        )
-    return 1
+    ids = ensure_canonical_clocks(conn)
+    return int(ids.get("GENERAL", 1))
 
 
 def _seed_audio_fixtures() -> None:
@@ -420,7 +378,7 @@ def _assign_categories_by_rotation(conn) -> None:
 
 
 def seed_demo(db_path: Optional[Path] = None) -> dict:
-    """Create fixtures, categories, GENERAL clock, MQ DIGITAL rules, scan library."""
+    """Create fixtures, categories, GENERAL+OVERNIGHT clocks, MQ DIGITAL rules, scan library."""
     conn = get_connection(db_path)
     _seed_categories(conn)
     rules_id = _seed_rules(conn)
@@ -437,9 +395,13 @@ def seed_demo(db_path: Optional[Path] = None) -> dict:
     track_count = conn.execute("SELECT COUNT(*) AS c FROM tracks").fetchone()["c"]
     conn.close()
 
+    from mq_radio.scheduler.clocks import OVERNIGHT_HOURS, describe_daypart_grid
+
     return {
         "rules_id": rules_id,
         "clock_id": clock_id,
+        "overnight_hours": sorted(OVERNIGHT_HOURS),
+        "daypart_grid": describe_daypart_grid()["hour_clock"],
         "scanned": scanned,
         "tracks": track_count,
         "fixtures_dir": str(_cfg.FIXTURES_DIR),

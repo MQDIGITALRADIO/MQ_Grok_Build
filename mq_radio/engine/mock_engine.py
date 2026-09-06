@@ -83,7 +83,39 @@ class MockEngine(PlayoutEngine):
             (daily_log_id,),
         ).fetchone()
 
-    def _bind_session(self, ev, duration: int, *, keep_overlap: bool = False) -> None:
+    def _neighbor_event_types(self, conn, ev) -> tuple[str, str]:
+        """Return (prev_type, next_type) by position within the same daily log."""
+        try:
+            daily_log_id = int(ev["daily_log_id"])
+            pos = int(ev["position"])
+        except Exception:
+            return "", ""
+        prev = conn.execute(
+            """SELECT event_type FROM log_events
+               WHERE daily_log_id=? AND position < ? AND event_type != 'ETM'
+               ORDER BY position DESC LIMIT 1""",
+            (daily_log_id, pos),
+        ).fetchone()
+        nxt = conn.execute(
+            """SELECT event_type FROM log_events
+               WHERE daily_log_id=? AND position > ? AND event_type != 'ETM'
+               ORDER BY position ASC LIMIT 1""",
+            (daily_log_id, pos),
+        ).fetchone()
+        return (
+            (prev["event_type"] or "") if prev else "",
+            (nxt["event_type"] or "") if nxt else "",
+        )
+
+    def _bind_session(
+        self,
+        ev,
+        duration: int,
+        *,
+        keep_overlap: bool = False,
+        neighbor_event_type: str = "",
+        near_vt: bool = False,
+    ) -> None:
         keys = ev.keys() if hasattr(ev, "keys") else ev
         intro = int(ev["intro_ms"] or 0) if "intro_ms" in keys else 0
         outro = int(ev["outro_ms"] or 0) if "outro_ms" in keys else 0
@@ -102,10 +134,16 @@ class MockEngine(PlayoutEngine):
                     daypart = "overnight"
             except Exception:
                 daypart = ""
+        mode = "AUTO"
+        with SESSION.lock:
+            mode = SESSION.playout_mode or "AUTO"
         ramp = profile_for_context(
             event_type=etype,
             daypart=daypart,
             ai_dj=(etype == "VOICE_TRACK" and daypart == "overnight"),
+            near_vt=near_vt or etype == "VOICE_TRACK",
+            neighbor_event_type=neighbor_event_type,
+            playout_mode=mode,
         )
         with SESSION.lock:
             SESSION.running = True
@@ -151,7 +189,16 @@ class MockEngine(PlayoutEngine):
         conn.execute("UPDATE log_events SET status='ON_AIR' WHERE id=?", (ev["id"],))
         conn.commit()
         duration = _air_duration(ev)
-        self._bind_session(ev, duration, keep_overlap=keep_overlap)
+        prev_t, next_t = self._neighbor_event_types(conn, ev)
+        neighbor = next_t or prev_t
+        near_vt = "VOICE_TRACK" in (prev_t, next_t, ev["event_type"] or "")
+        self._bind_session(
+            ev,
+            duration,
+            keep_overlap=keep_overlap,
+            neighbor_event_type=neighbor,
+            near_vt=near_vt,
+        )
         self._state = EngineState(
             running=True,
             current_event_id=int(ev["id"]),

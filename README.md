@@ -88,7 +88,8 @@ python -m mq_radio serve --host 127.0.0.1 --port 8080
 | `init-db` | Create/migrate SQLite schema |
 | `scan [--path DIR]` | Index audio into library |
 | `seed-demo` | Categories, GENERAL clock, MQ DIGITAL rules, synthetic WAV fixtures |
-| `generate-log [--date YYYY-MM-DD] [--force]` | Build 24h Living Log; preserves MANUAL unless `--force` |
+| `generate-log [--date] [--force] [--hour N\|--hours …\|--overnight]` | Build Living Log (24h or hour subset); preserves MANUAL unless `--force` |
+| `show-clocks [--json]` | Print GENERAL / OVERNIGHT clock defs + hour→clock grid |
 | `show-log [--date] [--limit N]` | Print log |
 | `engine-step [--action step\|play\|stop\|skip]` | MockEngine advance |
 | `serve [--port 8080]` | On-Air prototype |
@@ -150,12 +151,36 @@ python -m mq_radio serve --host 127.0.0.1 --port 8080
 4. Click any log row (especially VT) → **Voice Track Studio**: **AI Generate Script** works; **Render in Vocloner** copies the script and opens Vocloner; **Record** stays disabled for M2.
 5. Drop the Vocloner WAV into the library / VT slot; Mode bank AUTO / ASSIST / LIVE is the jump-in control surface (ASSIST also shows VOCALS IN talk-up).
 
+
+## Category clocks (M1 scheduler)
+
+Living Log rows come from **category clocks** — hour templates of event type + category + timing/chain. The deterministic scheduler expands `daypart_clocks` → `clock_slots` into the log. **AI never picks the next song live.**
+
+| Clock | Hours (default) | Notes |
+|-------|-----------------|-------|
+| **GENERAL** | 05–22 | 2 VT placeholders, A/B/C mix, promo + ETM/break |
+| **OVERNIGHT** | 23–04 | **4 VT placeholders** for AI DJ breaks, softer B/C lean, sparse A |
+
+```bash
+python -m mq_radio show-clocks
+python -m mq_radio generate-log --date 2026-09-06
+python -m mq_radio generate-log --date 2026-09-06 --overnight
+python -m mq_radio generate-log --date 2026-09-06 --hour 2
+python -m mq_radio generate-log --date 2026-09-06 --music-categories B,C --enforce-au
+```
+
+**Constraints** (optional): `--music-categories`, `--enforce-au`, `--max-cat-per-hour`, `--block-explicit` — still scored selection, not AI.
+
+**MANUAL survive regenerate:** operator-held rows (including overnight VT + `vt_scripts`) are merged back by `scheduled_at` when regenerating without `--force`.
+
+**Overnight VT path:** clock places VT stubs → `generate-ai-breaks` fills scripts (DRAFT) → `approve-ai-breaks` → Vocloner/render. In AUTO, AI DJ **ramp** profiles apply to overnight carts and to music adjacent to VT.
+
 ## M1 vs roadmap
 
 | Area | M1 (this zip) | Later |
 |------|---------------|--------|
 | Library / scanner | WAV + sidecar JSON, demo fixtures | Full tagging, APRA/PPCA workflows |
-| Scheduler | Clock expansion, separation scoring, MANUAL preserve | Multi-clock grids, fills, hard ETMs |
+| Scheduler | GENERAL + OVERNIGHT clocks, hour/24h generate, constraints, MANUAL preserve by airtime | Clock editor UI, fills, hard ETM engine hit |
 | Engine | MockEngine + Liquidsoap stub | Real Liquidsoap / stream chain |
 | UI | On-Air Living Log prototype | Full HOME + STUDIO surfaces |
 | Voice / production / remote | AI VT scripts + Vocloner render path (clipboard) | Vocloner automation/API if available, production cart, remotes |

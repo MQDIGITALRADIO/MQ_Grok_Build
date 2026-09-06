@@ -139,13 +139,33 @@ def profile_for_context(
     event_type: str = "",
     daypart: str = "",
     ai_dj: bool = False,
+    near_vt: bool = False,
+    neighbor_event_type: str = "",
+    playout_mode: str = "AUTO",
     data_dir: Optional[Path] = None,
 ) -> dict[str, Any]:
-    """Pick a ramp profile for the current cart / overnight AI path."""
+    """Pick a ramp profile for the current cart / overnight AI path.
+
+    In AUTO overnight, MUSIC adjacent to a VOICE_TRACK uses the AI DJ ramp so
+    fades into/out of VT breaks stay smooth without touching song selection.
+    """
     ramps = load_ramps(data_dir)
     et = (event_type or "").upper()
-    if ai_dj or (daypart or "").lower() == "overnight":
+    dp = (daypart or "").lower()
+    mode = (playout_mode or "AUTO").upper()
+    neighbor = (neighbor_event_type or "").upper()
+    adjacent_vt = near_vt or neighbor == "VOICE_TRACK" or et == "VOICE_TRACK"
+
+    if ai_dj or dp == "overnight":
+        # Overnight / AI DJ path — VT and music around VT share the overnight curve
+        if adjacent_vt or et in ("MUSIC", "VOICE_TRACK", ""):
+            return dict(ramps.get("ai_dj") or ramps["profiles"]["overnight"])
         return dict(ramps.get("ai_dj") or ramps["profiles"]["overnight"])
+
+    if mode == "AUTO" and adjacent_vt and et in ("MUSIC", "VOICE_TRACK", ""):
+        # Daytime AUTO: soften around VT breaks
+        return dict(ramps["profiles"].get("soft") or ramps["profiles"]["default"])
+
     if et in ("ID", "SWEEPER", "PROMO"):
         return dict(ramps["profiles"].get("imaging") or ramps["profiles"]["default"])
     if et == "VOICE_TRACK":

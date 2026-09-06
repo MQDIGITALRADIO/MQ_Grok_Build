@@ -111,3 +111,34 @@ def test_media_resolve_and_playable_url(tmp_path: Path):
     url = playable_url(str(wav))
     assert url and url.startswith("/api/media?path=")
     assert playable_url(None, track_id=7) == "/api/media/track/7"
+
+
+def test_ramp_near_vt_auto_uses_soft_or_overnight(tmp_path: Path):
+    data = tmp_path / "data"
+    data.mkdir()
+    save_ramps({"active_profile": "default", "ai_dj_profile": "overnight"}, data)
+    # Daytime AUTO music next to VT → soft
+    soft = profile_for_context(
+        event_type="MUSIC",
+        daypart="day",
+        near_vt=True,
+        playout_mode="AUTO",
+        data_dir=data,
+    )
+    assert soft["id"] == "soft"
+    # Overnight music / VT → overnight AI DJ curve
+    over = profile_for_context(
+        event_type="MUSIC",
+        daypart="overnight",
+        near_vt=True,
+        playout_mode="AUTO",
+        data_dir=data,
+    )
+    assert over["id"] == "overnight"
+    vt = profile_for_context(
+        event_type="VOICE_TRACK",
+        daypart="overnight",
+        ai_dj=True,
+        data_dir=data,
+    )
+    assert vt["id"] == "overnight"
