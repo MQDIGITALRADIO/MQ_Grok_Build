@@ -22,9 +22,9 @@ contextBridge.exposeInMainWorld('mqDesktop', {
   /** Packaging version string (Electron package.json). */
   appVersion: (() => {
     try {
-      return require('./package.json').version || '0.1.3';
+      return require('./package.json').version || '0.1.4';
     } catch (_) {
-      return '0.1.3';
+      return '0.1.4';
     }
   })(),
   /**

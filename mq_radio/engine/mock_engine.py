@@ -372,6 +372,11 @@ class MockEngine(PlayoutEngine):
         return self._state
 
     def skip(self) -> EngineState:
+        """Operator SKIP / NEXT.
+
+        Mid-cart: mark the ON AIR row SKIPPED, then start the following cart.
+        Idle desk: drop the upcoming cue (SKIPPED) and start the one after that.
+        """
         conn = get_connection(self.db_path)
         did = self._daily_log_id(conn)
         if not did:
@@ -380,10 +385,12 @@ class MockEngine(PlayoutEngine):
                 "No log for this date — open Clocks → Generate hour, then PLAY"
             )
             return self._state
-        self._complete_current(conn, outcome="SKIPPED")
+        had_current = self._complete_current(conn, outcome="SKIPPED")
         with SESSION.lock:
             SESSION.clear_overlap()
-        if SESSION.event_id is None:
+        # Only burn the upcoming cue when nothing was ON AIR. Mid-cart SKIP already
+        # completed the current row — marking the next SKIPPED would double-advance.
+        if had_current is None:
             ev = self._next_event(conn, did)
             if ev:
                 conn.execute(

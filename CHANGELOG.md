@@ -2,6 +2,22 @@
 
 Lean build log for Matt. SHAs are on `main` (`MQDIGITALRADIO/MQ_Grok_Build`).
 
+## Desk grind 2026-09-07 (0.1.4 · Matt live-sim + SKIP fix)
+
+| SHA | Theme |
+|-----|--------|
+| *(this commit)* | Desktop **0.1.4**; Matt 36-cart live-radio e2e; mid-cart SKIP no longer double-advances |
+
+**Version:** Desktop packaging **0.1.4** (`desktop/package.json`, `build_info.DESKTOP_VERSION`, titlebar badge, preload fallback) for next Mac preview (idle meters/VU/import from `f7816c1` + tonight's grind).
+
+**Engine:** `MockEngine.skip` — mid-cart SKIP marks only the ON AIR row then starts the next cart. Idle SKIP still drops the upcoming cue once. Fixes operator NEXT burning two carts (paying-client live-radio bug).
+
+**Matt sample bank:** `data/matt_sample_carts/` — 36 real carts (MP3 music/imaging + WAV/MP3 ID/sweeper shorts 28–36). Live-sim covers import destinations (Library/Living Log/Hotkey/Deck A), ASSIST talk-up + GO, dual-deck crossfade timing, STOP mid-cart idle meters/VU, skip mid-sequence, WAV/MP3 hotkeys over music, full-bank ingest.
+
+**Tests:** expanded `tests/test_desk_live_radio_scenarios.py`; full suite green (250).
+
+**Not Done:** AU host / Harbor / notarization (unchanged — do not claim Done).
+
 ## Desk grind 2026-09-07 (idle meters/VU + import destinations)
 
 | SHA | Theme |

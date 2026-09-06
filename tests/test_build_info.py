@@ -3,8 +3,8 @@
 from mq_radio.web.build_info import DESKTOP_VERSION, build_sha, version_payload
 
 
-def test_desktop_version_is_market_012():
-    assert DESKTOP_VERSION == "0.1.3"
+def test_desktop_version_is_market_014():
+    assert DESKTOP_VERSION == "0.1.4"
 
 
 def test_build_sha_nonempty_short():
@@ -16,6 +16,6 @@ def test_build_sha_nonempty_short():
 
 def test_version_payload_label():
     p = version_payload()
-    assert p["version"] == "0.1.3"
+    assert p["version"] == "0.1.4"
     assert p["sha"]
     assert p["label"] == f"{p['version']} · {p['sha']}"

@@ -100,8 +100,8 @@ def _tone_wav(path: Path, seconds: float = 2.0, rate: int = 8000) -> Path:
     return path
 
 
-def test_desktop_version_013_aligned():
-    assert DESKTOP_VERSION == "0.1.3"
+def test_desktop_version_014_aligned():
+    assert DESKTOP_VERSION == "0.1.4"
 
 
 def test_markers_http_roundtrip_and_bad_id(httpd, tmp_path: Path):

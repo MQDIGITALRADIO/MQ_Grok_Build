@@ -48,7 +48,7 @@ const AUDIO_ROLES = [
 const AUDIO_INPUT_ROLES = ["aux_in", "mic"];
 const SETTINGS_LS_KEY = "mq_radio_audio_outputs_v2";
 const WELCOME_LS_KEY = "mq_radio_welcome_dismissed_v1";
-const DESKTOP_VERSION_FALLBACK = "0.1.3";
+const DESKTOP_VERSION_FALLBACK = "0.1.4";
 const VOCLONER_LS_KEY = "mq_radio_vocloner_v1";
 const VOCLONER_URL = "https://vocloner.com/";
 
