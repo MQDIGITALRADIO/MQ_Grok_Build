@@ -19,6 +19,8 @@
   let activeCode = "GENERAL";
   let dirty = false;
   let daypartDirty = false;
+  let activePack = "all"; // all | weekday | weekend
+  const PACK_MASKS = { all: 127, weekday: 62, weekend: 65 };
 
   function $(id) {
     return document.getElementById(id);
@@ -75,19 +77,85 @@
     return "evening";
   }
 
+  function ensureDaypartPacks() {
+    if (!bundle) return;
+    if (!bundle.daypart_packs) bundle.daypart_packs = {};
+    ["all", "weekday", "weekend"].forEach((name) => {
+      if (!bundle.daypart_packs[name]) {
+        bundle.daypart_packs[name] = {
+          mask: PACK_MASKS[name],
+          stored: name === "all",
+          hour_clock: {},
+        };
+      }
+      const p = bundle.daypart_packs[name];
+      if (!p.hour_clock || !Object.keys(p.hour_clock).length) {
+        // inherit from all / defaults
+        const base =
+          name === "all"
+            ? null
+            : (bundle.daypart_packs.all && bundle.daypart_packs.all.hour_clock) ||
+              bundle.hour_clock;
+        p.hour_clock = {};
+        for (let h = 0; h < 24; h++) {
+          const key = String(h);
+          p.hour_clock[key] =
+            (base && (base[key] || base[h])) || DEFAULT_HOUR_CLOCK[h] || "GENERAL";
+        }
+      }
+    });
+    if (!bundle.hour_clock || !Object.keys(bundle.hour_clock).length) {
+      bundle.hour_clock = Object.assign({}, bundle.daypart_packs.all.hour_clock);
+    }
+  }
+
+  function activePackMap() {
+    ensureDaypartPacks();
+    const p = bundle.daypart_packs[activePack];
+    return (p && p.hour_clock) || bundle.hour_clock || {};
+  }
+
+  function packIsStored(name) {
+    const p = bundle && bundle.daypart_packs && bundle.daypart_packs[name];
+    if (!p) return name === "all";
+    return !!p.stored;
+  }
+
+  function syncPackTabs() {
+    const tabs = $("daypart-pack-tabs");
+    if (!tabs) return;
+    tabs.querySelectorAll(".daypart-pack-tab").forEach((btn) => {
+      const pack = btn.getAttribute("data-pack") || "all";
+      btn.classList.toggle("active", pack === activePack);
+      btn.classList.toggle("daypart-pack-stored", packIsStored(pack));
+    });
+    const clearBtn = $("btn-daypart-clear-pack");
+    if (clearBtn) {
+      clearBtn.disabled = activePack === "all" || !packIsStored(activePack);
+      clearBtn.title =
+        activePack === "all"
+          ? "ALL pack stays; use Defaults to reset"
+          : packIsStored(activePack)
+            ? `Remove ${activePack} pack (fall back to All)`
+            : `${activePack} not stored yet`;
+    }
+  }
+
   function renderDaypartGrid() {
     const grid = $("daypart-grid");
-    const legend = $("daypart-legend");
     if (!grid || !bundle) return;
+    ensureDaypartPacks();
+    syncPackTabs();
     const codes = clockCodes();
-    const map = bundle.hour_clock || {};
+    const map = activePackMap();
+    const inherited = activePack !== "all" && !packIsStored(activePack);
     const cells = [];
     for (let h = 0; h < 24; h++) {
       const code = map[String(h)] || map[h] || DEFAULT_HOUR_CLOCK[h] || "GENERAL";
       const dp = daypartName(h);
-      cells.push(`<div class="daypart-cell daypart-${dp}" data-hour="${h}" title="${dp}">
+      cells.push(`<div class="daypart-cell daypart-${dp}${inherited ? " daypart-inherited" : ""}" data-hour="${h}" title="${dp}${inherited ? " (from All)" : ""}">
         <span class="daypart-hour">${String(h).padStart(2, "0")}</span>
-        <select class="daypart-select" data-hour="${h}" aria-label="Clock for hour ${h}">
+        <select class="daypart-select" data-hour="${h}" aria-label="Clock for hour ${h} (${activePack})">
           ${selectOpts(codes.length ? codes : ["GENERAL", "OVERNIGHT"], code)}
         </select>
       </div>`);
@@ -96,10 +164,17 @@
     grid.querySelectorAll(".daypart-select").forEach((sel) => {
       sel.addEventListener("change", () => {
         const hour = sel.getAttribute("data-hour");
-        if (!bundle.hour_clock) bundle.hour_clock = {};
-        bundle.hour_clock[String(hour)] = sel.value;
+        ensureDaypartPacks();
+        const pack = bundle.daypart_packs[activePack];
+        if (!pack.hour_clock) pack.hour_clock = {};
+        pack.hour_clock[String(hour)] = sel.value;
+        pack.stored = true; // editing forks the pack
+        if (activePack === "all") {
+          bundle.hour_clock = pack.hour_clock;
+        }
         daypartDirty = true;
-        setStatus(`hour ${hour} → ${sel.value}`);
+        setStatus(`${activePack} hour ${hour} → ${sel.value}`);
+        syncPackTabs();
         renderDaypartLegend();
       });
     });
@@ -109,28 +184,38 @@
   function renderDaypartLegend() {
     const legend = $("daypart-legend");
     if (!legend || !bundle) return;
-    const map = bundle.hour_clock || {};
+    const map = activePackMap();
     const counts = {};
     for (let h = 0; h < 24; h++) {
       const code = map[String(h)] || DEFAULT_HOUR_CLOCK[h] || "GENERAL";
       counts[code] = (counts[code] || 0) + 1;
     }
-    legend.innerHTML = Object.keys(counts)
-      .sort()
-      .map((c) => `<span class="daypart-chip"><strong>${escapeAttr(c)}</strong> ×${counts[c]}</span>`)
-      .join(" ");
+    const mask = PACK_MASKS[activePack] || 127;
+    const stored = packIsStored(activePack);
+    const tag = stored
+      ? `pack <strong>${escapeAttr(activePack)}</strong> mask ${mask}`
+      : `pack <strong>${escapeAttr(activePack)}</strong> (preview from All)`;
+    legend.innerHTML =
+      `<span class="daypart-chip">${tag}</span> ` +
+      Object.keys(counts)
+        .sort()
+        .map((c) => `<span class="daypart-chip"><strong>${escapeAttr(c)}</strong> ×${counts[c]}</span>`)
+        .join(" ");
   }
 
   function readDaypartFromGrid() {
     if (!bundle) return {};
+    ensureDaypartPacks();
     const map = {};
     document.querySelectorAll(".daypart-select").forEach((sel) => {
       map[String(sel.getAttribute("data-hour"))] = sel.value;
     });
     if (Object.keys(map).length) {
-      bundle.hour_clock = map;
+      const pack = bundle.daypart_packs[activePack];
+      pack.hour_clock = map;
+      if (activePack === "all") bundle.hour_clock = map;
     }
-    return bundle.hour_clock || {};
+    return activePackMap();
   }
 
   function syncTabs() {
@@ -284,6 +369,7 @@
           bundle.hour_clock[String(h)] = DEFAULT_HOUR_CLOCK[h];
         }
       }
+      ensureDaypartPacks();
       syncTabs();
       renderDaypartGrid();
       renderSlots();
@@ -309,7 +395,8 @@
         name: clock.name,
         description: clock.description,
         slots: clock.slots,
-        hour_clock: bundle && bundle.hour_clock,
+        hour_clock: bundle && activePackMap(),
+        pack: activePack,
       }),
     }).then((r) => r.json());
     if (!res.ok) {
@@ -335,33 +422,105 @@
 
   async function saveDaypartOnly() {
     readDaypartFromGrid();
-    setStatus("saving daypart…");
+    setStatus(`saving daypart (${activePack})…`);
     const res = await fetch("/api/clocks/daypart", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ hour_clock: bundle.hour_clock }),
+      body: JSON.stringify({
+        hour_clock: activePackMap(),
+        pack: activePack,
+      }),
     }).then((r) => r.json());
     if (!res.ok) {
       setStatus(res.error || "daypart save failed");
       return;
     }
     if (res.bundle) bundle = res.bundle;
-    else if (res.hour_clock) bundle.hour_clock = res.hour_clock;
+    else if (res.hour_clock) {
+      ensureDaypartPacks();
+      bundle.daypart_packs[activePack].hour_clock = res.hour_clock;
+      bundle.daypart_packs[activePack].stored = true;
+      if (activePack === "all") bundle.hour_clock = res.hour_clock;
+    }
     daypartDirty = false;
     renderDaypartGrid();
-    setStatus(`daypart saved → ${res.json_path || "DB"}`);
+    setStatus(`daypart ${activePack} saved → ${res.json_path || "DB"}`);
+  }
+
+  async function clearActivePack() {
+    if (activePack === "all") {
+      setStatus("cannot clear ALL — use Defaults");
+      return;
+    }
+    if (!packIsStored(activePack)) {
+      setStatus(`${activePack} not stored`);
+      return;
+    }
+    if (!confirm(`Remove ${activePack} day_mask pack? Hours fall back to All.`)) return;
+    setStatus(`clearing ${activePack}…`);
+    const res = await fetch("/api/clocks/daypart", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clear_pack: activePack }),
+    }).then((r) => r.json());
+    if (!res.ok) {
+      setStatus(res.error || "clear failed");
+      return;
+    }
+    if (res.bundle) bundle = res.bundle;
+    daypartDirty = false;
+    renderDaypartGrid();
+    setStatus(`${activePack} pack cleared`);
   }
 
   function applyDaypartDefaults() {
     if (!bundle) return;
-    if (!confirm("Restore hour→clock defaults (OVERNIGHT 23–04, GENERAL elsewhere)?")) return;
-    bundle.hour_clock = {};
+    if (
+      !confirm(
+        "Restore All-days defaults (OVERNIGHT 23–04, GENERAL elsewhere) and clear Weekday/Weekend packs?"
+      )
+    )
+      return;
+    ensureDaypartPacks();
+    const defaults = {};
     for (let h = 0; h < 24; h++) {
-      bundle.hour_clock[String(h)] = DEFAULT_HOUR_CLOCK[h];
+      defaults[String(h)] = DEFAULT_HOUR_CLOCK[h];
     }
+    bundle.hour_clock = Object.assign({}, defaults);
+    bundle.daypart_packs.all.hour_clock = Object.assign({}, defaults);
+    bundle.daypart_packs.all.stored = true;
+    ["weekday", "weekend"].forEach((name) => {
+      bundle.daypart_packs[name].hour_clock = Object.assign({}, defaults);
+      bundle.daypart_packs[name].stored = false;
+    });
+    activePack = "all";
     daypartDirty = true;
-    renderDaypartGrid();
-    setStatus("defaults applied (save daypart to persist)");
+    // Persist immediately as full replace so packs clear
+    fetch("/api/clocks/daypart", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        hour_clock: defaults,
+        pack: "all",
+        replace_all_packs: true,
+      }),
+    })
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.ok && res.bundle) {
+          bundle = res.bundle;
+          daypartDirty = false;
+          renderDaypartGrid();
+          setStatus(`defaults restored → ${res.json_path || "DB"}`);
+        } else {
+          renderDaypartGrid();
+          setStatus(res.error || "defaults applied locally (save failed)");
+        }
+      })
+      .catch(() => {
+        renderDaypartGrid();
+        setStatus("defaults applied locally (network error)");
+      });
   }
 
   async function resetCanonical() {
@@ -460,8 +619,8 @@
     }
     const fill = res.etm_fill || {};
     const mapped =
-      bundle && bundle.hour_clock
-        ? bundle.hour_clock[String(hour)] || "?"
+      bundle
+        ? (activePackMap()[String(hour)] || "?")
         : "?";
     setStatus(
       `hour ${hour} [${mapped}]: ${res.events || "?"} events` +
@@ -510,6 +669,23 @@
     if (dpSave) dpSave.onclick = () => saveDaypartOnly();
     const dpDef = $("btn-daypart-defaults");
     if (dpDef) dpDef.onclick = () => applyDaypartDefaults();
+    const dpClear = $("btn-daypart-clear-pack");
+    if (dpClear) dpClear.onclick = () => clearActivePack();
+    const packTabs = $("daypart-pack-tabs");
+    if (packTabs) {
+      packTabs.querySelectorAll(".daypart-pack-tab").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const next = btn.getAttribute("data-pack") || "all";
+          if (next === activePack) return;
+          if (daypartDirty) {
+            readDaypartFromGrid();
+          }
+          activePack = next;
+          renderDaypartGrid();
+          setStatus(`editing ${activePack} pack`);
+        });
+      });
+    }
   }
 
   window.MQClockEditor = {

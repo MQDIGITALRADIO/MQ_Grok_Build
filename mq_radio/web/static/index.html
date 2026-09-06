@@ -530,8 +530,14 @@
         <div class="daypart-section" id="daypart-section">
           <div class="daypart-head">
             <strong>DAYPART DESIGNER</strong>
-            <span class="daypart-sub">Hour → clock (persisted to daypart_clocks)</span>
-            <button type="button" class="btn-dialog" id="btn-daypart-defaults" title="Restore GENERAL/OVERNIGHT defaults">Defaults</button>
+            <span class="daypart-sub">Hour → clock by day pack (day_mask → daypart_clocks)</span>
+            <div class="daypart-pack-tabs" id="daypart-pack-tabs" role="tablist" aria-label="Day pack">
+              <button type="button" class="daypart-pack-tab active" data-pack="all" title="All days (mask 127)">All</button>
+              <button type="button" class="daypart-pack-tab" data-pack="weekday" title="Mon–Fri (mask 62)">Weekday</button>
+              <button type="button" class="daypart-pack-tab" data-pack="weekend" title="Sat–Sun (mask 65)">Weekend</button>
+            </div>
+            <button type="button" class="btn-dialog" id="btn-daypart-clear-pack" title="Remove Weekday/Weekend pack (falls back to All)">Clear pack</button>
+            <button type="button" class="btn-dialog" id="btn-daypart-defaults" title="Restore GENERAL/OVERNIGHT defaults for All days">Defaults</button>
             <button type="button" class="btn-dialog primary" id="btn-daypart-save">Save daypart</button>
           </div>
           <div class="daypart-grid" id="daypart-grid" role="group" aria-label="Hour clock assignments"></div>
@@ -588,7 +594,7 @@
           </table>
         </div>
         <p class="clock-hint" id="clock-hint">
-          Save clock / Save daypart → DB + data/clocks.json. Generate uses the hour→clock map (fallback GENERAL / OVERNIGHT 23–04).
+          Save clock / Save daypart → DB + data/clocks.json. Generate uses the log date weekday → day_mask pack (narrowest wins; fallback GENERAL / OVERNIGHT 23–04).
         </p>
       </div>
     </div>

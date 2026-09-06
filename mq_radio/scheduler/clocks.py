@@ -10,6 +10,8 @@ Daypart → clock mapping (default, overridable in Daypart Designer):
   afternoon  15–18  → GENERAL
   evening    19–22  → GENERAL
 Operator may assign any named clock (incl. clones) per hour 0–23.
+Day masks (Sun=1 … Sat=64) allow weekday vs weekend (or per-day) grids;
+generate_log resolves the map for the log date's weekday.
 """
 
 from __future__ import annotations
@@ -194,6 +196,93 @@ DEFAULT_HOUR_CLOCK: dict[int, str] = {
     **{h: "GENERAL" for h in range(24) if h not in OVERNIGHT_HOURS},
 }
 
+# day_mask bits: Sun=1, Mon=2, Tue=4, Wed=8, Thu=16, Fri=32, Sat=64 (schema)
+DAY_MASK_ALL = 127
+DAY_MASK_WEEKDAY = 62  # Mon–Fri
+DAY_MASK_WEEKEND = 65  # Sat+Sun
+DAY_MASK_BITS: dict[str, int] = {
+    "sun": 1,
+    "mon": 2,
+    "tue": 4,
+    "wed": 8,
+    "thu": 16,
+    "fri": 32,
+    "sat": 64,
+}
+DAY_MASK_PACKS: dict[str, int] = {
+    "all": DAY_MASK_ALL,
+    "weekday": DAY_MASK_WEEKDAY,
+    "weekend": DAY_MASK_WEEKEND,
+    **DAY_MASK_BITS,
+}
+PACK_LABELS: dict[str, str] = {
+    "all": "All days",
+    "weekday": "Weekday (Mon–Fri)",
+    "weekend": "Weekend (Sat–Sun)",
+    "sun": "Sunday",
+    "mon": "Monday",
+    "tue": "Tuesday",
+    "wed": "Wednesday",
+    "thu": "Thursday",
+    "fri": "Friday",
+    "sat": "Saturday",
+}
+
+
+def day_mask_bit_count(mask: int) -> int:
+    return bin(int(mask) & 0x7F).count("1")
+
+
+def weekday_bit_for_date(log_date: str | Any) -> int:
+    """Return schema day_mask bit for a YYYY-MM-DD date (Sun=1 … Sat=64)."""
+    from datetime import date, datetime
+
+    if hasattr(log_date, "weekday") and callable(getattr(log_date, "weekday")):
+        d = log_date  # date/datetime
+    else:
+        s = str(log_date).strip()[:10]
+        d = datetime.strptime(s, "%Y-%m-%d").date()
+    # Python weekday: Mon=0 … Sun=6 → schema index Sun=0 … Sat=6
+    schema_idx = (int(d.weekday()) + 1) % 7
+    return 1 << schema_idx
+
+
+def resolve_pack_name(pack_or_mask: Any) -> tuple[str, int]:
+    """Normalize pack name or int mask → (pack_key, mask). Default all/127."""
+    if pack_or_mask is None or pack_or_mask == "":
+        return "all", DAY_MASK_ALL
+    if isinstance(pack_or_mask, int) or (isinstance(pack_or_mask, str) and str(pack_or_mask).isdigit()):
+        mask = int(pack_or_mask) & 0x7F
+        if mask <= 0:
+            mask = DAY_MASK_ALL
+        for name, m in DAY_MASK_PACKS.items():
+            if m == mask:
+                return name, mask
+        return f"mask_{mask}", mask
+    key = str(pack_or_mask).strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "weekdays": "weekday",
+        "week_day": "weekday",
+        "week_end": "weekend",
+        "all_days": "all",
+        "default": "all",
+        "sunday": "sun",
+        "monday": "mon",
+        "tuesday": "tue",
+        "wednesday": "wed",
+        "thursday": "thu",
+        "friday": "fri",
+        "saturday": "sat",
+    }
+    key = aliases.get(key, key)
+    if key not in DAY_MASK_PACKS:
+        raise ValueError(f"unknown daypart pack: {pack_or_mask}")
+    return key, DAY_MASK_PACKS[key]
+
+
+def default_hour_clock_codes() -> dict[str, str]:
+    return {str(h): DEFAULT_HOUR_CLOCK[h] for h in range(24)}
+
 
 def daypart_for_hour(hour: int) -> str:
     h = int(hour) % 24
@@ -326,32 +415,66 @@ def ensure_canonical_clocks(conn, *, reset: bool = False) -> dict[str, int]:
     return ids
 
 
-def load_hour_clock_map(conn) -> dict[int, int]:
-    """hour → clock_id from daypart_clocks.
+def _clock_code_ids(conn) -> dict[str, int]:
+    return {str(row["code"]): int(row["id"]) for row in conn.execute("SELECT id, code FROM clocks")}
 
-    Missing hours (or empty table) fall back to DEFAULT_HOUR_CLOCK
-    (OVERNIGHT 23–04, GENERAL elsewhere) resolved to clock ids.
-    """
-    code_ids: dict[str, int] = {}
-    for row in conn.execute("SELECT id, code FROM clocks").fetchall():
-        code_ids[str(row["code"])] = int(row["id"])
+
+def _fallback_clock_id(code_ids: dict[str, int], hour: int) -> int:
     general_id = code_ids.get("GENERAL")
     overnight_id = code_ids.get("OVERNIGHT", general_id)
     if general_id is None:
         general_id = overnight_id or 1
+    code = DEFAULT_HOUR_CLOCK.get(hour, "GENERAL")
+    if code == "OVERNIGHT" and overnight_id is not None:
+        return overnight_id
+    return code_ids.get(code, general_id)
+
+
+def load_hour_clock_map(conn, log_date: Optional[Any] = None) -> dict[int, int]:
+    """hour → clock_id from daypart_clocks for a calendar date's weekday.
+
+    Rows may carry day_mask packs (ALL=127, WEEKDAY=62, WEEKEND=65, or
+    single-day bits). For the log date, the narrowest matching mask wins.
+    Missing hours fall back to DEFAULT_HOUR_CLOCK (OVERNIGHT 23–04).
+    If log_date is None, prefer ALL (127) rows, else any row (legacy).
+    """
+    code_ids = _clock_code_ids(conn)
+    bit: Optional[int] = None
+    if log_date is not None:
+        bit = weekday_bit_for_date(log_date)
+
+    by_hour: dict[int, list[tuple[int, int]]] = {h: [] for h in range(24)}
+    for row in conn.execute(
+        "SELECT hour, clock_id, day_mask FROM daypart_clocks"
+    ).fetchall():
+        h = int(row["hour"])
+        if h < 0 or h > 23:
+            continue
+        mask = int(row["day_mask"] if row["day_mask"] is not None else DAY_MASK_ALL) & 0x7F
+        if mask <= 0:
+            mask = DAY_MASK_ALL
+        by_hour[h].append((mask, int(row["clock_id"])))
 
     hour_clocks: dict[int, int] = {}
-    for row in conn.execute("SELECT hour, clock_id FROM daypart_clocks").fetchall():
-        hour_clocks[int(row["hour"])] = int(row["clock_id"])
-
     for h in range(24):
-        if h in hour_clocks:
-            continue
-        code = DEFAULT_HOUR_CLOCK.get(h, "GENERAL")
-        if code == "OVERNIGHT" and overnight_id is not None:
-            hour_clocks[h] = overnight_id
+        candidates = by_hour[h]
+        chosen: Optional[int] = None
+        if bit is not None:
+            matching = [(m, cid) for m, cid in candidates if (m & bit)]
+            if matching:
+                matching.sort(key=lambda t: (day_mask_bit_count(t[0]), t[0]))
+                chosen = matching[0][1]
         else:
-            hour_clocks[h] = code_ids.get(code, general_id)
+            # No date: prefer exact ALL pack, else first row
+            all_rows = [cid for m, cid in candidates if m == DAY_MASK_ALL]
+            if all_rows:
+                chosen = all_rows[0]
+            elif candidates:
+                candidates.sort(key=lambda t: (day_mask_bit_count(t[0]), t[0]))
+                chosen = candidates[0][1]
+        if chosen is None:
+            chosen = _fallback_clock_id(code_ids, h)
+        hour_clocks[h] = chosen
     return hour_clocks
 
 
@@ -424,35 +547,92 @@ def load_clocks_from_db(conn) -> list[dict[str, Any]]:
     return clocks
 
 
-def load_daypart_grid_from_db(conn) -> dict[str, str]:
-    """hour(str) → clock code from daypart_clocks."""
+def load_daypart_grid_from_db(
+    conn, day_mask: int = DAY_MASK_ALL, *, inherit: bool = True
+) -> dict[str, str]:
+    """hour(str) → clock code for one day_mask pack.
+
+    If inherit and the pack has no rows, fall back to ALL (127) then defaults.
+    """
+    mask = int(day_mask) & 0x7F
+    if mask <= 0:
+        mask = DAY_MASK_ALL
     out: dict[str, str] = {}
     rows = conn.execute(
         """SELECT d.hour, c.code FROM daypart_clocks d
-           JOIN clocks c ON c.id = d.clock_id ORDER BY d.hour"""
+           JOIN clocks c ON c.id = d.clock_id
+           WHERE d.day_mask = ? ORDER BY d.hour""",
+        (mask,),
     ).fetchall()
     for r in rows:
         out[str(int(r["hour"]))] = r["code"]
+    if len(out) == 24:
+        return out
+    if inherit and mask != DAY_MASK_ALL:
+        base = load_daypart_grid_from_db(conn, DAY_MASK_ALL, inherit=False)
+        for h in range(24):
+            key = str(h)
+            if key not in out:
+                out[key] = base.get(key, DEFAULT_HOUR_CLOCK[h])
+        return out
     if not out:
-        out = {str(h): DEFAULT_HOUR_CLOCK[h] for h in range(24)}
+        return default_hour_clock_codes()
+    # Partial pack: fill holes from defaults
+    for h in range(24):
+        key = str(h)
+        if key not in out:
+            out[key] = DEFAULT_HOUR_CLOCK[h]
     return out
 
 
+def load_daypart_packs(conn) -> dict[str, Any]:
+    """Named day_mask packs present in DB (+ inherited previews for editor)."""
+    present_masks = {
+        int(r["day_mask"])
+        for r in conn.execute("SELECT DISTINCT day_mask FROM daypart_clocks").fetchall()
+    }
+    packs: dict[str, Any] = {}
+    for name, mask in (("all", DAY_MASK_ALL), ("weekday", DAY_MASK_WEEKDAY), ("weekend", DAY_MASK_WEEKEND)):
+        stored = mask in present_masks
+        packs[name] = {
+            "mask": mask,
+            "label": PACK_LABELS[name],
+            "stored": stored or (name == "all" and not present_masks),
+            "hour_clock": load_daypart_grid_from_db(conn, mask, inherit=True),
+        }
+    # Optional single-day packs when present
+    days: dict[str, Any] = {}
+    for name, mask in DAY_MASK_BITS.items():
+        if mask in present_masks:
+            days[name] = {
+                "mask": mask,
+                "label": PACK_LABELS[name],
+                "stored": True,
+                "hour_clock": load_daypart_grid_from_db(conn, mask, inherit=True),
+            }
+    return {"packs": packs, "days": days, "masks": dict(DAY_MASK_PACKS)}
+
+
 def clocks_bundle(conn) -> dict[str, Any]:
-    """Full editor payload: clocks, daypart grid, canonical notes."""
+    """Full editor payload: clocks, daypart grid / packs, canonical notes."""
     clocks = load_clocks_from_db(conn)
+    packs_info = load_daypart_packs(conn)
+    hour_clock = packs_info["packs"]["all"]["hour_clock"]
     return {
         "clocks": clocks,
-        "hour_clock": load_daypart_grid_from_db(conn),
+        "hour_clock": hour_clock,
+        "daypart_packs": packs_info["packs"],
+        "daypart_days": packs_info["days"],
+        "day_masks": packs_info["masks"],
         "dayparts": {k: list(v) for k, v in DAYPART_HOURS.items()},
         "event_types": list(EVENT_TYPES_EDITABLE),
         "timing_modes": list(TIMING_MODES),
         "chain_modes": list(CHAIN_MODES),
         "notes": [
             "Edits save to SQLite clock_slots; mirrored to data/clocks.json.",
-            "Daypart Designer: hour 0–23 → clock_id via daypart_clocks (fallback GENERAL/OVERNIGHT).",
+            "Daypart Designer: hour 0–23 → clock via daypart_clocks + day_mask packs (All / Weekday / Weekend).",
+            "generate-log uses the log date weekday: narrowest matching day_mask wins (fallback GENERAL/OVERNIGHT 23–04).",
             "Clone GENERAL/OVERNIGHT (or any clock) to create named clocks for the grid.",
-            "generate-log / generate-hour expands daypart map → clock_slots — AI never picks live.",
             "ETM / HIT / HARD slots are hard markers; FLOAT content fills toward them.",
             "MANUAL Living Log rows survive regenerate unless --force.",
         ],
@@ -558,12 +738,33 @@ def save_clock_slots(
     raise RuntimeError("save_clock_slots: clock missing after write")
 
 
-def save_daypart_grid(conn, hour_clock: dict) -> dict[str, str]:
-    """Update daypart_clocks from {hour: code} mapping."""
-    code_ids: dict[str, int] = {}
-    for row in conn.execute("SELECT id, code FROM clocks").fetchall():
-        code_ids[row["code"]] = int(row["id"])
-    conn.execute("DELETE FROM daypart_clocks")
+def save_daypart_grid(
+    conn,
+    hour_clock: dict,
+    *,
+    day_mask: int = DAY_MASK_ALL,
+    pack: Optional[str] = None,
+    replace_all_packs: bool = False,
+) -> dict[str, str]:
+    """Update daypart_clocks for one day_mask pack from {hour: code}.
+
+    - Default pack is ALL (127). Other packs (weekday=62, weekend=65, …) are
+      written without wiping sibling packs unless replace_all_packs=True
+      (Defaults / full reset).
+    - Returns the saved pack's hour→code map (no inherit).
+    """
+    if pack is not None:
+        _name, day_mask = resolve_pack_name(pack)
+    mask = int(day_mask) & 0x7F
+    if mask <= 0:
+        mask = DAY_MASK_ALL
+
+    code_ids = _clock_code_ids(conn)
+    if replace_all_packs:
+        conn.execute("DELETE FROM daypart_clocks")
+    else:
+        conn.execute("DELETE FROM daypart_clocks WHERE day_mask = ?", (mask,))
+
     for h in range(24):
         code = None
         if hour_clock:
@@ -574,10 +775,18 @@ def save_daypart_grid(conn, hour_clock: dict) -> dict[str, str]:
         if clock_id is None:
             continue
         conn.execute(
-            "INSERT INTO daypart_clocks (hour, clock_id, day_mask) VALUES (?, ?, 127)",
-            (h, clock_id),
+            "INSERT INTO daypart_clocks (hour, clock_id, day_mask) VALUES (?, ?, ?)",
+            (h, clock_id, mask),
         )
-    return load_daypart_grid_from_db(conn)
+    return load_daypart_grid_from_db(conn, mask, inherit=False)
+
+
+def clear_daypart_pack(conn, pack_or_mask: Any) -> None:
+    """Remove one day_mask pack (weekday/weekend/day); ALL cannot be cleared empty — use Defaults."""
+    _name, mask = resolve_pack_name(pack_or_mask)
+    if mask == DAY_MASK_ALL:
+        raise ValueError("cannot clear ALL pack; use Defaults / save_daypart_grid replace")
+    conn.execute("DELETE FROM daypart_clocks WHERE day_mask = ?", (mask,))
 
 
 def normalize_clock_code(code: str) -> str:

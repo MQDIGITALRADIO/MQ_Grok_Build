@@ -162,13 +162,13 @@ Living Log rows come from **category clocks** — hour templates of event type +
 | **OVERNIGHT** | 23–04 | **4 VT placeholders** for AI DJ breaks, softer B/C lean, sparse A |
 | **Clones** | any (Daypart Designer) | Clone GENERAL/OVERNIGHT (or any clock) → named clock editable in Clock Editor |
 
-Default hour→clock map lives in SQLite `daypart_clocks` (mirrored in `data/clocks.json`). Unset hours fall back to GENERAL / OVERNIGHT 23–04.
+Default hour→clock map lives in SQLite `daypart_clocks` with `day_mask` (Sun=1…Sat=64; All=127, Weekday=62, Weekend=65), mirrored in `data/clocks.json`. `generate-log` / `generate-hour` pick the narrowest matching pack for the log date weekday. Unset hours fall back to GENERAL / OVERNIGHT 23–04.
 
 ### Clock Editor + Daypart Designer (On-Air)
 
 Titlebar **CLOCKS** (or Settings → Category Clocks) opens a Maestro-dense editor:
 
-- **Daypart Designer** — 0–23 hour grid; assign which clock runs each hour; **Save daypart** / **Defaults**
+- **Daypart Designer** — 0–23 hour grid with **All / Weekday / Weekend** pack tabs; assign which clock runs each hour; **Save daypart** / **Clear pack** / **Defaults**
 - Dynamic tabs for every named clock (GENERAL, OVERNIGHT, clones)
 - **Clone clock** — copy GENERAL/OVERNIGHT (or any) as a starting point; edit slots independently
 - Edit slots (type, category, timing, chain, label, offset); add/remove
@@ -214,7 +214,7 @@ python -m mq_radio generate-log --date 2026-09-06 --music-categories B,C --enfor
 | Area | M1 (this zip) | Later |
 |------|---------------|--------|
 | Library / scanner | WAV + sidecar JSON, demo fixtures | Full tagging, APRA/PPCA workflows |
-| Scheduler | GENERAL + OVERNIGHT + **cloned clocks**, **Clock Editor** + **Daypart Designer** (0–23 hour→clock), **Category/Library Manager**, hour/24h generate, constraints, MANUAL preserve, **ETM/HIT fills** + **FILLER cart pool** | Per-weekday day masks, richer rule packs |
+| Scheduler | GENERAL + OVERNIGHT + **cloned clocks**, **Clock Editor** + **Daypart Designer** (0–23 hour→clock + **All/Weekday/Weekend day_mask packs**), **Category/Library Manager**, hour/24h generate, constraints, MANUAL preserve, **ETM/HIT fills** + **FILLER cart pool** | Richer per-day rule packs / energy overlays |
 | Engine | MockEngine + Liquidsoap stub | Real Liquidsoap / stream chain |
 | UI | On-Air Living Log prototype | Full HOME + STUDIO surfaces |
 | Voice / production / remote | AI VT scripts + Vocloner render path (clipboard) | Vocloner automation/API if available, production cart, remotes |

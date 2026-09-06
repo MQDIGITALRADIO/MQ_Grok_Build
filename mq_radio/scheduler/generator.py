@@ -524,7 +524,7 @@ def generate_log(
 
     _delete_events(conn, rebuild_ids)
 
-    hour_clocks = load_hour_clock_map(conn)
+    hour_clocks = load_hour_clock_map(conn, log_date)
     default_clock = hour_clocks.get(0) or next(iter(hour_clocks.values()), 1)
     history = _seed_history(conn)
     used_ids: set[int] = set()

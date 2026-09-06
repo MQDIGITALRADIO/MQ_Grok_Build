@@ -44,10 +44,12 @@ from mq_radio.library.categories import (
 )
 from mq_radio.db.connection import get_connection
 from mq_radio.scheduler.clocks import (
+    clear_daypart_pack,
     clone_clock,
     clocks_bundle,
     export_clocks_json,
     reset_clock_to_canonical,
+    resolve_pack_name,
     save_clock_slots,
     save_daypart_grid,
 )
@@ -642,7 +644,16 @@ def make_handler(db_path: Path):
                         description=payload.get("description"),
                     )
                     if isinstance(payload.get("hour_clock"), dict):
-                        save_daypart_grid(conn, payload["hour_clock"])
+                        pack = payload.get("pack") or payload.get("day_mask_pack")
+                        day_mask = payload.get("day_mask")
+                        kwargs = {}
+                        if pack is not None:
+                            kwargs["pack"] = pack
+                        elif day_mask is not None:
+                            kwargs["day_mask"] = int(day_mask)
+                        if payload.get("replace_all_packs"):
+                            kwargs["replace_all_packs"] = True
+                        save_daypart_grid(conn, payload["hour_clock"], **kwargs)
                     conn.commit()
                     json_path = export_clocks_json(conn, DATA_DIR / "clocks.json")
                     bundle = clocks_bundle(conn)
@@ -725,6 +736,29 @@ def make_handler(db_path: Path):
                 return
 
             if path == "/api/clocks/daypart":
+                # Clear a non-ALL pack (weekday/weekend/day) without hour_clock
+                if payload.get("clear_pack"):
+                    conn = get_connection(db_path)
+                    try:
+                        clear_daypart_pack(conn, payload.get("clear_pack"))
+                        conn.commit()
+                        json_path = export_clocks_json(conn, DATA_DIR / "clocks.json")
+                        bundle = clocks_bundle(conn)
+                        _json_response(
+                            self,
+                            {
+                                "ok": True,
+                                "cleared": str(payload.get("clear_pack")),
+                                "json_path": str(json_path),
+                                "bundle": bundle,
+                            },
+                        )
+                    except ValueError as exc:
+                        _json_response(self, {"ok": False, "error": str(exc)}, status=400)
+                    finally:
+                        conn.close()
+                    return
+
                 hour_clock = payload.get("hour_clock")
                 if not isinstance(hour_clock, dict):
                     _json_response(
@@ -733,9 +767,27 @@ def make_handler(db_path: Path):
                         status=400,
                     )
                     return
+                pack = payload.get("pack") or payload.get("day_mask_pack")
+                day_mask = payload.get("day_mask")
+                replace_all = bool(payload.get("replace_all_packs"))
+                kwargs = {}
+                pack_name = "all"
+                mask_val = 127
+                try:
+                    if pack is not None:
+                        pack_name, mask_val = resolve_pack_name(pack)
+                        kwargs["pack"] = pack
+                    elif day_mask is not None:
+                        pack_name, mask_val = resolve_pack_name(int(day_mask))
+                        kwargs["day_mask"] = mask_val
+                    if replace_all:
+                        kwargs["replace_all_packs"] = True
+                except ValueError as exc:
+                    _json_response(self, {"ok": False, "error": str(exc)}, status=400)
+                    return
                 conn = get_connection(db_path)
                 try:
-                    saved_grid = save_daypart_grid(conn, hour_clock)
+                    saved_grid = save_daypart_grid(conn, hour_clock, **kwargs)
                     conn.commit()
                     json_path = export_clocks_json(conn, DATA_DIR / "clocks.json")
                     bundle = clocks_bundle(conn)
@@ -744,6 +796,8 @@ def make_handler(db_path: Path):
                         {
                             "ok": True,
                             "hour_clock": saved_grid,
+                            "pack": pack_name,
+                            "day_mask": mask_val,
                             "json_path": str(json_path),
                             "bundle": bundle,
                         },
@@ -752,7 +806,7 @@ def make_handler(db_path: Path):
                     conn.close()
                 return
 
-if path == "/api/categories/save":
+            if path == "/api/categories/save":
                 code = str(payload.get("code") or "").strip().upper()
                 if not code:
                     _json_response(self, {"ok": False, "error": "code required"}, status=400)

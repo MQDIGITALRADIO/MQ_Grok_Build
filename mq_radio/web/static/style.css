@@ -1788,6 +1788,40 @@ input { border-radius: 0; }
   font-size: 10px;
   flex: 1;
 }
+
+.daypart-pack-tabs {
+  display: inline-flex;
+  gap: 2px;
+  border: 1px solid #3a3a48;
+  background: #0e0e14;
+  padding: 1px;
+}
+.daypart-pack-tab {
+  border: 0;
+  background: transparent;
+  color: #9ab;
+  font: 600 10px/1.2 "Segoe UI", system-ui, sans-serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+.daypart-pack-tab:hover { color: #cde; background: #1a1a28; }
+.daypart-pack-tab.active {
+  background: #2a3550;
+  color: #e8eef8;
+}
+.daypart-pack-tab.daypart-pack-stored::after {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 4px;
+  border-radius: 50%;
+  background: #6c8;
+  vertical-align: middle;
+}
+.daypart-inherited .daypart-select { opacity: 0.75; }
 .daypart-grid {
   display: grid;
   grid-template-columns: repeat(8, minmax(0, 1fr));
